@@ -493,45 +493,55 @@ def play_song_thread(file_content: str):
             if not song_playback_active:
                 break
                 
-            # Play Angklung 1 (High Melody)
+            # Collect all notes for simultaneous playback in this step
+            arduino1_notes = []
+            arduino3_notes = []
+            
+            # 1. Gather Angklung 1 (High Melody) notes
             for token in bar_steps_a1[step_idx]:
                 midi_val = doremi_to_midi(token, key_sig)
                 pitch = midi_to_note_name(midi_val)
                 if pitch in ANGKLUNG1_PITCHES:
-                    note_num = ANGKLUNG1_PITCHES.index(pitch) + 1
-                    send_to_arduino(note_num, angklung_id=1)
+                    arduino1_notes.append(ANGKLUNG1_PITCHES.index(pitch) + 1)
                 elif pitch in ANGKLUNG2_PITCHES:
-                    note_num = ANGKLUNG2_PITCHES.index(pitch) + 1
-                    send_to_arduino(note_num, angklung_id=2)
+                    arduino1_notes.append(ANGKLUNG2_PITCHES.index(pitch) + 1 + 16)
                     
-            # Play Angklung 2 (Medium Melody)
+            # 2. Gather Angklung 2 (Medium Melody & Chords) notes
             for token in bar_steps_a2[step_idx]:
                 if token.startswith('@'):
                     for pitch in resolve_chord_pitches(token, key_sig):
                         if pitch in ANGKLUNG1_PITCHES:
-                            note_num = ANGKLUNG1_PITCHES.index(pitch) + 1
-                            send_to_arduino(note_num, angklung_id=1)
+                            arduino1_notes.append(ANGKLUNG1_PITCHES.index(pitch) + 1)
                         elif pitch in ANGKLUNG2_PITCHES:
-                            note_num = ANGKLUNG2_PITCHES.index(pitch) + 1
-                            send_to_arduino(note_num, angklung_id=2)
+                            arduino1_notes.append(ANGKLUNG2_PITCHES.index(pitch) + 1 + 16)
                 else:
                     midi_val = doremi_to_midi(token, key_sig)
                     pitch = midi_to_note_name(midi_val)
                     if pitch in ANGKLUNG1_PITCHES:
-                        note_num = ANGKLUNG1_PITCHES.index(pitch) + 1
-                        send_to_arduino(note_num, angklung_id=1)
+                        arduino1_notes.append(ANGKLUNG1_PITCHES.index(pitch) + 1)
                     elif pitch in ANGKLUNG2_PITCHES:
-                        note_num = ANGKLUNG2_PITCHES.index(pitch) + 1
-                        send_to_arduino(note_num, angklung_id=2)
+                        arduino1_notes.append(ANGKLUNG2_PITCHES.index(pitch) + 1 + 16)
                         
-            # Play Angklung 3 (Low Bass)
+            # 3. Gather Angklung 3 (Low Bass) notes
             for token in bar_steps_a3[step_idx]:
                 midi_val = doremi_to_midi(token, key_sig)
                 pitch = midi_to_note_name(midi_val)
                 if pitch in BASS_PITCHES:
-                    note_num = BASS_PITCHES.index(pitch) + 1
-                    send_to_arduino(note_num, angklung_id=3)
+                    arduino3_notes.append(BASS_PITCHES.index(pitch) + 1)
                     
+            # Remove duplicates
+            arduino1_notes = list(set(arduino1_notes))
+            arduino3_notes = list(set(arduino3_notes))
+            
+            # Play in parallel if there are active notes
+            if arduino1_notes or arduino3_notes:
+                t1 = threading.Thread(target=send_to_arduino, args=(arduino1_notes, 1))
+                t3 = threading.Thread(target=send_to_arduino, args=(arduino3_notes, 3))
+                t1.start()
+                t3.start()
+                t1.join()
+                t3.join()
+                
             time.sleep(sub_beat_duration)
 
     print("[PARSER] Pemutaran lagu selesai.")

@@ -260,9 +260,13 @@ SERIAL_PORTS = {
 BAUD_RATE = 9600
 arduino_serials = {1: None, 2: None, 3: None}
 arduino_locks = {1: threading.Lock(), 3: threading.Lock()}
+last_connection_attempts = {1: 0.0, 2: 0.0, 3: 0.0}
 
 def get_arduino_connection(angklung_id: int):
-    global arduino_serials, SERIAL_PORTS, BAUD_RATE
+    global arduino_serials, SERIAL_PORTS, BAUD_RATE, last_connection_attempts
+    if not HAS_SERIAL:
+        return None
+        
     if angklung_id not in arduino_serials:
         angklung_id = 3
         
@@ -270,6 +274,12 @@ def get_arduino_connection(angklung_id: int):
     if ser is not None and ser.is_open:
         return ser
         
+    # Cooldown check: if last attempt was < 10 seconds ago, skip trying to avoid block lag
+    now = time.time()
+    if now - last_connection_attempts.get(angklung_id, 0.0) < 10.0:
+        return None
+        
+    last_connection_attempts[angklung_id] = now
     port = SERIAL_PORTS.get(angklung_id)
     try:
         if ser:

@@ -585,6 +585,10 @@ def doremi_to_midi(token: str, key_sig: str) -> int:
     octave_mod -= token.count(",") * 12
     octave_mod -= token.count(";") * 24
     
+    # Accidentals: / raises by 1 semitone, \ lowers by 1 semitone
+    octave_mod += token.count("/")
+    octave_mod -= token.count("\\")
+    
     return root + interval + octave_mod
 
 def midi_to_note_name(midi_num: int) -> str:
@@ -614,6 +618,11 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
     chord_root_midi = root_midi + intervals.get(degree, 0)
     
     is_minor = 'm' in symbol
+    # Diatonic major key defaults: degrees 2, 3, 6, 7 are naturally Minor/Diminished
+    if not is_minor and not ('M' in symbol or 'maj' in symbol):
+        if degree in [2, 3, 6, 7]:
+            is_minor = True
+            
     third_offset = 3 if is_minor else 4
     fifth_offset = 7
     

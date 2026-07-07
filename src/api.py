@@ -197,27 +197,79 @@ def init_pygame_mixer():
         print(f"[AUDIO] Gagal mengaktifkan pygame mixer: {e}")
         return False
 
-def generate_angklung_sound(frequency: float, duration: float = 1.2, sr: int = 44100, volume: float = 1.0, decay_factor: float = 1.0):
+def generate_angklung_sound(frequency: float, duration: float = 1.2, sr: int = 44100, volume: float = 1.0, instr_type: str = "melody"):
     t = np.linspace(0, duration, int(sr * duration), endpoint=False)
     
-    f1 = frequency
-    f2 = frequency * 2.0
-    f3 = frequency * 3.0
-    
-    env1 = np.exp(-3.5 * decay_factor * t)
-    env2 = np.exp(-2.2 * decay_factor * t)
-    env3 = np.exp(-5.5 * decay_factor * t)
-    
-    tone1 = np.sin(2.0 * np.pi * f1 * t) * env1 * 0.5
-    tone2 = np.sin(2.0 * np.pi * f2 * t) * env2 * 0.4
-    tone3 = np.sin(2.0 * np.pi * f3 * t) * env3 * 0.1
-    
-    signal = tone1 + tone2 + tone3
-    
-    click_len = int(sr * 0.02)
-    click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 4.0, click_len)) * 0.25
-    signal[:click_len] += click
-    
+    if instr_type == "bass":
+        # Bass: Deep fundamental, no harsh high harmonics, slower envelope decay
+        f1 = frequency
+        f2 = frequency * 2.0
+        env1 = np.exp(-2.0 * t)
+        env2 = np.exp(-4.5 * t)
+        
+        tone1 = np.sin(2.0 * np.pi * f1 * t) * env1 * 0.8
+        tone2 = np.sin(2.0 * np.pi * f2 * t) * env2 * 0.2
+        signal = tone1 + tone2
+        
+        # Soft click for bass
+        click_len = int(sr * 0.02)
+        click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 4.0, click_len)) * 0.1
+        signal[:click_len] += click
+        
+    elif instr_type == "chord":
+        # Chord/Rhythm: Detuned stereo chorus backing wash (left slightly higher, right slightly lower)
+        f1_L = frequency * 1.002
+        f1_R = frequency * 0.998
+        f2_L = frequency * 2.002
+        f2_R = frequency * 1.998
+        
+        env1 = np.exp(-4.5 * t)  # Faster decay so it sits nicely in background
+        env2 = np.exp(-3.5 * t)
+        
+        tone1_L = np.sin(2.0 * np.pi * f1_L * t) * env1 * 0.5
+        tone1_R = np.sin(2.0 * np.pi * f1_R * t) * env1 * 0.5
+        tone2_L = np.sin(2.0 * np.pi * f2_L * t) * env2 * 0.4
+        tone2_R = np.sin(2.0 * np.pi * f2_R * t) * env2 * 0.4
+        
+        signal_L = tone1_L + tone2_L
+        signal_R = tone1_R + tone2_R
+        
+        # Click (strike sound)
+        click_len = int(sr * 0.025)
+        click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 5.0, click_len)) * 0.15
+        signal_L[:click_len] += click
+        signal_R[:click_len] += click
+        
+        # Normalize and scale
+        max_L = np.max(np.abs(signal_L))
+        max_R = np.max(np.abs(signal_R))
+        if max_L > 0: signal_L = (signal_L / max_L) * volume
+        if max_R > 0: signal_R = (signal_R / max_R) * volume
+        
+        stereo_signal = np.column_stack((signal_L, signal_R))
+        return (stereo_signal * 32767).astype(np.int16)
+        
+    else: # "melody"
+        # Melody: Sharp, bright, clear centered lead with full harmonics
+        f1 = frequency
+        f2 = frequency * 2.0
+        f3 = frequency * 3.0
+        
+        env1 = np.exp(-3.5 * t)
+        env2 = np.exp(-2.2 * t)
+        env3 = np.exp(-5.5 * t)
+        
+        tone1 = np.sin(2.0 * np.pi * f1 * t) * env1 * 0.5
+        tone2 = np.sin(2.0 * np.pi * f2 * t) * env2 * 0.4
+        tone3 = np.sin(2.0 * np.pi * f3 * t) * env3 * 0.1
+        
+        signal = tone1 + tone2 + tone3
+        
+        # Bright strike click
+        click_len = int(sr * 0.02)
+        click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 4.0, click_len)) * 0.25
+        signal[:click_len] += click
+        
     max_val = np.max(np.abs(signal))
     if max_val > 0:
         signal = (signal / max_val) * volume
@@ -225,7 +277,7 @@ def generate_angklung_sound(frequency: float, duration: float = 1.2, sr: int = 4
     stereo_signal = np.column_stack((signal, signal))
     return (stereo_signal * 32767).astype(np.int16)
 
-def play_synth_note_async(note_num: int, angklung_id: int, volume: float = 1.0, decay_factor: float = 1.0):
+def play_synth_note_async(note_num: int, angklung_id: int, volume: float = 1.0, instr_type: str = "melody"):
     if not init_pygame_mixer():
         return
     try:
@@ -239,15 +291,15 @@ def play_synth_note_async(note_num: int, angklung_id: int, volume: float = 1.0, 
 
         freq_map = NOTE_FREQUENCIES.get(target_id, NOTE_FREQUENCIES[3])
         freq = freq_map.get(target_note, 261.63)
-        pcm_data = generate_angklung_sound(freq, volume=volume, decay_factor=decay_factor)
+        pcm_data = generate_angklung_sound(freq, volume=volume, instr_type=instr_type)
         
         sound = pygame.sndarray.make_sound(pcm_data)
         sound.play()
     except Exception as e:
         print(f"[AUDIO] Gagal memainkan suara lokal: {e}")
 
-def play_local_sound(note_num: int, angklung_id: int = 3, volume: float = 1.0, decay_factor: float = 1.0):
-    t = threading.Thread(target=play_synth_note_async, args=(note_num, angklung_id, volume, decay_factor))
+def play_local_sound(note_num: int, angklung_id: int = 3, volume: float = 1.0, instr_type: str = "melody"):
+    t = threading.Thread(target=play_synth_note_async, args=(note_num, angklung_id, volume, instr_type))
     t.daemon = True
     t.start()
 
@@ -473,10 +525,10 @@ def arduino_play_multi(a1: str = "", a3: str = ""):
 
 song_playback_active = False
 current_playback_thread = None
-current_playback_session_id = 0
+current_playback_token = 0
 
-def play_song_thread(file_content: str, session_id: int):
-    global song_playback_active, current_playback_session_id
+def play_song_thread(file_content: str, thread_token: int):
+    global song_playback_active, current_playback_token
     
     try:
         # 1. Parse Metadata
@@ -579,7 +631,7 @@ def play_song_thread(file_content: str, session_id: int):
         last_active_notes = {track: [] for track in tracks.keys()}
         
         for bar_idx in range(max_bars):
-            if not song_playback_active or session_id != current_playback_session_id:
+            if not song_playback_active or thread_token != current_playback_token:
                 break
                 
             bar_steps = [{} for _ in range(steps_per_bar)]
@@ -609,7 +661,7 @@ def play_song_thread(file_content: str, session_id: int):
                     current_beat += token_dur
                         
             for step_idx in range(steps_per_bar):
-                if not song_playback_active or session_id != current_playback_session_id:
+                if not song_playback_active or thread_token != current_playback_token:
                     break
                     
                 arduino1_notes = []
@@ -679,18 +731,16 @@ def play_song_thread(file_content: str, session_id: int):
                             note_num = BASS_PITCHES.index(p) + 1
                             ang_id = 3
                             
-                        # Play local sound only if it is a new note trigger (restores clean, smooth strumming)
-                        if is_new_trigger:
-                            # DAW track mixer volume panel (decay_factor = 1.0)
-                            if track_name == 'VB':
-                                vol = 0.75  # Bass volume
-                            elif track_name == 'VA^' or track_name == 'VA':
-                                vol = 0.45  # Chord / Rhythm volume (softer background strum)
-                            elif track_name == 'V1':
-                                vol = 1.00  # Lead Melody volume (loudest)
-                            else:
-                                vol = 0.80  # Supporting melody volume (V2, V3, etc.)
-                            play_local_sound(note_num, ang_id, vol, 1.0)
+                        # DAW track mixer volume panel
+                        if track_name == 'VB':
+                            vol = 0.65  # Bass volume
+                        elif track_name == 'VA^' or track_name == 'VA':
+                            vol = 0.35  # Chord / Rhythm volume (quieter background)
+                        elif track_name == 'V1':
+                            vol = 1.00  # Lead Melody volume (loudest)
+                        else:
+                            vol = 0.70  # Supporting melody volume (V2, V3, etc.)
+                        play_local_sound(note_num, ang_id, vol)
                             
                         if ntype == "mel1" or ntype == "mel2":
                             arduino1_notes.append(note_num)
@@ -920,28 +970,26 @@ def play_song_file(data: dict):
     if not music_lines:
         raise HTTPException(status_code=400, detail="File lagu tidak valid atau tidak memiliki data notasi musik.")
         
-    global song_playback_active, current_playback_thread, current_playback_session_id
-    
-    # Increment session ID to cancel any running threads
-    current_playback_session_id += 1
-    my_session = current_playback_session_id
+    global song_playback_active, current_playback_thread, current_playback_token
     
     # 1. Stop existing thread if running
+    song_playback_active = False
+    current_playback_token += 1
+    
     if current_playback_thread is not None and current_playback_thread.is_alive():
-        song_playback_active = False
-        current_playback_thread.join(timeout=1.0)
+        current_playback_thread.join(timeout=1.5)
         
     song_playback_active = True
-    current_playback_thread = threading.Thread(target=play_song_thread, args=(file_content, my_session))
+    current_playback_thread = threading.Thread(target=play_song_thread, args=(file_content, current_playback_token))
     current_playback_thread.daemon = True
     current_playback_thread.start()
     return {"status": "success", "message": f"Playback started for {file_name}."}
 
 @app.get("/api/arduino/stop_song")
 def stop_song():
-    global song_playback_active, current_playback_session_id
+    global song_playback_active, current_playback_token
     song_playback_active = False
-    current_playback_session_id += 1 # Invalidate current playback thread session
+    current_playback_token += 1
     
     # Send reset command (0) to turn off all solenoids on Board 1 and 3
     try:

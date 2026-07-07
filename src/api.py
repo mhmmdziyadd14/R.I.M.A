@@ -506,11 +506,22 @@ def play_song_thread(file_content: str):
                     else:
                         # Single note
                         midi_val = doremi_to_midi(token, key_sig)
-                        pitch = midi_to_note_name(midi_val)
                         if track_name == 'VB':
+                            # Shift to Bass physical range [52, 67] (e3 to g4)
+                            while midi_val < 52:
+                                midi_val += 12
+                            while midi_val > 67:
+                                midi_val -= 12
+                            pitch = midi_to_note_name(midi_val)
                             if pitch in BASS_PITCHES:
                                 active.append({"pitch": pitch, "type": "bass"})
                         else:
+                            # Shift to Melody physical range [65, 96] (f4 to c7)
+                            while midi_val < 65:
+                                midi_val += 12
+                            while midi_val > 96:
+                                midi_val -= 12
+                            pitch = midi_to_note_name(midi_val)
                             if pitch in ANGKLUNG1_PITCHES:
                                 active.append({"pitch": pitch, "type": "mel1"})
                             elif pitch in ANGKLUNG2_PITCHES:

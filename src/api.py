@@ -401,6 +401,7 @@ def play_song_thread(file_content: str):
     # 1. Parse Metadata
     bpm = 90
     key_sig = "F"
+    beats_per_bar = 4.0
     lines = file_content.split('\n')
     
     music_lines = []
@@ -422,6 +423,15 @@ def play_song_thread(file_content: str):
                     pass
             elif line.startswith('K:'):
                 key_sig = line.split(':')[1].strip().upper()
+            elif line.startswith('M:'):
+                try:
+                    m_val = line.split(':')[1].strip()
+                    if '/' in m_val:
+                        beats_per_bar = float(m_val.split('/')[0])
+                    else:
+                        beats_per_bar = float(m_val)
+                except:
+                    pass
         else:
             # We are in the music section
             if line.startswith('V') or line.startswith('VB') or line.startswith('VA'):
@@ -432,7 +442,7 @@ def play_song_thread(file_content: str):
         song_playback_active = False
         return
         
-    print(f"[PARSER] Memulai pemutaran lagu. Tempo: {bpm} BPM, Nada Dasar: {key_sig}")
+    print(f"[PARSER] Memulai pemutaran lagu. Tempo: {bpm} BPM, Nada Dasar: {key_sig}, Beats/Bar: {beats_per_bar}")
     
     # 2. Group notes by bars
     tracks = {}
@@ -455,8 +465,10 @@ def play_song_thread(file_content: str):
         
     max_bars = max(len(bars) for bars in tracks.values())
     
-    # Time calculations: Sub-beat duration = (60 / BPM) / 2 = 30 / BPM seconds.
-    sub_beat_duration = 30.0 / bpm
+    # Time calculations: One step is 1/8th of the bar.
+    # Total duration of a bar in seconds = (60.0 / BPM) * beats_per_bar
+    # One step duration = total_bar_duration / 8.0
+    sub_beat_duration = ((60.0 / bpm) * beats_per_bar) / 8.0
     
     # 3. Main Playback Loop
     last_active_notes = {track: [] for track in tracks.keys()}
@@ -472,13 +484,24 @@ def play_song_thread(file_content: str):
                 continue
             bar_str = bars[bar_idx]
             tokens = bar_str.split()
-            num_tokens = len(tokens)
-            if num_tokens == 0:
-                continue
-            for i, token in enumerate(tokens):
-                step_idx = int((i / num_tokens) * 8)
+            
+            # Calculate token positions using note duration weights
+            current_beat = 0.0
+            for token in tokens:
+                # Full-beat sustain or half-beat duration detection
+                if token == '-' or token == '.':
+                    token_dur = 1.0
+                elif token.endswith('-'):
+                    token_dur = 0.5
+                else:
+                    token_dur = 1.0
+                
+                # Convert beat start to one of the 8 steps
+                step_idx = int((current_beat / beats_per_bar) * 8)
                 if step_idx < 8:
                     bar_steps[step_idx][track_name] = token
+                    
+                current_beat += token_dur
                     
         for step_idx in range(8):
             if not song_playback_active:
@@ -493,44 +516,47 @@ def play_song_thread(file_content: str):
                 if token is None or token == '.' or token == '-':
                     # Sustain previous notes for this track
                     active = last_active_notes.get(track_name, [])
-                elif token == '0':
-                    # Rest: Clear notes
-                    active = []
-                    last_active_notes[track_name] = []
                 else:
-                    # New note or chord
-                    active = []
-                    if token.startswith('@'):
-                        # Chord
-                        for pitch in resolve_chord_pitches(token, key_sig):
-                            if pitch in ANGKLUNG1_PITCHES:
-                                active.append({"pitch": pitch, "type": "mel1"})
-                            elif pitch in ANGKLUNG2_PITCHES:
-                                active.append({"pitch": pitch, "type": "mel2"})
+                    # Clean trailing speed indicators (-) and accents (^) before parsing
+                    cleaned_token = token.rstrip('-').rstrip('^')
+                    
+                    if cleaned_token == '0':
+                        # Rest: Clear notes
+                        active = []
+                        last_active_notes[track_name] = []
                     else:
-                        # Single note
-                        midi_val = doremi_to_midi(token, key_sig)
-                        if track_name == 'VB':
-                            # Shift to Bass physical range [52, 67] (e3 to g4)
-                            while midi_val < 52:
-                                midi_val += 12
-                            while midi_val > 67:
-                                midi_val -= 12
-                            pitch = midi_to_note_name(midi_val)
-                            if pitch in BASS_PITCHES:
-                                active.append({"pitch": pitch, "type": "bass"})
+                        active = []
+                        if cleaned_token.startswith('@'):
+                            # Chord: resolve pitches and fit to Melody range [65, 92]
+                            for pitch in resolve_chord_pitches(cleaned_token, key_sig):
+                                if pitch in ANGKLUNG1_PITCHES:
+                                    active.append({"pitch": pitch, "type": "mel1"})
+                                elif pitch in ANGKLUNG2_PITCHES:
+                                    active.append({"pitch": pitch, "type": "mel2"})
                         else:
-                            # Shift to Melody physical range [65, 92] (f4 to g#6)
-                            while midi_val < 65:
-                                midi_val += 12
-                            while midi_val > 92:
-                                midi_val -= 12
-                            pitch = midi_to_note_name(midi_val)
-                            if pitch in ANGKLUNG1_PITCHES:
-                                active.append({"pitch": pitch, "type": "mel1"})
-                            elif pitch in ANGKLUNG2_PITCHES:
-                                active.append({"pitch": pitch, "type": "mel2"})
-                    last_active_notes[track_name] = active
+                            # Single note: resolve pitch and fit to physical ranges
+                            midi_val = doremi_to_midi(cleaned_token, key_sig)
+                            if track_name == 'VB':
+                                # Shift to Bass physical range [52, 67] (e3 to g4)
+                                while midi_val < 52:
+                                    midi_val += 12
+                                while midi_val > 67:
+                                    midi_val -= 12
+                                pitch = midi_to_note_name(midi_val)
+                                if pitch in BASS_PITCHES:
+                                    active.append({"pitch": pitch, "type": "bass"})
+                            else:
+                                # Shift to Melody physical range [65, 92] (f4 to g#6)
+                                while midi_val < 65:
+                                    midi_val += 12
+                                while midi_val > 92:
+                                    midi_val -= 12
+                                pitch = midi_to_note_name(midi_val)
+                                if pitch in ANGKLUNG1_PITCHES:
+                                    active.append({"pitch": pitch, "type": "mel1"})
+                                elif pitch in ANGKLUNG2_PITCHES:
+                                    active.append({"pitch": pitch, "type": "mel2"})
+                        last_active_notes[track_name] = active
                     
                 # Collect resolved notes to boards
                 for note_info in active:

@@ -197,7 +197,7 @@ def init_pygame_mixer():
         print(f"[AUDIO] Gagal mengaktifkan pygame mixer: {e}")
         return False
 
-def generate_angklung_sound(frequency: float, duration: float = 1.2, sr: int = 44100):
+def generate_angklung_sound(frequency: float, duration: float = 1.2, sr: int = 44100, volume: float = 1.0):
     t = np.linspace(0, duration, int(sr * duration), endpoint=False)
     
     f1 = frequency
@@ -220,12 +220,12 @@ def generate_angklung_sound(frequency: float, duration: float = 1.2, sr: int = 4
     
     max_val = np.max(np.abs(signal))
     if max_val > 0:
-        signal = signal / max_val
+        signal = (signal / max_val) * volume
         
     stereo_signal = np.column_stack((signal, signal))
     return (stereo_signal * 32767).astype(np.int16)
 
-def play_synth_note_async(note_num: int, angklung_id: int):
+def play_synth_note_async(note_num: int, angklung_id: int, volume: float = 1.0):
     if not init_pygame_mixer():
         return
     try:
@@ -239,15 +239,15 @@ def play_synth_note_async(note_num: int, angklung_id: int):
 
         freq_map = NOTE_FREQUENCIES.get(target_id, NOTE_FREQUENCIES[3])
         freq = freq_map.get(target_note, 261.63)
-        pcm_data = generate_angklung_sound(freq)
+        pcm_data = generate_angklung_sound(freq, volume=volume)
         
         sound = pygame.sndarray.make_sound(pcm_data)
         sound.play()
     except Exception as e:
         print(f"[AUDIO] Gagal memainkan suara lokal: {e}")
 
-def play_local_sound(note_num: int, angklung_id: int = 3):
-    t = threading.Thread(target=play_synth_note_async, args=(note_num, angklung_id))
+def play_local_sound(note_num: int, angklung_id: int = 3, volume: float = 1.0):
+    t = threading.Thread(target=play_synth_note_async, args=(note_num, angklung_id, volume))
     t.daemon = True
     t.start()
 
@@ -299,7 +299,7 @@ def get_arduino_connection(angklung_id: int):
         arduino_serials[angklung_id] = None
         return None
 
-def send_to_arduino(note_num, angklung_id: int = 3):
+def send_to_arduino(note_num, angklung_id: int = 3, play_synth: bool = True):
     if isinstance(note_num, int):
         notes_list = [note_num]
     elif isinstance(note_num, str):
@@ -309,8 +309,9 @@ def send_to_arduino(note_num, angklung_id: int = 3):
     else:
         notes_list = []
 
-    for n in notes_list:
-        play_local_sound(n, angklung_id)
+    if play_synth:
+        for n in notes_list:
+            play_local_sound(n, angklung_id)
     
     target_id = angklung_id
     if angklung_id == 2:
@@ -521,10 +522,20 @@ def play_song_thread(file_content: str):
             
         max_bars = max(len(bars) for bars in tracks.values())
         
-        # Time calculations: One step is 1/8th of the bar.
-        # Total duration of a bar in seconds = (60.0 / BPM) * beats_per_bar
-        # One step duration = total_bar_duration / 8.0
-        sub_beat_duration = ((60.0 / bpm) * beats_per_bar) / 8.0
+        # Determine dynamic steps per bar based on beats_per_bar
+        # 12/8 -> 12 steps, 3/4 -> 6 steps, 2/4 -> 8 steps, 4/4 -> 8 steps
+        if beats_per_bar == 12.0:
+            steps_per_bar = 12
+        elif beats_per_bar == 3.0:
+            steps_per_bar = 6
+        elif beats_per_bar == 2.0:
+            steps_per_bar = 8
+        elif beats_per_bar == 4.0:
+            steps_per_bar = 8
+        else:
+            steps_per_bar = 8
+
+        sub_beat_duration = ((60.0 / bpm) * beats_per_bar) / steps_per_bar
         
         # 3. Main Playback Loop
         last_active_notes = {track: [] for track in tracks.keys()}
@@ -533,7 +544,7 @@ def play_song_thread(file_content: str):
             if not song_playback_active:
                 break
                 
-            bar_steps = [{} for _ in range(8)]
+            bar_steps = [{} for _ in range(steps_per_bar)]
             
             for track_name, bars in tracks.items():
                 if bar_idx >= len(bars):
@@ -552,14 +563,14 @@ def play_song_thread(file_content: str):
                     else:
                         token_dur = 1.0
                     
-                    # Convert beat start to one of the 8 steps
-                    step_idx = int((current_beat / beats_per_bar) * 8)
-                    if step_idx < 8:
+                    # Convert beat start to one of the steps_per_bar steps
+                    step_idx = int((current_beat / beats_per_bar) * steps_per_bar)
+                    if step_idx < steps_per_bar:
                         bar_steps[step_idx][track_name] = token
                         
                     current_beat += token_dur
                         
-            for step_idx in range(8):
+            for step_idx in range(steps_per_bar):
                 if not song_playback_active:
                     break
                     
@@ -568,6 +579,7 @@ def play_song_thread(file_content: str):
                 
                 for track_name in tracks.keys():
                     token = bar_steps[step_idx].get(track_name, None)
+                    is_new_trigger = token is not None and token != '.' and token != '-'
                     
                     if token is None or token == '.' or token == '-':
                         # Sustain previous notes for this track
@@ -614,25 +626,47 @@ def play_song_thread(file_content: str):
                                         active.append({"pitch": pitch, "type": "mel2"})
                             last_active_notes[track_name] = active
                         
-                    # Collect resolved notes to boards
+                    # Collect resolved notes and play synth sound for new triggers
                     for note_info in active:
                         p = note_info["pitch"]
                         ntype = note_info["type"]
+                        
                         if ntype == "mel1":
-                            arduino1_notes.append(ANGKLUNG1_PITCHES.index(p) + 1)
+                            note_num = ANGKLUNG1_PITCHES.index(p) + 1
+                            ang_id = 1
                         elif ntype == "mel2":
-                            arduino1_notes.append(ANGKLUNG2_PITCHES.index(p) + 1 + 16)
+                            note_num = ANGKLUNG2_PITCHES.index(p) + 1 + 16
+                            ang_id = 1
                         elif ntype == "bass":
-                            arduino3_notes.append(BASS_PITCHES.index(p) + 1)
+                            note_num = BASS_PITCHES.index(p) + 1
+                            ang_id = 3
+                            
+                        # Play local sound only if it's a new trigger
+                        if is_new_trigger:
+                            # DAW track mixer volume panel
+                            if track_name == 'VB':
+                                vol = 0.65  # Bass volume
+                            elif track_name == 'VA^' or track_name == 'VA':
+                                vol = 0.35  # Chord / Rhythm volume (quieter background)
+                            elif track_name == 'V1':
+                                vol = 1.00  # Lead Melody volume (loudest)
+                            else:
+                                vol = 0.70  # Supporting melody volume (V2, V3, etc.)
+                            play_local_sound(note_num, ang_id, vol)
+                            
+                        if ntype == "mel1" or ntype == "mel2":
+                            arduino1_notes.append(note_num)
+                        elif ntype == "bass":
+                            arduino3_notes.append(note_num)
                             
                 # Remove duplicates
                 arduino1_notes = list(set(arduino1_notes))
                 arduino3_notes = list(set(arduino3_notes))
                 
-                # Play in parallel if there are active notes
+                # Play in parallel if there are active notes (disable play_synth inside send_to_arduino)
                 if arduino1_notes or arduino3_notes:
-                    t1 = threading.Thread(target=send_to_arduino, args=(arduino1_notes, 1))
-                    t3 = threading.Thread(target=send_to_arduino, args=(arduino3_notes, 3))
+                    t1 = threading.Thread(target=send_to_arduino, args=(arduino1_notes, 1, False))
+                    t3 = threading.Thread(target=send_to_arduino, args=(arduino3_notes, 3, False))
                     t1.start()
                     t3.start()
                     t1.join()

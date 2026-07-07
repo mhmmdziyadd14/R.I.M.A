@@ -1,4 +1,8 @@
+import sys
 import os
+# Auto-resolve parent folder in python path to prevent import errors
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import socket
 import serial
 import serial.tools.list_ports
@@ -144,7 +148,7 @@ NOTE_FREQUENCIES = {
     },
     2: { # Angklung 2 (Medium/Green)
         1: 349.23, 2: 369.99, 3: 415.30, 4: 554.37, 5: 622.25, 6: 830.61, 7: 1109.73, 8: 1244.51,
-        9: 1396.91, 10: 1479.98, 11: 1567.98, 12: 1661.22, 13: 1760.00, 14: 1864.66, 15: 1975.53, 16: 2093.00
+        9: 1396.91, 10: 1479.98, 11: 1567.98, 12: 1661.22
     },
     3: { # Angklung 3 (Bass/Blue)
         1: 164.81, 2: 174.61, 3: 185.00, 4: 196.00, 5: 207.65, 6: 220.00, 7: 233.08, 8: 246.94,

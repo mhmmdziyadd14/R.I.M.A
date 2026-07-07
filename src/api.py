@@ -261,10 +261,11 @@ BAUD_RATE = 9600
 arduino_serials = {1: None, 2: None, 3: None}
 arduino_locks = {1: threading.Lock(), 3: threading.Lock()}
 last_connection_attempts = {1: 0.0, 2: 0.0, 3: 0.0}
+SIMULATION_MODE = True
 
 def get_arduino_connection(angklung_id: int):
-    global arduino_serials, SERIAL_PORTS, BAUD_RATE, last_connection_attempts
-    if not HAS_SERIAL:
+    global arduino_serials, SERIAL_PORTS, BAUD_RATE, last_connection_attempts, SIMULATION_MODE
+    if SIMULATION_MODE or not HAS_SERIAL:
         return None
         
     if angklung_id not in arduino_serials:
@@ -363,11 +364,21 @@ def send_to_arduino(note_num, angklung_id: int = 3, play_synth: bool = True):
 
 @app.post("/api/config-arduino")
 def config_arduino(data: dict):
-    global SERIAL_PORTS, arduino_serials
+    global SERIAL_PORTS, arduino_serials, SIMULATION_MODE
     port1 = data.get("port1", SERIAL_PORTS[1])
     port2 = data.get("port2", SERIAL_PORTS[2])
     port3 = data.get("port3", SERIAL_PORTS[3])
+    sim_mode = data.get("simulation_mode", SIMULATION_MODE)
     
+    SIMULATION_MODE = sim_mode
+    if SIMULATION_MODE:
+        # If in simulation mode, close any open serial ports
+        for i in [1, 2, 3]:
+            if arduino_serials[i]:
+                try: arduino_serials[i].close()
+                except: pass
+                arduino_serials[i] = None
+                
     if port1 != SERIAL_PORTS[1]:
         if arduino_serials[1]:
             try: arduino_serials[1].close()
@@ -389,28 +400,34 @@ def config_arduino(data: dict):
             arduino_serials[3] = None
         SERIAL_PORTS[3] = port3
         
-    print(f"[API] Update ports serial -> Angklung1: {SERIAL_PORTS[1]}, Angklung2: {SERIAL_PORTS[2]}, Angklung3: {SERIAL_PORTS[3]}")
-    return {"status": "success", "ports": SERIAL_PORTS}
+    print(f"[API] Update ports serial -> Angklung1: {SERIAL_PORTS[1]}, Angklung2: {SERIAL_PORTS[2]}, Angklung3: {SERIAL_PORTS[3]}, Simulation Mode: {SIMULATION_MODE}")
+    return {"status": "success", "ports": SERIAL_PORTS, "simulation_mode": SIMULATION_MODE}
 
 @app.get("/api/arduino/status")
 def arduino_status():
-    global arduino_serials, SERIAL_PORTS
+    global arduino_serials, SERIAL_PORTS, SIMULATION_MODE
     status_res = {}
     for i in [1, 2, 3]:
-        if i == 2:
-            ser = get_arduino_connection(1)
-            is_online = ser is not None and ser.is_open
-            status_res["angklung2"] = {
-                "status": "online" if is_online else "offline",
-                "port": "Terintegrasi (Angklung 1)"
+        if SIMULATION_MODE:
+            status_res[f"angklung{i}"] = {
+                "status": "simulation",
+                "port": "Simulasi Laptop" if i != 2 else "Terintegrasi (Simulasi)"
             }
         else:
-            ser = get_arduino_connection(i)
-            is_online = ser is not None and ser.is_open
-            status_res[f"angklung{i}"] = {
-                "status": "online" if is_online else "offline",
-                "port": SERIAL_PORTS[i]
-            }
+            if i == 2:
+                ser = get_arduino_connection(1)
+                is_online = ser is not None and ser.is_open
+                status_res["angklung2"] = {
+                    "status": "online" if is_online else "offline",
+                    "port": "Terintegrasi (Angklung 1)"
+                }
+            else:
+                ser = get_arduino_connection(i)
+                is_online = ser is not None and ser.is_open
+                status_res[f"angklung{i}"] = {
+                    "status": "online" if is_online else "offline",
+                    "port": SERIAL_PORTS[i]
+                }
     return status_res
 
 @app.get("/api/arduino/play")

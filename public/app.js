@@ -2,12 +2,12 @@
 // R.I.M.A SPA WEB CONTROLLER APPLICATION LOGIC
 // ====================================================================
 
-// 1. Connection Configurations (Load from localStorage or default)
 let settings = {
   port1: localStorage.getItem('rima_port_1') || 'COM10',
   port2: localStorage.getItem('rima_port_2') || 'COM11',
   port3: localStorage.getItem('rima_port_3') || 'COM12',
-  hostApi: localStorage.getItem('rima_host_api') || 'http://localhost:8000'
+  hostApi: localStorage.getItem('rima_host_api') || 'http://localhost:8000',
+  simulationMode: localStorage.getItem('rima_simulation_mode') === null ? true : localStorage.getItem('rima_simulation_mode') === 'true'
 };
 
 // 2. Song Database (Loaded Dynamically)
@@ -311,7 +311,8 @@ async function checkConnections() {
         body: JSON.stringify({
           port1: settings.port1,
           port2: settings.port2,
-          port3: settings.port3
+          port3: settings.port3,
+          simulation_mode: settings.simulationMode
         })
       });
 
@@ -327,20 +328,35 @@ async function checkConnections() {
 
   // Update Status UI badges in Modal
   updateBadge('modal-api-status', isApiOnline);
-  updateBadge('modal-serial-status-1', statuses.angklung1 === 'online');
-  updateBadge('modal-serial-status-2', statuses.angklung2 === 'online');
-  updateBadge('modal-serial-status-3', statuses.angklung3 === 'online');
+  if (settings.simulationMode) {
+    updateBadge('modal-serial-status-1', true, 'Simulasi (Aktif)');
+    updateBadge('modal-serial-status-2', true, 'Simulasi (Aktif)');
+    updateBadge('modal-serial-status-3', true, 'Simulasi (Aktif)');
+  } else {
+    updateBadge('modal-serial-status-1', statuses.angklung1 === 'online');
+    updateBadge('modal-serial-status-2', statuses.angklung2 === 'online');
+    updateBadge('modal-serial-status-3', statuses.angklung3 === 'online');
+  }
 }
 
-function updateBadge(id, isOnline) {
+function updateBadge(id, isOnline, customText = null) {
   const badge = document.getElementById(id);
   if (badge) {
     if (isOnline) {
-      badge.textContent = 'Connected';
+      badge.textContent = customText || 'Connected';
       badge.className = 'badge badge-green';
+      if (customText) {
+        badge.style.backgroundColor = '#0284c7'; // Sky blue for simulation
+        badge.style.borderColor = '#0284c7';
+      } else {
+        badge.style.backgroundColor = '';
+        badge.style.borderColor = '';
+      }
     } else {
       badge.textContent = 'Offline';
       badge.className = 'badge badge-red';
+      badge.style.backgroundColor = '';
+      badge.style.borderColor = '';
     }
   }
 }
@@ -348,6 +364,12 @@ function updateBadge(id, isOnline) {
 // Settings Overlay Handlers
 function toggleSettingsModal() {
   const modal = document.getElementById('settings-modal');
+  if (!modal.classList.contains('active')) {
+    document.getElementById('input-com-port-1').value = settings.port1;
+    document.getElementById('input-com-port-3').value = settings.port3;
+    document.getElementById('input-host-api').value = settings.hostApi;
+    document.getElementById('input-simulation-mode').checked = settings.simulationMode;
+  }
   modal.classList.toggle('active');
 }
 
@@ -355,16 +377,19 @@ function saveConnectionSettings() {
   const p1 = document.getElementById('input-com-port-1').value.trim();
   const p3 = document.getElementById('input-com-port-3').value.trim();
   const hostVal = document.getElementById('input-host-api').value.trim();
+  const simMode = document.getElementById('input-simulation-mode').checked;
 
   settings.port1 = p1;
   settings.port2 = p1; // Share same port with Angklung 1
   settings.port3 = p3;
   settings.hostApi = hostVal;
+  settings.simulationMode = simMode;
 
   localStorage.setItem('rima_port_1', p1);
   localStorage.setItem('rima_port_2', p1);
   localStorage.setItem('rima_port_3', p3);
   localStorage.setItem('rima_host_api', hostVal);
+  localStorage.setItem('rima_simulation_mode', simMode);
 
   toggleSettingsModal();
   checkConnections();

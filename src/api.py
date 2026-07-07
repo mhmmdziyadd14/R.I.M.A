@@ -678,18 +678,16 @@ def play_song_thread(file_content: str):
                             note_num = BASS_PITCHES.index(p) + 1
                             ang_id = 3
                             
-                        # Play local sound only if it's a new trigger
-                        if is_new_trigger:
-                            # DAW track mixer volume panel
-                            if track_name == 'VB':
-                                vol = 0.65  # Bass volume
-                            elif track_name == 'VA^' or track_name == 'VA':
-                                vol = 0.35  # Chord / Rhythm volume (quieter background)
-                            elif track_name == 'V1':
-                                vol = 1.00  # Lead Melody volume (loudest)
-                            else:
-                                vol = 0.70  # Supporting melody volume (V2, V3, etc.)
-                            play_local_sound(note_num, ang_id, vol)
+                        # DAW track mixer volume panel
+                        if track_name == 'VB':
+                            vol = 0.65  # Bass volume
+                        elif track_name == 'VA^' or track_name == 'VA':
+                            vol = 0.35  # Chord / Rhythm volume (quieter background)
+                        elif track_name == 'V1':
+                            vol = 1.00  # Lead Melody volume (loudest)
+                        else:
+                            vol = 0.70  # Supporting melody volume (V2, V3, etc.)
+                        play_local_sound(note_num, ang_id, vol)
                             
                         if ntype == "mel1" or ntype == "mel2":
                             arduino1_notes.append(note_num)

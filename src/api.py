@@ -465,6 +465,7 @@ def play_song_thread(file_content: str):
         bpm = 90
         key_sig = "F"
         beats_per_bar = 4.0
+        denominator = 4
         lines = file_content.split('\n')
         
         music_lines = []
@@ -494,8 +495,11 @@ def play_song_thread(file_content: str):
                         m_val = line.split(':')[1].strip()
                         if '/' in m_val:
                             beats_per_bar = float(m_val.split('/')[0])
+                          # Parse denominator
+                            denominator = int(m_val.split('/')[1])
                         else:
                             beats_per_bar = float(m_val)
+                            denominator = 4
                     except:
                         pass
             else:
@@ -544,7 +548,14 @@ def play_song_thread(file_content: str):
         else:
             steps_per_bar = 8
 
-        sub_beat_duration = ((60.0 / bpm) * beats_per_bar) / steps_per_bar
+        # Compound meter correction (denominator = 8 like 12/8, 6/8):
+        # The tempo Q refers to dotted quarter notes, which consist of 3 eighth notes.
+        if denominator == 8:
+            tempo_beats_per_bar = beats_per_bar / 3.0
+        else:
+            tempo_beats_per_bar = beats_per_bar
+
+        sub_beat_duration = ((60.0 / bpm) * tempo_beats_per_bar) / steps_per_bar
         
         # 3. Main Playback Loop
         last_active_notes = {track: [] for track in tracks.keys()}

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>R.I.M.A - IoT Angklung Controller</title>
+  <!-- Google Fonts for premium typography -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- FontAwesome for modern icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- App Shell Container -->
+  <div id="app-container">
+
+    <!-- 1. LANDING PAGE -->
+    <section id="page-landing" class="app-page active">
+      <div class="landing-content" onclick="navigateTo('page-beranda')">
+        <div class="logo-wrapper">
+          <!-- Yellow-Blue SVG Angklung Logo -->
+          <svg class="rima-logo" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+            <!-- Left Tube (Long) -->
+            <rect x="25" y="20" width="8" height="70" rx="4" fill="#FFC107" />
+            <!-- Middle Tube (Medium) -->
+            <rect x="40" y="35" width="8" height="55" rx="4" fill="#FFB300" />
+            <!-- Right Tube (Short) -->
+            <rect x="55" y="50" width="8" height="40" rx="4" fill="#FFA000" />
+            <!-- Frame Structure (Brown Bamboo) -->
+            <rect x="18" y="80" width="55" height="6" rx="2" fill="#8D6E63" />
+            <rect x="18" y="28" width="55" height="5" rx="2" fill="#8D6E63" />
+            <line x1="20" y1="15" x2="20" y2="95" stroke="#8D6E63" stroke-width="4" stroke-linecap="round"/>
+            <line x1="70" y1="15" x2="70" y2="95" stroke="#8D6E63" stroke-width="4" stroke-linecap="round"/>
+            <!-- Blue Ring Swoosh (Cyber Ring) -->
+            <path d="M 10 75 Q 50 100 90 60" fill="none" stroke="#29B6F6" stroke-width="6" stroke-linecap="round" />
+            <path d="M 90 60 Q 50 30 25 55" fill="none" stroke="#0288D1" stroke-width="4" stroke-dasharray="4,4" stroke-linecap="round" />
+          </svg>
+        </div>
+        <h1 class="landing-title">R.I.M.A</h1>
+        <p class="landing-subtitle">Ketuk untuk Memulai</p>
+      </div>
+    </section>
+
+    <!-- 2. BERANDA / DASHBOARD -->
+    <section id="page-beranda" class="app-page">
+      <header class="app-header">
+        <span class="header-title">BERANDA</span>
+        <button class="menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-bars"></i></button>
+      </header>
+      
+      <div class="beranda-content">
+        <!-- Centered Logo -->
+        <div class="center-logo-small">
+          <svg class="small-logo" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+            <rect x="25" y="20" width="8" height="70" rx="4" fill="#FFC107" />
+            <rect x="40" y="35" width="8" height="55" rx="4" fill="#FFB300" />
+            <rect x="55" y="50" width="8" height="40" rx="4" fill="#FFA000" />
+            <rect x="18" y="80" width="55" height="6" rx="2" fill="#8D6E63" />
+            <rect x="18" y="28" width="55" height="5" rx="2" fill="#8D6E63" />
+            <line x1="20" y1="15" x2="20" y2="95" stroke="#8D6E63" stroke-width="4" stroke-linecap="round"/>
+            <line x1="70" y1="15" x2="70" y2="95" stroke="#8D6E63" stroke-width="4" stroke-linecap="round"/>
+            <path d="M 10 75 Q 50 100 90 60" fill="none" stroke="#29B6F6" stroke-width="6" stroke-linecap="round" />
+          </svg>
+        </div>
+
+        <!-- 4 Cards Grid Menu -->
+        <div class="menu-grid">
+          <div class="menu-card" onclick="navigateTo('page-pustaka')">
+            <div class="card-icon icon-pink"><i class="fa-solid fa-music"></i></div>
+            <span class="card-label">PUSTAKA LAGU</span>
+          </div>
+          <div class="menu-card" onclick="navigateTo('page-manual')">
+            <div class="card-icon icon-blue"><i class="fa-solid fa-keyboard"></i></div>
+            <span class="card-label">KONTROL MANUAL</span>
+          </div>
+          <div class="menu-card" onclick="navigateTo('page-repeater')">
+            <div class="card-icon icon-green"><i class="fa-solid fa-microphone"></i></div>
+            <span class="card-label">REPEATER</span>
+          </div>
+          <div class="menu-card" onclick="navigateTo('page-bahasa')">
+            <div class="card-icon icon-orange"><i class="fa-solid fa-volume-high"></i></div>
+            <span class="card-label">DETEKSI BAHASA</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. KONTROL MANUAL PAGE -->
+    <section id="page-manual" class="app-page">
+      <header class="app-header">
+        <button class="back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
+        <span class="header-title">KONTROL MANUAL</span>
+        <button class="menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-bars"></i></button>
+      </header>
+
+      <div class="page-content center-layout">
+        <!-- Top Display Indicator (Matches Yellow Pill in Sketch) -->
+        <div class="notes-indicator">
+          <span id="active-note-display">F G A B D D</span>
+        </div>
+
+        <!-- 3 Stacked Keyboards for Angklung 1, 2, and 3 -->
+        <div class="stacked-keyboards">
+          
+          <!-- Keyboard 1: Angklung 1 & 2 (Melodi) -->
+          <div class="keyboard-wrapper">
+            <span class="keyboard-title">ANGKLUNG 1 & 2 (MELODI)</span>
+            <div class="keyboard-container mini-kbd">
+              <div class="wooden-frame">
+                <div class="piano-keys">
+                  <!-- Kunci Nada berurutan dari kiri ke kanan (Kromatik) -->
+                  <!-- Nada f4 (Hijau) -->
+                  <div class="key white" data-angklung="2" data-note="1" data-label="f4"><span class="key-lbl">f4</span></div>
+                  <!-- Nada f#4 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="2" data-label="f#4"></div>
+                  <!-- Nada g4 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="1" data-label="g4"><span class="key-lbl">g4</span></div>
+                  <!-- Nada g#4 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="3" data-label="g#4"></div>
+                  <!-- Nada a4 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="2" data-label="a4"><span class="key-lbl">a4</span></div>
+                  <!-- Nada a#4 (Kuning) -->
+                  <div class="key black" data-angklung="1" data-note="3" data-label="a#4"></div>
+                  <!-- Nada b4 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="4" data-label="b4"><span class="key-lbl">b4</span></div>
+                  <!-- Nada c5 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="5" data-label="c5"><span class="key-lbl">c5</span></div>
+                  <!-- Nada c#5 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="4" data-label="c#5"></div>
+                  <!-- Nada d5 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="6" data-label="d5"><span class="key-lbl">d5</span></div>
+                  <!-- Nada d#5 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="5" data-label="d#5"></div>
+                  <!-- Nada e5 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="7" data-label="e5"><span class="key-lbl">e5</span></div>
+                  <!-- Nada f5 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="8" data-label="f5"><span class="key-lbl">f5</span></div>
+                  <!-- Nada f#5 (Kuning) -->
+                  <div class="key black" data-angklung="1" data-note="9" data-label="f#5"></div>
+                  <!-- Nada g5 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="10" data-label="g5"><span class="key-lbl">g5</span></div>
+                  <!-- Nada g#5 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="6" data-label="g#5"></div>
+                  <!-- Nada a5 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="11" data-label="a5"><span class="key-lbl">a5</span></div>
+                  <!-- Nada a#5 (Kuning) -->
+                  <div class="key black" data-angklung="1" data-note="12" data-label="a#5"></div>
+                  <!-- Nada b5 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="13" data-label="b5"><span class="key-lbl">b5</span></div>
+                  <!-- Nada c6 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="14" data-label="c6"><span class="key-lbl">c6</span></div>
+                  <!-- Nada c#6 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="7" data-label="c#6"></div>
+                  <!-- Nada d6 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="15" data-label="d6"><span class="key-lbl">d6</span></div>
+                  <!-- Nada d#6 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="8" data-label="d#6"></div>
+                  <!-- Nada e6 (Kuning) -->
+                  <div class="key white" data-angklung="1" data-note="16" data-label="e6"><span class="key-lbl">e6</span></div>
+                  <!-- Nada f6 (Hijau) -->
+                  <div class="key white" data-angklung="2" data-note="9" data-label="f6"><span class="key-lbl">f6</span></div>
+                  <!-- Nada f#6 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="10" data-label="f#6"></div>
+                  <!-- Nada g6 (Hijau) -->
+                  <div class="key white" data-angklung="2" data-note="11" data-label="g6"><span class="key-lbl">g6</span></div>
+                  <!-- Nada g#6 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="12" data-label="g#6"></div>
+                  <!-- Nada a6 (Hijau) -->
+                  <div class="key white" data-angklung="2" data-note="13" data-label="a6"><span class="key-lbl">a6</span></div>
+                  <!-- Nada a#6 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="14" data-label="a#6"></div>
+                  <!-- Nada b6 (Hijau) -->
+                  <div class="key white" data-angklung="2" data-note="15" data-label="b6"><span class="key-lbl">b6</span></div>
+                  <!-- Nada c7 (Hijau) -->
+                  <div class="key white" data-angklung="2" data-note="16" data-label="c7"><span class="key-lbl">c7</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Keyboard 2: Angklung 3 (Bass) -->
+          <div class="keyboard-wrapper">
+            <span class="keyboard-title">ANGKLUNG 3 (BASS)</span>
+            <div class="keyboard-container mini-kbd">
+              <div class="wooden-frame">
+                <div class="piano-keys">
+                  <div class="key white" data-angklung="3" data-note="1" data-label="e3"><span class="key-lbl">e3</span></div>
+                  <div class="key white" data-angklung="3" data-note="2" data-label="f3"><span class="key-lbl">f3</span></div>
+                  <div class="key black" data-angklung="3" data-note="3" data-label="f#3"></div>
+                  <div class="key white" data-angklung="3" data-note="4" data-label="g3"><span class="key-lbl">g3</span></div>
+                  <div class="key black" data-angklung="3" data-note="5" data-label="g#3"></div>
+                  <div class="key white" data-angklung="3" data-note="6" data-label="a3"><span class="key-lbl">a3</span></div>
+                  <div class="key black" data-angklung="3" data-note="7" data-label="a#3"></div>
+                  <div class="key white" data-angklung="3" data-note="8" data-label="b3"><span class="key-lbl">b3</span></div>
+                  
+                  <div class="key white" data-angklung="3" data-note="9" data-label="c4"><span class="key-lbl">c4</span></div>
+                  <div class="key black" data-angklung="3" data-note="10" data-label="c#4"></div>
+                  <div class="key white" data-angklung="3" data-note="11" data-label="d4"><span class="key-lbl">d4</span></div>
+                  <div class="key black" data-angklung="3" data-note="12" data-label="d#4"></div>
+                  <div class="key white" data-angklung="3" data-note="13" data-label="e4"><span class="key-lbl">e4</span></div>
+                  <div class="key white" data-angklung="3" data-note="14" data-label="f4"><span class="key-lbl">f4</span></div>
+                  <div class="key black" data-angklung="3" data-note="15" data-label="f#4"></div>
+                  <div class="key white" data-angklung="3" data-note="16" data-label="g4"><span class="key-lbl">g4</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Chord Selection Buttons at the Bottom (Matches Fm, F#m, Gm, G#m in Sketch) -->
+        <div class="chord-box">
+          <button class="chord-btn" onclick="playChord('Fm')">Fm</button>
+          <button class="chord-btn" onclick="playChord('F#m')">F#m</button>
+          <button class="chord-btn" onclick="playChord('Gm')">Gm</button>
+          <button class="chord-btn" onclick="playChord('G#m')">G#m</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. PUSTAKA LAGU PAGE -->
+    <section id="page-pustaka" class="app-page">
+      <header class="app-header">
+        <button class="back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
+        <span class="header-title">PUSTAKA LAGU</span>
+        <button class="menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-bars"></i></button>
+      </header>
+
+      <div class="page-content">
+                <!-- Category Tags (Orange pills at top of drawing) -->
+        <div class="filter-tags">
+          <button class="tag-btn active" onclick="filterSongs('all')">SEMUA</button>
+          <button class="tag-btn" onclick="filterSongs('sunda')">SUNDA</button>
+          <button class="tag-btn" onclick="filterSongs('jawa')">JAWA</button>
+          <button class="tag-btn" onclick="filterSongs('papua')">PAPUA</button>
+        </div>
+
+        <!-- Song List Container -->
+        <div class="song-list" id="songs-container">
+          <!-- Dynamic loading via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. REPEATER PAGE -->
+    <section id="page-repeater" class="app-page">
+      <header class="app-header">
+        <button class="back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
+        <span class="header-title">REPEATER</span>
+        <button class="menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-bars"></i></button>
+      </header>
+
+      <div class="page-content center-layout">
+        <!-- Glowing Green Mic Button -->
+        <div class="repeater-mic-wrapper">
+          <button id="mic-repeater-btn" class="mic-glow-btn mic-green" onclick="toggleRepeaterListening()">
+            <i class="fa-solid fa-microphone"></i>
+          </button>
+          <div class="sonar-wave wave-green"></div>
+        </div>
+
+        <p class="status-mic-text" id="repeater-status">Ketuk mikrofon untuk mendengarkan nada</p>
+
+        <!-- Frequency & Pitch HUD Card -->
+        <div class="hud-card green-hud">
+          <div class="hud-item">
+            <span class="hud-lbl">NADA AKTIF</span>
+            <span class="hud-val" id="repeater-note">---</span>
+          </div>
+          <div class="hud-item">
+            <span class="hud-lbl">FREKUENSI</span>
+            <span class="hud-val" id="repeater-freq">0.0 Hz</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. DETEKSI BAHASA (AI CLASSIFIER) PAGE -->
+    <section id="page-bahasa" class="app-page">
+      <header class="app-header">
+        <button class="back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
+        <span class="header-title">DETEKSI BAHASA</span>
+        <button class="menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-bars"></i></button>
+      </header>
+
+      <div class="page-content center-layout">
+        <!-- Glowing Orange Mic Button -->
+        <div class="repeater-mic-wrapper">
+          <button id="mic-bahasa-btn" class="mic-glow-btn mic-orange" onclick="triggerLanguageClassification()">
+            <i class="fa-solid fa-microphone-lines"></i>
+          </button>
+          <div class="sonar-wave wave-orange" id="ai-waves"></div>
+        </div>
+
+        <p class="status-mic-text" id="ai-status">Ketuk mikrofon lalu ucapkan salam daerah</p>
+
+        <!-- Classification HUD Card -->
+        <div class="hud-card orange-hud">
+          <div class="hud-item">
+            <span class="hud-lbl">HASIL DETEKSI</span>
+            <span class="hud-val" id="ai-class">---</span>
+          </div>
+          <div class="hud-item">
+            <span class="hud-lbl">AKURASI</span>
+            <span class="hud-val" id="ai-conf">0%</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings Overlay Modal -->
+    <div id="settings-modal" class="modal-overlay">
+      <div class="modal-card">
+        <h3>Pengaturan Koneksi</h3>
+        <div class="input-group">
+          <label for="input-com-port-1">Port Angklung 1 (Tinggi)</label>
+          <input type="text" id="input-com-port-1" value="COM10">
+        </div>
+        <div class="input-group">
+          <label for="input-com-port-2">Port Angklung 2 (Sedang)</label>
+          <input type="text" id="input-com-port-2" value="Terintegrasi dengan Angklung 1" disabled style="background-color: rgba(255,255,255,0.05); color: #888; border-color: #444;">
+        </div>
+        <div class="input-group">
+          <label for="input-com-port-3">Port Angklung 3 (Rendah)</label>
+          <input type="text" id="input-com-port-3" value="COM12">
+        </div>
+        <div class="input-group">
+          <label for="input-host-api">Alamat Host API Python</label>
+          <input type="text" id="input-host-api" value="http://localhost:8000">
+        </div>
+        
+        <!-- Status badges in Modal -->
+        <div class="modal-status-box">
+          <div class="status-line">
+            <span>Server FastAPI:</span>
+            <span id="modal-api-status" class="badge badge-red">Offline</span>
+          </div>
+          <div class="status-line">
+            <span>Angklung 1 (Tinggi):</span>
+            <span id="modal-serial-status-1" class="badge badge-red">Offline</span>
+          </div>
+          <div class="status-line">
+            <span>Angklung 2 (Sedang):</span>
+            <span id="modal-serial-status-2" class="badge badge-red">Offline</span>
+          </div>
+          <div class="status-line">
+            <span>Angklung 3 (Rendah):</span>
+            <span id="modal-serial-status-3" class="badge badge-red">Offline</span>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="modal-btn btn-cancel" onclick="toggleSettingsModal()">Tutup</button>
+          <button class="modal-btn btn-save" onclick="saveConnectionSettings()">Simpan</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

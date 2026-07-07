@@ -1,0 +1,89 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Jalankan FastAPI AI Backend",
+      "type": "shell",
+      "command": "python -m src.api",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "servers"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": {
+          "regexp": "."
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Uvicorn running",
+          "endsPattern": "Application startup complete"
+        }
+      }
+    },
+    {
+      "label": "Jalankan Mock IoT Server",
+      "type": "shell",
+      "command": "python src/mock_iot.py",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "servers"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": {
+          "regexp": "."
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Server simulasi",
+          "endsPattern": "Menunggu perintah"
+        }
+      }
+    },
+    {
+      "label": "Jalankan Node.js Server",
+      "type": "shell",
+      "command": "node server.js",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "servers"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": {
+          "regexp": "."
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "running at",
+          "endsPattern": "http://localhost"
+        }
+      }
+    },
+    {
+      "label": "Jalankan Semua Server",
+      "dependsOn": [
+        "Jalankan FastAPI AI Backend",
+        "Jalankan Mock IoT Server",
+        "Jalankan Node.js Server"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

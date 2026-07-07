@@ -1,0 +1,13 @@
+torch
+torchaudio
+librosa
+numpy
+sounddevice
+soundfile
+pygame
+scipy
+fastapi
+uvicorn
+websockets
+python-multipart
+

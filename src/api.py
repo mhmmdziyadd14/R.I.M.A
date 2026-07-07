@@ -259,6 +259,7 @@ SERIAL_PORTS = {
 }
 BAUD_RATE = 9600
 arduino_serials = {1: None, 2: None, 3: None}
+arduino_locks = {1: threading.Lock(), 3: threading.Lock()}
 
 def get_arduino_connection(angklung_id: int):
     global arduino_serials, SERIAL_PORTS, BAUD_RATE
@@ -317,22 +318,28 @@ def send_to_arduino(note_num, angklung_id: int = 3):
         return True, f"Offline - Dimainkan di Laptop (Angklung: {angklung_id}, Nada: {notes_str})"
         
     payload = ",".join(str(x) for x in actual_notes)
-    try:
-        ser.reset_input_buffer()
-        ser.write(f"{payload}\n".encode('utf-8'))
-        response = ser.readline().decode('utf-8').strip()
-        if not response:
-            response = ser.readline().decode('utf-8').strip()
-        return True, response if response else f"Sent {payload} to Arduino {target_id}"
-    except Exception as e:
-        print(f"[SERIAL] Gagal kirim nada {payload} ke Angklung {target_id}: {e}")
-        try:
-            ser.close()
-        except:
-            pass
-        arduino_serials[target_id] = None
-        notes_str = ",".join(str(x) for x in notes_list)
-        return True, f"Error Serial ({e}) - Dimainkan di Laptop (Nada: {notes_str})"
+    
+    lock = arduino_locks.get(target_id)
+    if lock:
+        with lock:
+            try:
+                ser.reset_input_buffer()
+                ser.write(f"{payload}\n".encode('utf-8'))
+                response = ser.readline().decode('utf-8').strip()
+                if not response:
+                    response = ser.readline().decode('utf-8').strip()
+                return True, response if response else f"Sent {payload} to Arduino {target_id}"
+            except Exception as e:
+                print(f"[SERIAL] Gagal kirim nada {payload} ke Angklung {target_id}: {e}")
+                try:
+                    ser.close()
+                except:
+                    pass
+                arduino_serials[target_id] = None
+                notes_str = ",".join(str(x) for x in notes_list)
+                return True, f"Error Serial ({e}) - Dimainkan di Laptop (Nada: {notes_str})"
+    else:
+        return True, "No lock"
 
 @app.post("/api/config-arduino")
 def config_arduino(data: dict):
@@ -428,6 +435,7 @@ def arduino_play_multi(a1: str = "", a3: str = ""):
     return {"status": "success"}
 
 song_playback_active = False
+current_playback_thread = None
 
 def play_song_thread(file_content: str):
     global song_playback_active
@@ -786,19 +794,31 @@ def play_song_file(data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal membaca file: {e}")
         
-    song_playback_active = False
-    time.sleep(0.3)
+    global song_playback_active, current_playback_thread
     
+    # 1. Stop existing thread if running
+    if current_playback_thread is not None and current_playback_thread.is_alive():
+        song_playback_active = False
+        current_playback_thread.join(timeout=1.5)
+        
     song_playback_active = True
-    t = threading.Thread(target=play_song_thread, args=(file_content,))
-    t.daemon = True
-    t.start()
+    current_playback_thread = threading.Thread(target=play_song_thread, args=(file_content,))
+    current_playback_thread.daemon = True
+    current_playback_thread.start()
     return {"status": "success", "message": f"Playback started for {file_name}."}
 
 @app.get("/api/arduino/stop_song")
 def stop_song():
     global song_playback_active
     song_playback_active = False
+    
+    # Send reset command (0) to turn off all solenoids on Board 1 and 3
+    try:
+        send_to_arduino(0, 1)
+        send_to_arduino(0, 3)
+    except Exception as e:
+        print(f"[SERIAL] Gagal mengirim perintah reset ke Arduino: {e}")
+        
     return {"status": "success", "message": "Song playback stopped."}
 
 @app.post("/api/record-and-classify")

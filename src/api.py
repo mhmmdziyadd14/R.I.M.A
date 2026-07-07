@@ -229,8 +229,16 @@ def play_synth_note_async(note_num: int, angklung_id: int):
     if not init_pygame_mixer():
         return
     try:
-        freq_map = NOTE_FREQUENCIES.get(angklung_id, NOTE_FREQUENCIES[3])
-        freq = freq_map.get(note_num, 261.63)
+        # Route offset notes > 16 on board 1 to board 2 frequency maps
+        if angklung_id == 1 and note_num > 16:
+            target_id = 2
+            target_note = note_num - 16
+        else:
+            target_id = angklung_id
+            target_note = note_num
+
+        freq_map = NOTE_FREQUENCIES.get(target_id, NOTE_FREQUENCIES[3])
+        freq = freq_map.get(target_note, 261.63)
         pcm_data = generate_angklung_sound(freq)
         
         sound = pygame.sndarray.make_sound(pcm_data)

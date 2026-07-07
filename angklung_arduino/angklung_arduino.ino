@@ -31,7 +31,7 @@ const char* namaNada[32] = {
   "f6", "f#6", "g6", "g#6", "a6", "a#6", "b6", "c7"
 };
 
-const int durasiGetar = 150; 
+const int durasiGetar = 85; 
 
 // Prototipe fungsi
 void updateAllShiftRegisters(byte d8, byte d9, byte d10);

@@ -455,80 +455,79 @@ def play_song_thread(file_content: str):
     sub_beat_duration = 30.0 / bpm
     
     # 3. Main Playback Loop
+    last_active_notes = {track: [] for track in tracks.keys()}
+    
     for bar_idx in range(max_bars):
         if not song_playback_active:
             break
             
-        bar_steps_a1 = [[] for _ in range(8)]
-        bar_steps_a2 = [[] for _ in range(8)]
-        bar_steps_a3 = [[] for _ in range(8)]
+        bar_steps = [{} for _ in range(8)]
         
         for track_name, bars in tracks.items():
             if bar_idx >= len(bars):
                 continue
             bar_str = bars[bar_idx]
-            
-            cleaned_parts = [p for p in bar_str.split() if p != '-']
-            num_parts = len(cleaned_parts)
-            
-            if num_parts == 0:
+            tokens = bar_str.split()
+            num_tokens = len(tokens)
+            if num_tokens == 0:
                 continue
-                
-            for i, token in enumerate(cleaned_parts):
-                if token == '.' or token == '0':
-                    continue
-                step_idx = int((i / num_parts) * 8)
+            for i, token in enumerate(tokens):
+                step_idx = int((i / num_tokens) * 8)
                 if step_idx < 8:
-                    # Distribute channels across 3 different physical Angklungs:
-                    if track_name == 'V1':
-                        bar_steps_a1[step_idx].append(token)
-                    elif track_name in ['V2', 'V3', 'VA']:
-                        bar_steps_a2[step_idx].append(token)
-                    elif track_name == 'VB':
-                        bar_steps_a3[step_idx].append(token)
-                    else:
-                        bar_steps_a2[step_idx].append(token)
-                        
+                    bar_steps[step_idx][track_name] = token
+                    
         for step_idx in range(8):
             if not song_playback_active:
                 break
                 
-            # Collect all notes for simultaneous playback in this step
             arduino1_notes = []
             arduino3_notes = []
             
-            # 1. Gather Angklung 1 (High Melody) notes
-            for token in bar_steps_a1[step_idx]:
-                midi_val = doremi_to_midi(token, key_sig)
-                pitch = midi_to_note_name(midi_val)
-                if pitch in ANGKLUNG1_PITCHES:
-                    arduino1_notes.append(ANGKLUNG1_PITCHES.index(pitch) + 1)
-                elif pitch in ANGKLUNG2_PITCHES:
-                    arduino1_notes.append(ANGKLUNG2_PITCHES.index(pitch) + 1 + 16)
-                    
-            # 2. Gather Angklung 2 (Medium Melody & Chords) notes
-            for token in bar_steps_a2[step_idx]:
-                if token.startswith('@'):
-                    for pitch in resolve_chord_pitches(token, key_sig):
-                        if pitch in ANGKLUNG1_PITCHES:
-                            arduino1_notes.append(ANGKLUNG1_PITCHES.index(pitch) + 1)
-                        elif pitch in ANGKLUNG2_PITCHES:
-                            arduino1_notes.append(ANGKLUNG2_PITCHES.index(pitch) + 1 + 16)
+            for track_name in tracks.keys():
+                token = bar_steps[step_idx].get(track_name, None)
+                
+                if token is None or token == '.' or token == '-':
+                    # Sustain previous notes for this track
+                    active = last_active_notes.get(track_name, [])
+                elif token == '0':
+                    # Rest: Clear notes
+                    active = []
+                    last_active_notes[track_name] = []
                 else:
-                    midi_val = doremi_to_midi(token, key_sig)
-                    pitch = midi_to_note_name(midi_val)
-                    if pitch in ANGKLUNG1_PITCHES:
-                        arduino1_notes.append(ANGKLUNG1_PITCHES.index(pitch) + 1)
-                    elif pitch in ANGKLUNG2_PITCHES:
-                        arduino1_notes.append(ANGKLUNG2_PITCHES.index(pitch) + 1 + 16)
-                        
-            # 3. Gather Angklung 3 (Low Bass) notes
-            for token in bar_steps_a3[step_idx]:
-                midi_val = doremi_to_midi(token, key_sig)
-                pitch = midi_to_note_name(midi_val)
-                if pitch in BASS_PITCHES:
-                    arduino3_notes.append(BASS_PITCHES.index(pitch) + 1)
+                    # New note or chord
+                    active = []
+                    if token.startswith('@'):
+                        # Chord
+                        for pitch in resolve_chord_pitches(token, key_sig):
+                            if pitch in ANGKLUNG1_PITCHES:
+                                active.append({"pitch": pitch, "type": "mel1"})
+                            elif pitch in ANGKLUNG2_PITCHES:
+                                active.append({"pitch": pitch, "type": "mel2"})
+                    else:
+                        # Single note
+                        midi_val = doremi_to_midi(token, key_sig)
+                        pitch = midi_to_note_name(midi_val)
+                        if track_name == 'VB':
+                            if pitch in BASS_PITCHES:
+                                active.append({"pitch": pitch, "type": "bass"})
+                        else:
+                            if pitch in ANGKLUNG1_PITCHES:
+                                active.append({"pitch": pitch, "type": "mel1"})
+                            elif pitch in ANGKLUNG2_PITCHES:
+                                active.append({"pitch": pitch, "type": "mel2"})
+                    last_active_notes[track_name] = active
                     
+                # Collect resolved notes to boards
+                for note_info in active:
+                    p = note_info["pitch"]
+                    ntype = note_info["type"]
+                    if ntype == "mel1":
+                        arduino1_notes.append(ANGKLUNG1_PITCHES.index(p) + 1)
+                    elif ntype == "mel2":
+                        arduino1_notes.append(ANGKLUNG2_PITCHES.index(p) + 1 + 16)
+                    elif ntype == "bass":
+                        arduino3_notes.append(BASS_PITCHES.index(p) + 1)
+                        
             # Remove duplicates
             arduino1_notes = list(set(arduino1_notes))
             arduino3_notes = list(set(arduino3_notes))

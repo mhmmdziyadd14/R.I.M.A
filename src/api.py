@@ -531,73 +531,108 @@ def play_song_thread(file_content: str, thread_token: int):
     global song_playback_active, current_playback_token
     
     try:
-        # 1. Parse Metadata
+        # 1. Parse Metadata & find all track names
         bpm = 90
         key_sig = "F"
         beats_per_bar = 4.0
         denominator = 4
         lines = file_content.split('\n')
         
-        music_lines = []
+        # Helper to process blocks with alignment
+        def process_block(block_lines, target_tracks, all_tracks):
+            block_tracks = {}
+            for bline in block_lines:
+                parts = bline.split(':', 1)
+                if len(parts) != 2:
+                    continue
+                tname = parts[0].strip()
+                tcontent = parts[1].strip()
+                
+                # Split into bars using '|'
+                bars = [b.strip() for b in tcontent.split('|') if b.strip()]
+                block_tracks[tname] = bars
+                
+            if not block_tracks:
+                return
+                
+            num_bars = max(len(b) for b in block_tracks.values())
+            for tname in all_tracks:
+                if tname in block_tracks:
+                    bars = block_tracks[tname]
+                    while len(bars) < num_bars:
+                        bars.append("0")
+                    target_tracks[tname].extend(bars)
+                else:
+                    target_tracks[tname].extend(["0"] * num_bars)
+
+        # First pass: find all track names in the entire file
+        all_track_names = set()
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
+            if is_track:
+                tname = line.split(':', 1)[0].strip()
+                all_track_names.add(tname)
+                
+        # Second pass: group into blocks and parse
+        tracks = {tname: [] for tname in all_track_names}
+        current_block = []
         in_music_part = False
         
         for line in lines:
             line = line.strip()
             if not line:
+                if current_block:
+                    process_block(current_block, tracks, all_track_names)
+                    current_block = []
                 continue
                 
-            # If line is a track definition, we have entered the music section
             is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
             if is_track:
                 in_music_part = True
-                
-            if not in_music_part:
-                # Parse header
-                if line.startswith('Q:'):
-                    try:
-                        bpm = int(line.split(':')[1].strip())
-                    except:
-                        pass
-                elif line.startswith('K:'):
-                    key_sig = line.split(':')[1].strip().upper()
-                elif line.startswith('M:'):
-                    try:
-                        m_val = line.split(':')[1].strip()
-                        if '/' in m_val:
-                            beats_per_bar = float(m_val.split('/')[0])
-                          # Parse denominator
-                            denominator = int(m_val.split('/')[1])
-                        else:
-                            beats_per_bar = float(m_val)
-                            denominator = 4
-                    except:
-                        pass
+                current_block.append(line)
             else:
-                # We are in the music section
-                if line.startswith('V') or line.startswith('VB') or line.startswith('VA'):
-                    music_lines.append(line)
-
-        if not music_lines:
+                if current_block:
+                    process_block(current_block, tracks, all_track_names)
+                    current_block = []
+                
+                if not in_music_part:
+                    # Parse header
+                    if line.startswith('Q:'):
+                        try:
+                            bpm = int(line.split(':')[1].strip())
+                        except:
+                            pass
+                    elif line.startswith('K:'):
+                        key_sig = line.split(':')[1].strip().upper()
+                        key_sig = re.sub(r"[^A-Z#B]", "", key_sig)
+                        if not key_sig:
+                            key_sig = "C"
+                    elif line.startswith('M:'):
+                        try:
+                            m_val = line.split(':')[1].strip()
+                            if '/' in m_val:
+                                beats_per_bar = float(m_val.split('/')[0])
+                                denominator = int(m_val.split('/')[1])
+                            else:
+                                beats_per_bar = float(m_val)
+                                denominator = 4
+                        except:
+                            pass
+                            
+        if current_block:
+            process_block(current_block, tracks, all_track_names)
+            
+        # Check if we parsed any music
+        has_music = any(len(b) > 0 for b in tracks.values())
+        if not has_music:
             print("[PARSER] Tidak ada data musik yang ditemukan.")
             song_playback_active = False
             return
             
         print(f"[PARSER] Memulai pemutaran lagu. Tempo: {bpm} BPM, Nada Dasar: {key_sig}, Beats/Bar: {beats_per_bar}")
-    
-        # 2. Group notes by bars
-        tracks = {}
-        for m_line in music_lines:
-            parts = m_line.split(':', 1)
-            if len(parts) != 2:
-                continue
-            track_name = parts[0].strip()
-            track_content = parts[1].strip()
-            
-            # Split into bars using '|'
-            bars = [b.strip() for b in track_content.split('|') if b.strip()]
-            if track_name not in tracks:
-                tracks[track_name] = []
-            tracks[track_name].extend(bars)
             
         if not tracks:
             song_playback_active = False

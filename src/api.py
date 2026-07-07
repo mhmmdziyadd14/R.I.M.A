@@ -440,194 +440,206 @@ current_playback_thread = None
 def play_song_thread(file_content: str):
     global song_playback_active
     
-    # 1. Parse Metadata
-    bpm = 90
-    key_sig = "F"
-    beats_per_bar = 4.0
-    lines = file_content.split('\n')
-    
-    music_lines = []
-    in_music_part = False
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith('$ Music part'):
-            in_music_part = True
-            continue
-        if not in_music_part:
-            # Parse header
-            if line.startswith('Q:'):
-                try:
-                    bpm = int(line.split(':')[1].strip())
-                except:
-                    pass
-            elif line.startswith('K:'):
-                key_sig = line.split(':')[1].strip().upper()
-            elif line.startswith('M:'):
-                try:
-                    m_val = line.split(':')[1].strip()
-                    if '/' in m_val:
-                        beats_per_bar = float(m_val.split('/')[0])
-                    else:
-                        beats_per_bar = float(m_val)
-                except:
-                    pass
-        else:
-            # We are in the music section
-            if line.startswith('V') or line.startswith('VB') or line.startswith('VA'):
-                music_lines.append(line)
-
-    if not music_lines:
-        print("[PARSER] Tidak ada data musik yang ditemukan.")
-        song_playback_active = False
-        return
+    try:
+        # 1. Parse Metadata
+        bpm = 90
+        key_sig = "F"
+        beats_per_bar = 4.0
+        lines = file_content.split('\n')
         
-    print(f"[PARSER] Memulai pemutaran lagu. Tempo: {bpm} BPM, Nada Dasar: {key_sig}, Beats/Bar: {beats_per_bar}")
-    
-    # 2. Group notes by bars
-    tracks = {}
-    for m_line in music_lines:
-        parts = m_line.split(':', 1)
-        if len(parts) != 2:
-            continue
-        track_name = parts[0].strip()
-        track_content = parts[1].strip()
+        music_lines = []
+        in_music_part = False
         
-        # Split into bars using '|'
-        bars = [b.strip() for b in track_content.split('|') if b.strip()]
-        if track_name not in tracks:
-            tracks[track_name] = []
-        tracks[track_name].extend(bars)
-        
-    if not tracks:
-        song_playback_active = False
-        return
-        
-    max_bars = max(len(bars) for bars in tracks.values())
-    
-    # Time calculations: One step is 1/8th of the bar.
-    # Total duration of a bar in seconds = (60.0 / BPM) * beats_per_bar
-    # One step duration = total_bar_duration / 8.0
-    sub_beat_duration = ((60.0 / bpm) * beats_per_bar) / 8.0
-    
-    # 3. Main Playback Loop
-    last_active_notes = {track: [] for track in tracks.keys()}
-    
-    for bar_idx in range(max_bars):
-        if not song_playback_active:
-            break
-            
-        bar_steps = [{} for _ in range(8)]
-        
-        for track_name, bars in tracks.items():
-            if bar_idx >= len(bars):
+        for line in lines:
+            line = line.strip()
+            if not line:
                 continue
-            bar_str = bars[bar_idx]
-            tokens = bar_str.split()
-            
-            # Calculate token positions using note duration weights
-            current_beat = 0.0
-            for token in tokens:
-                # Full-beat sustain or half-beat duration detection
-                if token == '-' or token == '.':
-                    token_dur = 1.0
-                elif token.endswith('-'):
-                    token_dur = 0.5
-                else:
-                    token_dur = 1.0
                 
-                # Convert beat start to one of the 8 steps
-                step_idx = int((current_beat / beats_per_bar) * 8)
-                if step_idx < 8:
-                    bar_steps[step_idx][track_name] = token
-                    
-                current_beat += token_dur
-                    
-        for step_idx in range(8):
+            # If line is a track definition, we have entered the music section
+            is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
+            if is_track:
+                in_music_part = True
+                
+            if not in_music_part:
+                # Parse header
+                if line.startswith('Q:'):
+                    try:
+                        bpm = int(line.split(':')[1].strip())
+                    except:
+                        pass
+                elif line.startswith('K:'):
+                    key_sig = line.split(':')[1].strip().upper()
+                elif line.startswith('M:'):
+                    try:
+                        m_val = line.split(':')[1].strip()
+                        if '/' in m_val:
+                            beats_per_bar = float(m_val.split('/')[0])
+                        else:
+                            beats_per_bar = float(m_val)
+                    except:
+                        pass
+            else:
+                # We are in the music section
+                if line.startswith('V') or line.startswith('VB') or line.startswith('VA'):
+                    music_lines.append(line)
+
+        if not music_lines:
+            print("[PARSER] Tidak ada data musik yang ditemukan.")
+            song_playback_active = False
+            return
+            
+        print(f"[PARSER] Memulai pemutaran lagu. Tempo: {bpm} BPM, Nada Dasar: {key_sig}, Beats/Bar: {beats_per_bar}")
+    
+        # 2. Group notes by bars
+        tracks = {}
+        for m_line in music_lines:
+            parts = m_line.split(':', 1)
+            if len(parts) != 2:
+                continue
+            track_name = parts[0].strip()
+            track_content = parts[1].strip()
+            
+            # Split into bars using '|'
+            bars = [b.strip() for b in track_content.split('|') if b.strip()]
+            if track_name not in tracks:
+                tracks[track_name] = []
+            tracks[track_name].extend(bars)
+            
+        if not tracks:
+            song_playback_active = False
+            return
+            
+        max_bars = max(len(bars) for bars in tracks.values())
+        
+        # Time calculations: One step is 1/8th of the bar.
+        # Total duration of a bar in seconds = (60.0 / BPM) * beats_per_bar
+        # One step duration = total_bar_duration / 8.0
+        sub_beat_duration = ((60.0 / bpm) * beats_per_bar) / 8.0
+        
+        # 3. Main Playback Loop
+        last_active_notes = {track: [] for track in tracks.keys()}
+        
+        for bar_idx in range(max_bars):
             if not song_playback_active:
                 break
                 
-            arduino1_notes = []
-            arduino3_notes = []
+            bar_steps = [{} for _ in range(8)]
             
-            for track_name in tracks.keys():
-                token = bar_steps[step_idx].get(track_name, None)
+            for track_name, bars in tracks.items():
+                if bar_idx >= len(bars):
+                    continue
+                bar_str = bars[bar_idx]
+                tokens = bar_str.split()
                 
-                if token is None or token == '.' or token == '-':
-                    # Sustain previous notes for this track
-                    active = last_active_notes.get(track_name, [])
-                else:
-                    # Clean trailing speed indicators (-) and accents (^) before parsing
-                    cleaned_token = token.rstrip('-').rstrip('^')
-                    
-                    if cleaned_token == '0':
-                        # Rest: Clear notes
-                        active = []
-                        last_active_notes[track_name] = []
+                # Calculate token positions using note duration weights
+                current_beat = 0.0
+                for token in tokens:
+                    # Full-beat sustain or half-beat duration detection
+                    if token == '-' or token == '.':
+                        token_dur = 1.0
+                    elif token.endswith('-'):
+                        token_dur = 0.5
                     else:
-                        active = []
-                        if cleaned_token.startswith('@'):
-                            # Chord: resolve pitches and fit to Melody range [65, 92]
-                            for pitch in resolve_chord_pitches(cleaned_token, key_sig):
-                                if pitch in ANGKLUNG1_PITCHES:
-                                    active.append({"pitch": pitch, "type": "mel1"})
-                                elif pitch in ANGKLUNG2_PITCHES:
-                                    active.append({"pitch": pitch, "type": "mel2"})
-                        else:
-                            # Single note: resolve pitch and fit to physical ranges
-                            midi_val = doremi_to_midi(cleaned_token, key_sig)
-                            if track_name == 'VB':
-                                # Shift to Bass physical range [52, 67] (e3 to g4)
-                                while midi_val < 52:
-                                    midi_val += 12
-                                while midi_val > 67:
-                                    midi_val -= 12
-                                pitch = midi_to_note_name(midi_val)
-                                if pitch in BASS_PITCHES:
-                                    active.append({"pitch": pitch, "type": "bass"})
-                            else:
-                                # Shift to Melody physical range [65, 92] (f4 to g#6)
-                                while midi_val < 65:
-                                    midi_val += 12
-                                while midi_val > 92:
-                                    midi_val -= 12
-                                pitch = midi_to_note_name(midi_val)
-                                if pitch in ANGKLUNG1_PITCHES:
-                                    active.append({"pitch": pitch, "type": "mel1"})
-                                elif pitch in ANGKLUNG2_PITCHES:
-                                    active.append({"pitch": pitch, "type": "mel2"})
-                        last_active_notes[track_name] = active
+                        token_dur = 1.0
                     
-                # Collect resolved notes to boards
-                for note_info in active:
-                    p = note_info["pitch"]
-                    ntype = note_info["type"]
-                    if ntype == "mel1":
-                        arduino1_notes.append(ANGKLUNG1_PITCHES.index(p) + 1)
-                    elif ntype == "mel2":
-                        arduino1_notes.append(ANGKLUNG2_PITCHES.index(p) + 1 + 16)
-                    elif ntype == "bass":
-                        arduino3_notes.append(BASS_PITCHES.index(p) + 1)
+                    # Convert beat start to one of the 8 steps
+                    step_idx = int((current_beat / beats_per_bar) * 8)
+                    if step_idx < 8:
+                        bar_steps[step_idx][track_name] = token
                         
-            # Remove duplicates
-            arduino1_notes = list(set(arduino1_notes))
-            arduino3_notes = list(set(arduino3_notes))
-            
-            # Play in parallel if there are active notes
-            if arduino1_notes or arduino3_notes:
-                t1 = threading.Thread(target=send_to_arduino, args=(arduino1_notes, 1))
-                t3 = threading.Thread(target=send_to_arduino, args=(arduino3_notes, 3))
-                t1.start()
-                t3.start()
-                t1.join()
-                t3.join()
+                    current_beat += token_dur
+                        
+            for step_idx in range(8):
+                if not song_playback_active:
+                    break
+                    
+                arduino1_notes = []
+                arduino3_notes = []
                 
-            time.sleep(sub_beat_duration)
+                for track_name in tracks.keys():
+                    token = bar_steps[step_idx].get(track_name, None)
+                    
+                    if token is None or token == '.' or token == '-':
+                        # Sustain previous notes for this track
+                        active = last_active_notes.get(track_name, [])
+                    else:
+                        # Clean trailing speed indicators (-) and accents (^) before parsing
+                        cleaned_token = token.rstrip('-').rstrip('^')
+                        
+                        if cleaned_token == '0':
+                            # Rest: Clear notes
+                            active = []
+                            last_active_notes[track_name] = []
+                        else:
+                            active = []
+                            if cleaned_token.startswith('@'):
+                                # Chord: resolve pitches and fit to Melody range [65, 92]
+                                for pitch in resolve_chord_pitches(cleaned_token, key_sig):
+                                    if pitch in ANGKLUNG1_PITCHES:
+                                        active.append({"pitch": pitch, "type": "mel1"})
+                                    elif pitch in ANGKLUNG2_PITCHES:
+                                        active.append({"pitch": pitch, "type": "mel2"})
+                            else:
+                                # Single note: resolve pitch and fit to physical ranges
+                                midi_val = doremi_to_midi(cleaned_token, key_sig)
+                                if track_name == 'VB':
+                                    # Shift to Bass physical range [52, 67] (e3 to g4)
+                                    while midi_val < 52:
+                                        midi_val += 12
+                                    while midi_val > 67:
+                                        midi_val -= 12
+                                    pitch = midi_to_note_name(midi_val)
+                                    if pitch in BASS_PITCHES:
+                                        active.append({"pitch": pitch, "type": "bass"})
+                                else:
+                                    # Shift to Melody physical range [65, 92] (f4 to g#6)
+                                    while midi_val < 65:
+                                        midi_val += 12
+                                    while midi_val > 92:
+                                        midi_val -= 12
+                                    pitch = midi_to_note_name(midi_val)
+                                    if pitch in ANGKLUNG1_PITCHES:
+                                        active.append({"pitch": pitch, "type": "mel1"})
+                                    elif pitch in ANGKLUNG2_PITCHES:
+                                        active.append({"pitch": pitch, "type": "mel2"})
+                            last_active_notes[track_name] = active
+                        
+                    # Collect resolved notes to boards
+                    for note_info in active:
+                        p = note_info["pitch"]
+                        ntype = note_info["type"]
+                        if ntype == "mel1":
+                            arduino1_notes.append(ANGKLUNG1_PITCHES.index(p) + 1)
+                        elif ntype == "mel2":
+                            arduino1_notes.append(ANGKLUNG2_PITCHES.index(p) + 1 + 16)
+                        elif ntype == "bass":
+                            arduino3_notes.append(BASS_PITCHES.index(p) + 1)
+                            
+                # Remove duplicates
+                arduino1_notes = list(set(arduino1_notes))
+                arduino3_notes = list(set(arduino3_notes))
+                
+                # Play in parallel if there are active notes
+                if arduino1_notes or arduino3_notes:
+                    t1 = threading.Thread(target=send_to_arduino, args=(arduino1_notes, 1))
+                    t3 = threading.Thread(target=send_to_arduino, args=(arduino3_notes, 3))
+                    t1.start()
+                    t3.start()
+                    t1.join()
+                    t3.join()
+                    
+                time.sleep(sub_beat_duration)
+        print("[PARSER] Pemutaran lagu selesai.")
+    except Exception as e:
+        print(f"[PARSER] Error fatal saat memainkan lagu: {e}")
+    finally:
+        song_playback_active = False
+        try:
+            send_to_arduino(0, 1)
+            send_to_arduino(0, 3)
+        except:
+            pass
 
-    print("[PARSER] Pemutaran lagu selesai.")
-    song_playback_active = False
 
 ANGKLUNG1_PITCHES = [
     "g4", "a4", "a#4", "b4", "c5", "d5", "e5", "f5",
@@ -724,6 +736,14 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
         pitches.append(midi_to_note_name(m))
     return pitches
 
+def read_file_safely(file_path: str) -> str:
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except UnicodeDecodeError:
+        with open(file_path, 'r', encoding='latin-1') as f:
+            return f.read()
+
 # Define absolute path to the songs directory relative to the script location
 SONGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "songs")
 
@@ -749,16 +769,14 @@ def list_songs():
             region = "Umum"
             
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                for _ in range(15):
-                    line = f.readline()
-                    if not line:
-                        break
-                    line = line.strip()
-                    if line.startswith('T:'):
-                        title = line.split(':', 1)[1].strip()
-                    elif line.startswith('C:') or line.startswith('O:'):
-                        region = line.split(':', 1)[1].strip()
+            content = read_file_safely(file_path)
+            lines = content.split('\n')
+            for line in lines[:15]:
+                line = line.strip()
+                if line.startswith('T:'):
+                    title = line.split(':', 1)[1].strip()
+                elif line.startswith('C:') or line.startswith('O:'):
+                    region = line.split(':', 1)[1].strip()
         except Exception as e:
             print(f"Error reading metadata from {file_basename}: {e}")
             
@@ -789,8 +807,7 @@ def play_song_file(data: dict):
         raise HTTPException(status_code=404, detail="File lagu tidak ditemukan.")
         
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            file_content = f.read()
+        file_content = read_file_safely(file_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal membaca file: {e}")
         

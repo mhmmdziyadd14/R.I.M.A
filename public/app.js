@@ -183,6 +183,11 @@ document.addEventListener('DOMContentLoaded', () => {
   checkConnections();
   setInterval(checkConnections, 6000); // Check connections every 6 seconds
 
+  // Track global mouse state for slide-to-play
+  let isMouseDown = false;
+  window.addEventListener('mousedown', () => { isMouseDown = true; });
+  window.addEventListener('mouseup', () => { isMouseDown = false; });
+
   // Attach Piano Keys Interaction listeners
   const keys = document.querySelectorAll('.key');
   keys.forEach(key => {
@@ -191,14 +196,35 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       startKeyTrigger(key);
     });
+    
+    key.addEventListener('mouseenter', () => {
+      if (isMouseDown) {
+        startKeyTrigger(key);
+      }
+    });
+
     key.addEventListener('mouseup', () => stopKeyTrigger(key));
     key.addEventListener('mouseleave', () => stopKeyTrigger(key));
     
-    // Touch interaction
+    // Touch interaction (Slide/drag on touch screen)
     key.addEventListener('touchstart', (e) => {
       e.preventDefault();
       startKeyTrigger(key);
     });
+    
+    key.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (targetElement && targetElement.classList.contains('key')) {
+        // Stop other active touch triggers
+        keys.forEach(k => {
+          if (k !== targetElement) stopKeyTrigger(k);
+        });
+        startKeyTrigger(targetElement);
+      }
+    });
+
     key.addEventListener('touchend', () => stopKeyTrigger(key));
     key.addEventListener('touchcancel', () => stopKeyTrigger(key));
   });
@@ -347,40 +373,122 @@ function highlightKeyProgrammatic(noteNum, angklungId = 3) {
     }, 200);
   }
 }
+// Map pitch names to physical hardware positions
+const PITCH_TO_HARDWARE = {
+  // Angklung 3 (Bass)
+  "e3": { angklung: 3, note: 1 }, "f3": { angklung: 3, note: 2 }, "f#3": { angklung: 3, note: 3 },
+  "g3": { angklung: 3, note: 4 }, "g#3": { angklung: 3, note: 5 }, "a3": { angklung: 3, note: 6 },
+  "a#3": { angklung: 3, note: 7 }, "b3": { angklung: 3, note: 8 }, "c4": { angklung: 3, note: 9 },
+  "c#4": { angklung: 3, note: 10 }, "d4": { angklung: 3, note: 11 }, "d#4": { angklung: 3, note: 12 },
+  "e4": { angklung: 3, note: 13 }, "f4_bass": { angklung: 3, note: 14 }, "f#4_bass": { angklung: 3, note: 15 },
+  "g4_bass": { angklung: 3, note: 16 },
 
-// 7. Chord Triggering (Fm, F#m, Gm, G#m)
-function playChord(chordName) {
-  let notesParam = "";
-  
-  // Custom note mappings mapped to note indices (1 to 16)
-  switch (chordName) {
-    case 'Fm': notesParam = "10,13,1"; break;   // f2, g#2, c3
-    case 'F#m': notesParam = "11,14,2"; break;  // f#2, a2, c#3
-    case 'Gm': notesParam = "12,15,3"; break;   // g2, a#2, d3
-    case 'G#m': notesParam = "13,16,4"; break;  // g#2, b2, d#3
+  // Angklung 1 (High/Yellow) & Angklung 2 (Medium/Green)
+  "f4": { angklung: 2, note: 1 }, "f#4": { angklung: 2, note: 2 }, "g4": { angklung: 1, note: 1 },
+  "g#4": { angklung: 2, note: 3 }, "a4": { angklung: 1, note: 2 }, "a#4": { angklung: 1, note: 3 },
+  "b4": { angklung: 1, note: 4 }, "c5": { angklung: 1, note: 5 }, "c#5": { angklung: 2, note: 4 },
+  "d5": { angklung: 1, note: 6 }, "d#5": { angklung: 2, note: 5 }, "e5": { angklung: 1, note: 7 },
+  "f5": { angklung: 1, note: 8 }, "f#5": { angklung: 1, note: 9 }, "g5": { angklung: 1, note: 10 },
+  "g#5": { angklung: 2, note: 6 }, "a5": { angklung: 1, note: 11 }, "a#5": { angklung: 1, note: 12 },
+  "b5": { angklung: 1, note: 13 }, "c6": { angklung: 1, note: 14 }, "c#6": { angklung: 2, note: 7 },
+  "d6": { angklung: 1, note: 15 }, "d#6": { angklung: 2, note: 8 }, "e6": { angklung: 1, note: 16 },
+  "f6": { angklung: 2, note: 9 }, "f#6": { angklung: 2, note: 10 }, "g6": { angklung: 2, note: 11 },
+  "g#6": { angklung: 2, note: 12 }, "a6": { angklung: 2, note: 13 }, "a#6": { angklung: 2, note: 14 },
+  "b6": { angklung: 2, note: 15 }, "c7": { angklung: 2, note: 16 }
+};
+
+function midiToPitchName(midi, preferBass) {
+  const names = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
+  const octave = Math.floor(midi / 12) - 1;
+  const pitch = names[midi % 12] + octave;
+  if (preferBass) {
+    if (midi >= 52 && midi <= 67) {
+      if (pitch === "f4") return "f4_bass";
+      if (pitch === "f#4") return "f#4_bass";
+      if (pitch === "g4") return "g4_bass";
+      return pitch;
+    }
   }
+  return pitch;
+}
+
+// 7. Chord Triggering (C, Cm, C#, C#m, ... B, Bm)
+function playChord(chordName) {
+  let rootName = chordName;
+  let isMinor = false;
+  
+  if (chordName.endsWith('m')) {
+    rootName = chordName.slice(0, -1);
+    isMinor = true;
+  }
+  
+  const rootMap = {
+    'C': 60, 'C#': 61, 'Db': 61, 'D': 62, 'D#': 63, 'Eb': 63,
+    'E': 64, 'F': 65, 'F#': 66, 'Gb': 66, 'G': 67, 'G#': 68,
+    'Ab': 68, 'A': 69, 'A#': 70, 'Bb': 70, 'B': 71
+  };
+  
+  const rootMidi = rootMap[rootName];
+  if (!rootMidi) return;
+  
+  const thirdOffset = isMinor ? 3 : 4;
+  const fifthOffset = 7;
+  
+  const melodyNotes = [rootMidi, rootMidi + thirdOffset, rootMidi + fifthOffset];
+  
+  let bassMidi = rootMidi;
+  while (bassMidi < 52) bassMidi += 12;
+  while (bassMidi > 67) bassMidi -= 12;
+  
+  const resolvedKeys = [];
+  
+  const bassPitch = midiToPitchName(bassMidi, true);
+  const bassHw = PITCH_TO_HARDWARE[bassPitch];
+  if (bassHw) resolvedKeys.push(bassHw);
+  
+  melodyNotes.forEach(m => {
+    let melMidi = m;
+    while (melMidi < 65) melMidi += 12;
+    while (melMidi > 96) melMidi -= 12;
+    
+    const melPitch = midiToPitchName(melMidi, false);
+    const melHw = PITCH_TO_HARDWARE[melPitch];
+    if (melHw) {
+      if (!resolvedKeys.some(k => k.angklung === melHw.angklung && k.note === melHw.note)) {
+        resolvedKeys.push(melHw);
+      }
+    }
+  });
 
   document.getElementById('active-note-display').textContent = chordName;
 
-  // Send request to backend targeting Angklung 2 (Medium register)
-  fetch(`${settings.hostApi}/api/arduino/play_chord?notes=${notesParam}&angklung_id=2`).catch(() => {});
+  const arduino1Notes = [];
+  const arduino3Notes = [];
 
-  // Visually animate keys belonging to the chord on Angklung 2 and trigger sound
-  const noteIndices = notesParam.split(',');
-  noteIndices.forEach(idx => {
-    const key = document.querySelector(`.key[data-note="${idx}"][data-angklung="2"]`);
-    if (key) {
-      key.classList.add('active');
-      
-      const noteNum = parseInt(idx, 10);
-      const freqMap = NOTE_FREQUENCIES[2];
-      if (freqMap && freqMap[noteNum]) {
-        playClientSynthSound(freqMap[noteNum]);
-      }
-      
-      setTimeout(() => key.classList.remove('active'), 350);
+  resolvedKeys.forEach(k => {
+    const keyEl = document.querySelector(`.key[data-note="${k.note}"][data-angklung="${k.angklung}"]`);
+    if (keyEl) {
+      keyEl.classList.add('active');
+      setTimeout(() => keyEl.classList.remove('active'), 350);
+    }
+    
+    const freqMap = NOTE_FREQUENCIES[k.angklung];
+    if (freqMap && freqMap[k.note]) {
+      playClientSynthSound(freqMap[k.note]);
+    }
+    
+    if (k.angklung === 1) {
+      arduino1Notes.push(k.note);
+    } else if (k.angklung === 2) {
+      arduino1Notes.push(k.note + 16);
+    } else if (k.angklung === 3) {
+      arduino3Notes.push(k.note);
     }
   });
+
+  const a1Param = arduino1Notes.join(',');
+  const a3Param = arduino3Notes.join(',');
+  fetch(`${settings.hostApi}/api/arduino/play_multi?a1=${a1Param}&a3=${a3Param}`).catch(() => {});
 }
 
 // 8. Pustaka Lagu Section

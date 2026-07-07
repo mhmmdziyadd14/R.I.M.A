@@ -250,35 +250,51 @@ def get_arduino_connection(angklung_id: int):
         arduino_serials[angklung_id] = None
         return None
 
-def send_to_arduino(note_num: int, angklung_id: int = 3):
-    play_local_sound(note_num, angklung_id)
+def send_to_arduino(note_num, angklung_id: int = 3):
+    if isinstance(note_num, int):
+        notes_list = [note_num]
+    elif isinstance(note_num, str):
+        notes_list = [int(x) for x in note_num.split(",") if x.strip().isdigit()]
+    elif isinstance(note_num, list) or isinstance(note_num, tuple):
+        notes_list = [int(x) for x in note_num]
+    else:
+        notes_list = []
+
+    for n in notes_list:
+        play_local_sound(n, angklung_id)
     
     target_id = angklung_id
-    actual_note = note_num
-    
-    # Angklung 2 has no microcontroller, it is driven by Angklung 1's Arduino Uno/Nano
     if angklung_id == 2:
         target_id = 1
-        actual_note = note_num + 16  # Offset Angklung 2 notes to 17-32
+        actual_notes = [n + 16 for n in notes_list]
+    else:
+        actual_notes = notes_list
         
+    if not actual_notes:
+        return True, "No notes"
+
     ser = get_arduino_connection(target_id)
     if ser is None:
-        return True, f"Offline - Dimainkan di Laptop (Angklung: {angklung_id}, Nada: {note_num})"
+        notes_str = ",".join(str(x) for x in notes_list)
+        return True, f"Offline - Dimainkan di Laptop (Angklung: {angklung_id}, Nada: {notes_str})"
+        
+    payload = ",".join(str(x) for x in actual_notes)
     try:
         ser.reset_input_buffer()
-        ser.write(f"{actual_note}\n".encode('utf-8'))
+        ser.write(f"{payload}\n".encode('utf-8'))
         response = ser.readline().decode('utf-8').strip()
         if not response:
             response = ser.readline().decode('utf-8').strip()
-        return True, response if response else f"Sent {actual_note} to Arduino {target_id}"
+        return True, response if response else f"Sent {payload} to Arduino {target_id}"
     except Exception as e:
-        print(f"[SERIAL] Gagal kirim nada {actual_note} ke Angklung {target_id}: {e}")
+        print(f"[SERIAL] Gagal kirim nada {payload} ke Angklung {target_id}: {e}")
         try:
             ser.close()
         except:
             pass
         arduino_serials[target_id] = None
-        return True, f"Error Serial ({e}) - Dimainkan di Laptop (Nada: {note_num})"
+        notes_str = ",".join(str(x) for x in notes_list)
+        return True, f"Error Serial ({e}) - Dimainkan di Laptop (Nada: {notes_str})"
 
 @app.post("/api/config-arduino")
 def config_arduino(data: dict):
@@ -346,12 +362,32 @@ def arduino_play_chord(notes: str, angklung_id: int = 3):
     except ValueError:
         raise HTTPException(status_code=400, detail="Format notes salah. Contoh: '1,3,5'")
     
-    results = []
-    for note in note_list:
-        if 1 <= note <= 16:
-            success, response = send_to_arduino(note, angklung_id)
-            results.append({"note": note, "success": success, "response": response})
-    return {"status": "success", "results": results}
+    valid_notes = [n for n in note_list if 1 <= n <= 16]
+    if not valid_notes:
+        raise HTTPException(status_code=400, detail="Tidak ada nada valid (1-16)")
+        
+    success, response = send_to_arduino(valid_notes, angklung_id)
+    return {"status": "success", "response": response}
+
+@app.get("/api/arduino/play_multi")
+def arduino_play_multi(a1: str = "", a3: str = ""):
+    def run_send(notes_str, board_id):
+        if not notes_str:
+            return
+        try:
+            notes_list = [int(n) for n in notes_str.split(",") if n.strip().isdigit()]
+            if notes_list:
+                send_to_arduino(notes_list, board_id)
+        except Exception as e:
+            print(f"[API] Error in play_multi thread for board {board_id}: {e}")
+            
+    t1 = threading.Thread(target=run_send, args=(a1, 1))
+    t3 = threading.Thread(target=run_send, args=(a3, 3))
+    t1.start()
+    t3.start()
+    t1.join()
+    t3.join()
+    return {"status": "success"}
 
 song_playback_active = False
 

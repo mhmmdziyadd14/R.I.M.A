@@ -33,8 +33,9 @@ const char* namaNada[32] = {
 
 const int durasiGetar = 150; 
 
-// Prototipe fungsi kustom parallel shift out
+// Prototipe fungsi
 void updateAllShiftRegisters(byte d8, byte d9, byte d10);
+void mainkanBanyakNada(String input);
 
 void setup() {
   Serial.begin(9600);
@@ -71,60 +72,80 @@ void setup() {
 
 void loop() {
   if (Serial.available() > 0) {
-    int noteNumber = Serial.parseInt();
-    
-    // Pastikan nomor nada valid (1 sampai 32)
-    if (noteNumber >= 1 && noteNumber <= 32) {
-      int indexNada = noteNumber - 1;
-      
-      mainkanNada(noteNumber);
-      
-      // Kirim feedback ke aplikasi
-      Serial.print(F("OK_"));
-      Serial.println(namaNada[indexNada]);
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    if (input.length() > 0) {
+      mainkanBanyakNada(input);
+      Serial.println(F("OK")); // Kirim respon balik ke laptop
     }
   }
 }
 
 // ====================================================================
-// FUNGSI UTAMA PEMICU MOTOR
+// FUNGSI UTAMA PEMICU BANYAK MOTOR SIMULTAN
 // ====================================================================
-void mainkanNada(int note) {
-  // Variabel penampung bit untuk masing-masing IC (0 = mati semua)
+void mainkanBanyakNada(String input) {
   byte data8 = 0;
   byte data9 = 0;
   byte data10 = 0;
+  bool directPinsActive[8] = {false, false, false, false, false, false, false, false};
+  bool hasAny = false;
 
-  if (note >= 9 && note <= 16) {
-    // ------------------------------------
-    // GRUP SWAP: Nada 9 - 16 sekarang menggunakan Pin Langsung
-    // ------------------------------------
-    int indexPin = note - 9;
-    digitalWrite(directPins[indexPin], HIGH);
-    delay(durasiGetar);
-    digitalWrite(directPins[indexPin], LOW);
-    
-  } else {
-    // ------------------------------------
-    // GRUP SWAP & DAISY CHAIN: Shift Register (Angklung 1 & 2)
-    // ------------------------------------
-    if (note >= 1 && note <= 8) {
-      // Nada 1 - 8 sekarang menggunakan Shift Register 1 (data8)
-      data8 = (1 << (8 - note)); 
-    } 
-    else if (note >= 17 && note <= 24) {
-      data9 = (1 << (24 - note)); // Nada 17-24 (Angklung 2 IC 1)
-    } 
-    else if (note >= 25 && note <= 32) {
-      data10 = (1 << (32 - note)); // Nada 25-32 (Angklung 2 IC 2)
+  int startIndex = 0;
+  while (true) {
+    int commaIndex = input.indexOf(',', startIndex);
+    String noteStr;
+    if (commaIndex == -1) {
+      noteStr = input.substring(startIndex);
+    } else {
+      noteStr = input.substring(startIndex, commaIndex);
     }
+    noteStr.trim();
+    if (noteStr.length() > 0) {
+      int note = noteStr.toInt();
+      if (note >= 1 && note <= 32) {
+        hasAny = true;
+        if (note >= 9 && note <= 16) {
+          int indexPin = note - 9;
+          directPinsActive[indexPin] = true;
+        } else {
+          if (note >= 1 && note <= 8) {
+            data8 |= (1 << (8 - note));
+          }
+          else if (note >= 17 && note <= 24) {
+            data9 |= (1 << (24 - note));
+          }
+          else if (note >= 25 && note <= 32) {
+            data10 |= (1 << (32 - note));
+          }
+        }
+      }
+    }
+    if (commaIndex == -1) {
+      break;
+    }
+    startIndex = commaIndex + 1;
+  }
 
-    // Eksekusi pengiriman data secara serentak ke Angklung 1 dan 2
+  if (hasAny) {
+    // 1. Nyalakan direct pins yang aktif secara serentak
+    for (int i = 0; i < 8; i++) {
+      if (directPinsActive[i]) {
+        digitalWrite(directPins[i], HIGH);
+      }
+    }
+    // 2. Nyalakan register shift yang aktif secara serentak
     updateAllShiftRegisters(data8, data9, data10);
+
+    // 3. Tahan selama durasi pemicu getar (hanya delay 1 kali saja)
     delay(durasiGetar);
-    
-    // Matikan kembali semua motor setelah durasi habis
-    updateAllShiftRegisters(0, 0, 0); 
+
+    // 4. Matikan semua direct pins secara serentak
+    for (int i = 0; i < 8; i++) {
+      digitalWrite(directPins[i], LOW);
+    }
+    // 5. Matikan semua register shift secara serentak
+    updateAllShiftRegisters(0, 0, 0);
   }
 }
 
@@ -136,7 +157,7 @@ void updateAllShiftRegisters(byte d8, byte d9, byte d10) {
 
   // Kirim 8 bit data secara berurutan (dari MSB ke LSB)
   for (int i = 7; i >= 0; i--) {
-    // Siapkan nilai 1 atau 0 di masing-masing jalur Data
+    // Siapkan nilai 1 or 0 di masing-masing jalur Data
     digitalWrite(dataPin8, bitRead(d8, i));
     digitalWrite(dataPin9, bitRead(d9, i));
     digitalWrite(dataPin10, bitRead(d10, i));

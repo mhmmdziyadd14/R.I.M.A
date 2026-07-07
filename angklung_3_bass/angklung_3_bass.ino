@@ -25,8 +25,9 @@ const char* namaNada[16] = {
 
 const int durasiGetar = 150; 
 
-// Prototipe fungsi kustom shift out
+// Prototipe fungsi
 void updateShiftRegister(byte data);
+void mainkanBanyakNada(String input);
 
 void setup() {
   Serial.begin(9600);
@@ -58,40 +59,70 @@ void setup() {
 
 void loop() {
   if (Serial.available() > 0) {
-    int noteNumber = Serial.parseInt();
-    
-    // Pastikan nomor nada valid (1 sampai 16)
-    if (noteNumber >= 1 && noteNumber <= 16) {
-      int indexNada = noteNumber - 1;
-      
-      mainkanNada(noteNumber);
-      
-      Serial.print(F("OK_"));
-      Serial.println(namaNada[indexNada]);
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    if (input.length() > 0) {
+      mainkanBanyakNada(input);
+      Serial.println(F("OK")); // Kirim respon balik ke laptop
     }
   }
 }
 
 // ====================================================================
-// FUNGSI UTAMA PEMICU MOTOR
+// FUNGSI UTAMA PEMICU BANYAK MOTOR SIMULTAN
 // ====================================================================
-void mainkanNada(int note) {
-  if (note >= 9 && note <= 16) {
-    // Grup Swap: Nada 9 - 16 sekarang menggunakan Pin Langsung
-    int indexPin = note - 9;
-    digitalWrite(directPins[indexPin], HIGH);
-    delay(durasiGetar);
-    digitalWrite(directPins[indexPin], LOW);
-    
-  } else if (note >= 1 && note <= 8) {
-    // Grup Swap: Nada 1 - 8 sekarang menggunakan Shift Register
-    int bitPosition = 8 - note; // Peta nada 1-8 ke bit 7-0
-    byte data = (1 << bitPosition);
-    
+void mainkanBanyakNada(String input) {
+  byte data = 0;
+  bool directPinsActive[8] = {false, false, false, false, false, false, false, false};
+  bool hasAny = false;
+
+  int startIndex = 0;
+  while (true) {
+    int commaIndex = input.indexOf(',', startIndex);
+    String noteStr;
+    if (commaIndex == -1) {
+      noteStr = input.substring(startIndex);
+    } else {
+      noteStr = input.substring(startIndex, commaIndex);
+    }
+    noteStr.trim();
+    if (noteStr.length() > 0) {
+      int note = noteStr.toInt();
+      if (note >= 1 && note <= 16) {
+        hasAny = true;
+        if (note >= 9 && note <= 16) {
+          int indexPin = note - 9;
+          directPinsActive[indexPin] = true;
+        } else if (note >= 1 && note <= 8) {
+          int bitPosition = 8 - note; // Peta nada 1-8 ke bit 7-0
+          data |= (1 << bitPosition);
+        }
+      }
+    }
+    if (commaIndex == -1) {
+      break;
+    }
+    startIndex = commaIndex + 1;
+  }
+
+  if (hasAny) {
+    // 1. Nyalakan direct pins yang aktif secara serentak
+    for (int i = 0; i < 8; i++) {
+      if (directPinsActive[i]) {
+        digitalWrite(directPins[i], HIGH);
+      }
+    }
+    // 2. Nyalakan register shift yang aktif secara serentak
     updateShiftRegister(data);
+
+    // 3. Tahan selama durasi pemicu getar (hanya delay 1 kali saja)
     delay(durasiGetar);
-    
-    // Matikan kembali setelah durasi getar selesai
+
+    // 4. Matikan semua direct pins secara serentak
+    for (int i = 0; i < 8; i++) {
+      digitalWrite(directPins[i], LOW);
+    }
+    // 5. Matikan semua register shift secara serentak
     updateShiftRegister(0b00000000);
   }
 }

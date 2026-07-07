@@ -725,14 +725,21 @@ def list_songs():
     if not os.path.exists(SONGS_DIR):
         os.makedirs(SONGS_DIR)
         
-    song_files = glob.glob(os.path.join(SONGS_DIR, "*.123"))
+    # Search recursively in all subdirectories for *.123 files
+    song_files = glob.glob(os.path.join(SONGS_DIR, "**", "*.123"), recursive=True)
     results = []
     
     for file_path in song_files:
-        file_name = os.path.basename(file_path)
-        title = file_name.replace(".123", "").replace("_", " ")
-        region = "Umum"
+        file_basename = os.path.basename(file_path)
+        title = file_basename.replace(".123", "").replace("_", " ")
         
+        # Determine region from folder structure first (fallback)
+        folder_name = os.path.basename(os.path.dirname(file_path))
+        if folder_name and folder_name.lower() != "songs":
+            region = folder_name.replace("_", " ").title()
+        else:
+            region = "Umum"
+            
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 for _ in range(15):
@@ -742,16 +749,19 @@ def list_songs():
                     line = line.strip()
                     if line.startswith('T:'):
                         title = line.split(':', 1)[1].strip()
-                    elif line.startswith('C:'):
+                    elif line.startswith('C:') or line.startswith('O:'):
                         region = line.split(':', 1)[1].strip()
         except Exception as e:
-            print(f"Error reading metadata from {file_name}: {e}")
+            print(f"Error reading metadata from {file_basename}: {e}")
             
+        # Get relative path relative to SONGS_DIR and make it web-safe
+        rel_path = os.path.relpath(file_path, SONGS_DIR).replace(os.sep, '/')
+        
         results.append({
-            "id": file_name,
+            "id": rel_path,
             "title": title,
             "region": region,
-            "file_name": file_name
+            "file_name": rel_path
         })
     return results
 
@@ -762,7 +772,11 @@ def play_song_file(data: dict):
     if not file_name:
         raise HTTPException(status_code=400, detail="Nama file lagu tidak ditentukan.")
         
-    file_path = os.path.join(SONGS_DIR, file_name)
+    # Resolve absolute path and block directory traversal attacks
+    file_path = os.path.abspath(os.path.join(SONGS_DIR, file_name))
+    if not file_path.startswith(os.path.abspath(SONGS_DIR)):
+        raise HTTPException(status_code=400, detail="Akses file tidak diizinkan.")
+        
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File lagu tidak ditemukan.")
         

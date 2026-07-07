@@ -21,7 +21,7 @@ const NOTE_FREQUENCIES = {
   },
   2: { // Angklung 2 (Medium/Green)
     1: 349.23, 2: 369.99, 3: 415.30, 4: 554.37, 5: 622.25, 6: 830.61, 7: 1109.73, 8: 1244.51,
-    9: 1396.91, 10: 1479.98, 11: 1567.98, 12: 1661.22, 13: 1760.00, 14: 1864.66, 15: 1975.53, 16: 2093.00
+    9: 1396.91, 10: 1479.98, 11: 1567.98, 12: 1661.22
   },
   3: { // Angklung 3 (Low/Blue)
     1: 164.81, 2: 174.61, 3: 185.00, 4: 196.00, 5: 207.65, 6: 220.00, 7: 233.08, 8: 246.94,
@@ -432,8 +432,7 @@ const PITCH_TO_HARDWARE = {
   "b5": { angklung: 1, note: 13 }, "c6": { angklung: 1, note: 14 }, "c#6": { angklung: 2, note: 7 },
   "d6": { angklung: 1, note: 15 }, "d#6": { angklung: 2, note: 8 }, "e6": { angklung: 1, note: 16 },
   "f6": { angklung: 2, note: 9 }, "f#6": { angklung: 2, note: 10 }, "g6": { angklung: 2, note: 11 },
-  "g#6": { angklung: 2, note: 12 }, "a6": { angklung: 2, note: 13 }, "a#6": { angklung: 2, note: 14 },
-  "b6": { angklung: 2, note: 15 }, "c7": { angklung: 2, note: 16 }
+  "g#6": { angklung: 2, note: 12 }
 };
 
 function midiToPitchName(midi, preferBass) {
@@ -488,7 +487,7 @@ function playChord(chordName) {
   melodyNotes.forEach(m => {
     let melMidi = m;
     while (melMidi < 65) melMidi += 12;
-    while (melMidi > 96) melMidi -= 12;
+    while (melMidi > 92) melMidi -= 12;
     
     const melPitch = midiToPitchName(melMidi, false);
     const melHw = PITCH_TO_HARDWARE[melPitch];

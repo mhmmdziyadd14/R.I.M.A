@@ -701,8 +701,17 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
     root_midi = key_roots.get(key_sig.upper(), 60)
     
     symbol = chord_symbol.replace('@', '')
+    
+    # Accidentals: / raises by 1 semitone, \ lowers by 1 semitone
+    accidental = 0
+    accidental += symbol.count("/")
+    accidental -= symbol.count("\\")
+    
+    # Strip accidental markers from symbol to extract digit
+    clean_sym = symbol.replace("/", "").replace("\\", "")
+    
     digit = ""
-    for c in symbol:
+    for c in clean_sym:
         if c.isdigit():
             digit += c
     if not digit:
@@ -710,9 +719,9 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
     degree = int(digit)
     
     intervals = {1: 0, 2: 2, 3: 4, 4: 5, 5: 7, 6: 9, 7: 11}
-    chord_root_midi = root_midi + intervals.get(degree, 0)
+    chord_root_midi = root_midi + intervals.get(degree, 0) + accidental
     
-    is_minor = 'm' in symbol
+    is_minor = 'm' in clean_sym
     # Diatonic major key defaults: degrees 2, 3, 6, 7 are naturally Minor/Diminished
     if not is_minor and not ('M' in symbol or 'maj' in symbol):
         if degree in [2, 3, 6, 7]:

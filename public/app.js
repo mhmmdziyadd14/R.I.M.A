@@ -580,6 +580,11 @@ function stopChordTrigger(chordName, btnElement) {
   btnElement.classList.remove('active');
 }
 
+// Helper to get safe DOM ID from song filename
+function getSongBtnId(songId) {
+  return 'btn-play-' + songId.replace(/[^a-zA-Z0-9]/g, '_');
+}
+
 // 8. Pustaka Lagu Section
 function loadSongsList(filter = 'all') {
   const container = document.getElementById('songs-container');
@@ -590,6 +595,7 @@ function loadSongsList(filter = 'all') {
   filtered.forEach(song => {
     // Escape single quotes for HTML onClick
     const cleanId = song.id.replace(/'/g, "\\'");
+    const btnDomId = getSongBtnId(song.id);
     const item = document.createElement('div');
     item.className = 'song-item';
     item.innerHTML = `
@@ -600,7 +606,7 @@ function loadSongsList(filter = 'all') {
           <p>${song.region}</p>
         </div>
       </div>
-      <button class="song-play-btn" id="btn-play-${cleanId}" onclick="playSong('${cleanId}')">
+      <button class="song-play-btn" id="${btnDomId}" onclick="playSong('${cleanId}')">
         <i class="fa-solid fa-play"></i>
       </button>
     `;
@@ -639,8 +645,7 @@ function filterSongs(category) {
 }
 
 async function playSong(songId) {
-  const btnId = `btn-play-${songId}`;
-  const playBtn = document.getElementById(btnId);
+  const playBtn = document.getElementById(getSongBtnId(songId));
   
   if (playBtn && playBtn.classList.contains('playing')) {
     stopAllPlaybacks();

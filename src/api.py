@@ -769,13 +769,13 @@ def play_song_thread(file_content: str, thread_token: int):
                             
                         # DAW track mixer volume panel
                         if track_name == 'VB':
-                            vol = 0.65  # Bass volume
+                            vol = 0.75  # Bass volume (warm foundation)
                         elif track_name == 'VA^' or track_name == 'VA':
-                            vol = 0.35  # Chord / Rhythm volume (quieter background)
+                            vol = 0.55  # Chord / Rhythm volume (rich audible background)
                         elif track_name == 'V1':
                             vol = 1.00  # Lead Melody volume (loudest)
                         else:
-                            vol = 0.70  # Supporting melody volume (V2, V3, etc.)
+                            vol = 0.85  # Supporting melody volume (V2, V3, etc.)
                         play_local_sound(note_num, ang_id, vol)
                             
                         if ntype == "mel1" or ntype == "mel2":
@@ -892,7 +892,8 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
     is_minor = 'm' in clean_sym
     # Diatonic major key defaults: degrees 2, 3, 6, 7 are naturally Minor/Diminished
     if not is_minor and not ('M' in symbol or 'maj' in symbol):
-        if degree in [2, 3, 6, 7]:
+        # Only default to minor if there are no accidentals (chromatic chords default to major)
+        if accidental == 0 and degree in [2, 3, 6, 7]:
             is_minor = True
             
     third_offset = 3 if is_minor else 4

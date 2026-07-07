@@ -125,6 +125,7 @@ let activeSongInterval = null;
 let repeaterSocket = null;
 let isRepeaterListening = false;
 let keyIntervals = new Map();
+let chordIntervals = new Map();
 
 function startKeyTrigger(keyElement) {
   const noteId = `${keyElement.getAttribute('data-angklung')}-${keyElement.getAttribute('data-note')}`;
@@ -227,6 +228,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     key.addEventListener('touchend', () => stopKeyTrigger(key));
     key.addEventListener('touchcancel', () => stopKeyTrigger(key));
+  });
+
+  // Attach Chord Buttons Interaction listeners
+  const chordBtns = document.querySelectorAll('.chord-btn');
+  chordBtns.forEach(btn => {
+    const chordName = btn.getAttribute('data-chord');
+    
+    // Mouse interaction
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startChordTrigger(chordName, btn);
+    });
+    btn.addEventListener('mouseenter', () => {
+      if (isMouseDown) {
+        startChordTrigger(chordName, btn);
+      }
+    });
+    btn.addEventListener('mouseup', () => stopChordTrigger(chordName, btn));
+    btn.addEventListener('mouseleave', () => stopChordTrigger(chordName, btn));
+    
+    // Touch interaction
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      startChordTrigger(chordName, btn);
+    });
+    btn.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (targetElement && targetElement.classList.contains('chord-btn')) {
+        chordBtns.forEach(b => {
+          if (b !== targetElement) stopChordTrigger(b.getAttribute('data-chord'), b);
+        });
+        startChordTrigger(targetElement.getAttribute('data-chord'), targetElement);
+      }
+    });
+    btn.addEventListener('touchend', () => stopChordTrigger(chordName, btn));
+    btn.addEventListener('touchcancel', () => stopChordTrigger(chordName, btn));
   });
 });
 
@@ -489,6 +528,32 @@ function playChord(chordName) {
   const a1Param = arduino1Notes.join(',');
   const a3Param = arduino3Notes.join(',');
   fetch(`${settings.hostApi}/api/arduino/play_multi?a1=${a1Param}&a3=${a3Param}`).catch(() => {});
+}
+
+function startChordTrigger(chordName, btnElement) {
+  // Prevent duplicate trigger if already active
+  if (chordIntervals.has(chordName)) return;
+
+  // Add active style to chord button
+  btnElement.classList.add('active');
+
+  // Trigger chord once immediately
+  playChord(chordName);
+
+  // Repeat playChord every 160ms for tremolo/shaking effect on hold
+  const intervalId = setInterval(() => {
+    playChord(chordName);
+  }, 160);
+  
+  chordIntervals.set(chordName, intervalId);
+}
+
+function stopChordTrigger(chordName, btnElement) {
+  if (chordIntervals.has(chordName)) {
+    clearInterval(chordIntervals.get(chordName));
+    chordIntervals.delete(chordName);
+  }
+  btnElement.classList.remove('active');
 }
 
 // 8. Pustaka Lagu Section

@@ -716,14 +716,16 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
         pitches.append(midi_to_note_name(m))
     return pitches
 
+# Define absolute path to the songs directory relative to the script location
+SONGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "songs")
+
 @app.get("/api/songs")
 def list_songs():
     import glob
-    songs_dir = os.path.join(os.getcwd(), "songs")
-    if not os.path.exists(songs_dir):
-        os.makedirs(songs_dir)
+    if not os.path.exists(SONGS_DIR):
+        os.makedirs(SONGS_DIR)
         
-    song_files = glob.glob(os.path.join(songs_dir, "*.123"))
+    song_files = glob.glob(os.path.join(SONGS_DIR, "*.123"))
     results = []
     
     for file_path in song_files:
@@ -760,7 +762,7 @@ def play_song_file(data: dict):
     if not file_name:
         raise HTTPException(status_code=400, detail="Nama file lagu tidak ditentukan.")
         
-    file_path = os.path.join(os.getcwd(), "songs", file_name)
+    file_path = os.path.join(SONGS_DIR, file_name)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File lagu tidak ditemukan.")
         

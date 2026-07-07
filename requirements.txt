@@ -9,5 +9,5 @@ scipy
 fastapi
 uvicorn
 websockets
+pyserial
 python-multipart
-

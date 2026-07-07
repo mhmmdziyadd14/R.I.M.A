@@ -9,10 +9,10 @@
 // ====================================================================
 // KONFIGURASI WIRING HARDWARE
 // ====================================================================
-// Nada 1 - 8: Terhubung langsung ke Transistor/MOSFET Driver
+// Nada 9 - 16: Terhubung langsung ke Transistor/MOSFET Driver (Setelah swap grup)
 const int directPins[8] = {3, 2, A0, A1, A2, A3, A4, A5};
 
-// Nada 9 - 16: Terhubung melalui Shift Register (74HC595)
+// Nada 1 - 8: Terhubung melalui Shift Register (74HC595) (Setelah swap grup)
 const int dataPin   = 8;  // Pin DS (Serial Data Input)
 const int clockPin  = 11; // Pin SH_CP (Shift Register Clock)
 const int latchPin  = 12; // Pin ST_CP (Storage Register/Latch)
@@ -76,16 +76,16 @@ void loop() {
 // FUNGSI UTAMA PEMICU MOTOR
 // ====================================================================
 void mainkanNada(int note) {
-  if (note >= 1 && note <= 8) {
-    // Grup 1: Pin Langsung (Nada 1 - 8)
-    int indexPin = note - 1;
+  if (note >= 9 && note <= 16) {
+    // Grup Swap: Nada 9 - 16 sekarang menggunakan Pin Langsung
+    int indexPin = note - 9;
     digitalWrite(directPins[indexPin], HIGH);
     delay(durasiGetar);
     digitalWrite(directPins[indexPin], LOW);
     
-  } else if (note >= 9 && note <= 16) {
-    // Grup 2: Shift Register (Nada 9 - 16)
-    int bitPosition = 16 - note; // Peta nada 9-16 ke bit 7-0
+  } else if (note >= 1 && note <= 8) {
+    // Grup Swap: Nada 1 - 8 sekarang menggunakan Shift Register
+    int bitPosition = 8 - note; // Peta nada 1-8 ke bit 7-0
     byte data = (1 << bitPosition);
     
     updateShiftRegister(data);

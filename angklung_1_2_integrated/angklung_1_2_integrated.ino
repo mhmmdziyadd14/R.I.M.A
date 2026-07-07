@@ -8,8 +8,8 @@
 // KONFIGURASI WIRING HARDWARE
 // ====================================================================
 // Angklung 1 (Lokal)
-const int directPins[8] = {3, 2, A0, A1, A2, A3, A4, A5}; // Nada 1 - 8
-const int dataPin8  = 8;  // DS Angklung 1 (Nada 9 - 16)
+const int directPins[8] = {3, 2, A0, A1, A2, A3, A4, A5}; // Nada 9 - 16 (Setelah swap grup)
+const int dataPin8  = 8;  // DS Angklung 1 (Nada 1 - 8 setelah swap grup)
 
 // Angklung 2 (Via LAN)
 const int dataPin9  = 9;  // DS Angklung 2 IC Pertama (Nada 17 - 24)
@@ -95,27 +95,28 @@ void mainkanNada(int note) {
   byte data9 = 0;
   byte data10 = 0;
 
-  if (note >= 1 && note <= 8) {
+  if (note >= 9 && note <= 16) {
     // ------------------------------------
-    // GRUP 1: Pin Langsung (Angklung 1)
+    // GRUP SWAP: Nada 9 - 16 sekarang menggunakan Pin Langsung
     // ------------------------------------
-    int indexPin = note - 1;
+    int indexPin = note - 9;
     digitalWrite(directPins[indexPin], HIGH);
     delay(durasiGetar);
     digitalWrite(directPins[indexPin], LOW);
     
   } else {
     // ------------------------------------
-    // GRUP 2, 3, 4: Shift Register (Angklung 1 & 2)
+    // GRUP SWAP & DAISY CHAIN: Shift Register (Angklung 1 & 2)
     // ------------------------------------
-    if (note >= 9 && note <= 16) {
-      data8 = (1 << (16 - note)); // Kalkulasi bit presisi untuk Nada 9-16
+    if (note >= 1 && note <= 8) {
+      // Nada 1 - 8 sekarang menggunakan Shift Register 1 (data8)
+      data8 = (1 << (8 - note)); 
     } 
     else if (note >= 17 && note <= 24) {
-      data9 = (1 << (24 - note)); // Kalkulasi bit presisi untuk Nada 17-24
+      data9 = (1 << (24 - note)); // Nada 17-24 (Angklung 2 IC 1)
     } 
     else if (note >= 25 && note <= 32) {
-      data10 = (1 << (32 - note)); // Kalkulasi bit presisi untuk Nada 25-32
+      data10 = (1 << (32 - note)); // Nada 25-32 (Angklung 2 IC 2)
     }
 
     // Eksekusi pengiriman data secara serentak ke Angklung 1 dan 2

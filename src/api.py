@@ -332,7 +332,9 @@ def send_to_arduino(note_num, angklung_id: int = 3, play_synth: bool = True):
     
     lock = arduino_locks.get(target_id)
     if lock:
-        with lock:
+        # Acquire lock with a timeout of 200ms (0.2s) to prevent deadlocks
+        acquired = lock.acquire(timeout=0.2)
+        if acquired:
             try:
                 ser.reset_input_buffer()
                 ser.write(f"{payload}\n".encode('utf-8'))
@@ -349,6 +351,13 @@ def send_to_arduino(note_num, angklung_id: int = 3, play_synth: bool = True):
                 arduino_serials[target_id] = None
                 notes_str = ",".join(str(x) for x in notes_list)
                 return True, f"Error Serial ({e}) - Dimainkan di Laptop (Nada: {notes_str})"
+            finally:
+                lock.release()
+        else:
+            # Lock timeout: skip serial write to prevent server hang
+            print(f"[SERIAL] Lock timeout untuk Angklung {target_id} - Melompati pengiriman untuk mencegah deadlock.")
+            notes_str = ",".join(str(x) for x in notes_list)
+            return True, f"Lock Timeout - Dimainkan di Laptop (Nada: {notes_str})"
     else:
         return True, "No lock"
 
@@ -669,8 +678,8 @@ def play_song_thread(file_content: str):
                     t3 = threading.Thread(target=send_to_arduino, args=(arduino3_notes, 3, False))
                     t1.start()
                     t3.start()
-                    t1.join()
-                    t3.join()
+                    t1.join(timeout=0.5)
+                    t3.join(timeout=0.5)
                     
                 time.sleep(sub_beat_duration)
         print("[PARSER] Pemutaran lagu selesai.")
@@ -863,6 +872,24 @@ def play_song_file(data: dict):
         file_content = read_file_safely(file_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal membaca file: {e}")
+        
+    # Synchronously validate song notation structure before starting thread
+    lines = file_content.split('\n')
+    music_lines = []
+    in_music_part = False
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
+        if is_track:
+            in_music_part = True
+        if in_music_part:
+            if line.startswith('V') or line.startswith('VB') or line.startswith('VA'):
+                music_lines.append(line)
+                
+    if not music_lines:
+        raise HTTPException(status_code=400, detail="File lagu tidak valid atau tidak memiliki data notasi musik.")
         
     global song_playback_active, current_playback_thread
     

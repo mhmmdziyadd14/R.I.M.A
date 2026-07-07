@@ -4,23 +4,45 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import socket
-import serial
-import serial.tools.list_ports
-import pygame
 import threading
 import time
 import asyncio
 import numpy as np
-import sounddevice as sd
-import torch
-import librosa
-import soundfile as sf
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 import uvicorn
 import src.config as config
-from src.model import AudioCNN
+
+# 1. Protect Serial import
+try:
+    import serial
+    import serial.tools.list_ports
+    HAS_SERIAL = True
+except ImportError:
+    HAS_SERIAL = False
+    print("[WARN] 'pyserial' is not installed. Arduino communication will be simulated.")
+
+# 2. Protect Pygame import
+try:
+    import pygame
+    HAS_PYGAME = True
+except ImportError:
+    HAS_PYGAME = False
+    print("[WARN] 'pygame' is not installed. Local laptop synth audio is disabled.")
+
+# 3. Protect heavy AI dependencies
+try:
+    import sounddevice as sd
+    import torch
+    import librosa
+    import soundfile as sf
+    from src.model import AudioCNN
+    HAS_AI = True
+except ImportError as e:
+    HAS_AI = False
+    print(f"[WARN] Optional AI dependencies (torch, librosa, sounddevice, soundfile) missing: {e}")
+    print("[WARN] Microphone pitch tracking and AI song detection are disabled. Arduino control is fully functional.")
 
 app = FastAPI(title="Angklung AI & Pitch Backend")
 
@@ -34,23 +56,27 @@ app.add_middleware(
 )
 
 # Load CNN Model
-device = torch.device("cpu")
+device = None
 model = None
 
 def init_model():
-    global model
-    if os.path.exists(config.MODEL_SAVE_PATH):
-        try:
+    global model, device
+    if not HAS_AI:
+        return
+    try:
+        device = torch.device("cpu")
+        if os.path.exists(config.MODEL_SAVE_PATH):
             model = AudioCNN(num_classes=len(config.CLASSES)).to(device)
             model.load_state_dict(torch.load(config.MODEL_SAVE_PATH, map_location=device))
             model.eval()
             print("[MODEL] Model PyTorch berhasil dimuat.")
-        except Exception as e:
-            print(f"[MODEL] Gagal memuat model: {e}")
-    else:
-        print(f"[WARNING] File model '{config.MODEL_SAVE_PATH}' belum ada. Silakan lakukan training.")
+        else:
+            print(f"[WARNING] File model '{config.MODEL_SAVE_PATH}' belum ada. Silakan lakukan training.")
+    except Exception as e:
+        print(f"[MODEL] Gagal memuat model: {e}")
 
-init_model()
+if HAS_AI:
+    init_model()
 
 # Frequency to Note mapping helper
 NOTE_FREQS = {
@@ -798,6 +824,8 @@ def record_and_classify():
 @app.post("/api/classify-audio")
 async def classify_audio(file: UploadFile = File(...)):
     """Receives an uploaded audio file from the Flutter client and runs classification."""
+    if not HAS_AI:
+        raise HTTPException(status_code=501, detail="AI classification is disabled on this machine (missing PyTorch/Librosa)")
     global model
     if model is None:
         init_model()
@@ -847,6 +875,11 @@ async def classify_audio(file: UploadFile = File(...)):
 @app.websocket("/ws/pitch")
 async def pitch_websocket(websocket: WebSocket):
     """Streams real-time pitch detection from the server's microphone to the client."""
+    if not HAS_AI:
+        await websocket.accept()
+        await websocket.send_json({"error": "Pitch streaming is disabled on this machine (missing PyTorch/SoundDevice)"})
+        await websocket.close()
+        return
     await websocket.accept()
     print("[WS] Klien terhubung ke WebSocket Pitch.")
     

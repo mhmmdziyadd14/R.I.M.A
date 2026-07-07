@@ -679,20 +679,18 @@ def play_song_thread(file_content: str, session_id: int):
                             note_num = BASS_PITCHES.index(p) + 1
                             ang_id = 3
                             
-                        # DAW track mixer volume and decay factor panel
-                        if track_name == 'VB':
-                            vol = 0.65  # Bass volume
-                            decay = 0.9  # Warm bass
-                        elif track_name == 'VA^' or track_name == 'VA':
-                            vol = 0.35  # Chord / Rhythm volume (quieter background)
-                            decay = 2.2  # Shorter, crisper chords to distinguish from melody
-                        elif track_name == 'V1':
-                            vol = 1.00  # Lead Melody volume (loudest)
-                            decay = 0.8  # Longer sustain for lead melody
-                        else:
-                            vol = 0.70  # Supporting melody volume (V2, V3, etc.)
-                            decay = 1.0  # Standard decay
-                        play_local_sound(note_num, ang_id, vol, decay)
+                        # Play local sound only if it is a new note trigger (restores clean, smooth strumming)
+                        if is_new_trigger:
+                            # DAW track mixer volume panel (decay_factor = 1.0)
+                            if track_name == 'VB':
+                                vol = 0.75  # Bass volume
+                            elif track_name == 'VA^' or track_name == 'VA':
+                                vol = 0.45  # Chord / Rhythm volume (softer background strum)
+                            elif track_name == 'V1':
+                                vol = 1.00  # Lead Melody volume (loudest)
+                            else:
+                                vol = 0.80  # Supporting melody volume (V2, V3, etc.)
+                            play_local_sound(note_num, ang_id, vol, 1.0)
                             
                         if ntype == "mel1" or ntype == "mel2":
                             arduino1_notes.append(note_num)

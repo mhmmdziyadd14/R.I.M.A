@@ -1214,16 +1214,62 @@ def startup_event():
     main_event_loop = asyncio.get_event_loop()
     init_midi()
 
-def broadcast_midi_event(note_num: int, angklung_id: int):
+def broadcast_midi_event(note_num: int, angklung_id: int, action: str):
     global main_event_loop
     if not active_midi_websockets or main_event_loop is None:
         return
-    payload = {"note": note_num, "angklung": angklung_id}
+    payload = {"note": note_num, "angklung": angklung_id, "action": action}
     for ws in list(active_midi_websockets):
         try:
             asyncio.run_coroutine_threadsafe(ws.send_json(payload), main_event_loop)
         except Exception as e:
             pass
+
+# Active notes dictionary to track pressed notes and their velocities/boards
+# Format: { (note_num, angklung_id): timestamp }
+active_midi_notes = {}
+active_midi_notes_lock = threading.Lock()
+midi_repeater_thread = None
+midi_repeater_active = False
+
+def midi_repeater_loop():
+    global midi_repeater_active
+    while midi_repeater_active:
+        with active_midi_notes_lock:
+            if not active_midi_notes:
+                time.sleep(0.01)
+                continue
+                
+            # Group active notes by board
+            board_notes = {1: [], 2: [], 3: []}
+            for (note_num, angklung_id) in list(active_midi_notes.keys()):
+                board_notes[angklung_id].append(note_num)
+                
+        # Send active notes to respective Arduinos
+        for angklung_id, notes in board_notes.items():
+            if notes:
+                send_to_arduino(notes, angklung_id, play_synth=False)
+                
+        # Wait slightly longer than durasiGetar (85ms) for continuous vibration
+        time.sleep(0.09)
+
+def start_midi_repeater():
+    global midi_repeater_active, midi_repeater_thread
+    if not midi_repeater_active:
+        midi_repeater_active = True
+        midi_repeater_thread = threading.Thread(target=midi_repeater_loop)
+        midi_repeater_thread.daemon = True
+        midi_repeater_thread.start()
+
+def stop_midi_repeater():
+    global midi_repeater_active, midi_repeater_thread
+    midi_repeater_active = False
+    if midi_repeater_thread is not None:
+        try:
+            midi_repeater_thread.join(timeout=0.5)
+        except:
+            pass
+        midi_repeater_thread = None
 
 def init_midi():
     global HAS_MIDI
@@ -1254,67 +1300,66 @@ def midi_listener_loop(device_id: int):
         midi_listener_active = False
         return
 
+    start_midi_repeater()
+
     while midi_listener_active:
         try:
             if input_device.poll():
                 events = input_device.read(10)
-                melody1_notes = []
-                melody2_notes = []
-                bass_notes = []
                 
                 for event in events:
                     status = event[0][0]
                     note = event[0][1]
                     velocity = event[0][2]
                     
-                    # status 0x90 to 0x9F is note_on
-                    if (status & 0xF0) == 0x90 and velocity > 0:
+                    is_note_on = (status & 0xF0) == 0x90 and velocity > 0
+                    is_note_off = ((status & 0xF0) == 0x80) or ((status & 0xF0) == 0x90 and velocity == 0)
+                    
+                    if is_note_on or is_note_off:
                         vol = velocity / 127.0
                         
-                        # Route note by transposing to nearest physical ranges
-                        matched = False
+                        resolved_note = None
+                        resolved_board = None
+                        
                         for octave_shift in [0, 12, -12, 24, -24]:
                             shifted_note = note + octave_shift
                             shifted_name = midi_to_note_name(shifted_note)
                             if shifted_name in ANGKLUNG1_PITCHES:
-                                note_num = ANGKLUNG1_PITCHES.index(shifted_name) + 1
-                                play_local_sound(note_num, 1, vol, "melody")
-                                melody1_notes.append(note_num)
-                                broadcast_midi_event(note_num, 1)
-                                matched = True
+                                resolved_note = ANGKLUNG1_PITCHES.index(shifted_name) + 1
+                                resolved_board = 1
                                 break
                             elif shifted_name in ANGKLUNG2_PITCHES:
-                                note_num = ANGKLUNG2_PITCHES.index(shifted_name) + 1
-                                play_local_sound(note_num, 2, vol, "melody")
-                                melody2_notes.append(note_num)
-                                broadcast_midi_event(note_num, 2)
-                                matched = True
+                                resolved_note = ANGKLUNG2_PITCHES.index(shifted_name) + 1
+                                resolved_board = 2
                                 break
                             elif shifted_name in BASS_PITCHES:
-                                note_num = BASS_PITCHES.index(shifted_name) + 1
-                                play_local_sound(note_num, 3, vol, "bass")
-                                bass_notes.append(note_num)
-                                broadcast_midi_event(note_num, 3)
-                                matched = True
+                                resolved_note = BASS_PITCHES.index(shifted_name) + 1
+                                resolved_board = 3
                                 break
                                 
-                if melody1_notes:
-                    send_to_arduino(list(set(melody1_notes)), 1, play_synth=False)
-                if melody2_notes:
-                    send_to_arduino(list(set(melody2_notes)), 2, play_synth=False)
-                if bass_notes:
-                    send_to_arduino(list(set(bass_notes)), 3, play_synth=False)
-                    
+                        if resolved_note is not None and resolved_board is not None:
+                            if is_note_on:
+                                play_local_sound(resolved_note, resolved_board, vol, "melody" if resolved_board != 3 else "bass")
+                                with active_midi_notes_lock:
+                                    active_midi_notes[(resolved_note, resolved_board)] = time.time()
+                                broadcast_midi_event(resolved_note, resolved_board, "down")
+                            elif is_note_off:
+                                with active_midi_notes_lock:
+                                    active_midi_notes.pop((resolved_note, resolved_board), None)
+                                broadcast_midi_event(resolved_note, resolved_board, "up")
+                                
             time.sleep(0.005)
         except Exception as e:
             print(f"[MIDI] Error pada loop MIDI: {e}")
             break
             
+    stop_midi_repeater()
     try:
         input_device.close()
     except Exception as e:
         print(f"[MIDI] Gagal menutup input device: {e}")
     print("[MIDI] Sambungan MIDI ditutup.")
+
 
 @app.get("/api/midi/devices")
 def get_midi_devices():

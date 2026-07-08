@@ -173,6 +173,23 @@ function stopKeyTrigger(keyElement) {
 
 let midiSocket = null;
 
+function setKeyProgrammaticState(noteNum, angklungId, isDown) {
+  const key = document.querySelector(`.key[data-note="${noteNum}"][data-angklung="${angklungId}"]`);
+  if (key) {
+    if (isDown) {
+      key.classList.add('active');
+      document.getElementById('active-note-display').textContent = key.getAttribute('data-label').toUpperCase();
+      
+      const freqMap = NOTE_FREQUENCIES[angklungId];
+      if (freqMap && freqMap[noteNum]) {
+        playClientSynthSound(freqMap[noteNum]);
+      }
+    } else {
+      key.classList.remove('active');
+    }
+  }
+}
+
 function connectMidiWebSocket() {
   const wsHost = settings.hostApi.replace('http://', 'ws://').replace('https://', 'wss://');
   
@@ -190,7 +207,7 @@ function connectMidiWebSocket() {
     try {
       const data = JSON.parse(event.data);
       if (data.note && data.angklung) {
-        highlightKeyProgrammatic(data.note, data.angklung);
+        setKeyProgrammaticState(data.note, data.angklung, data.action === "down");
       }
     } catch (e) {
       console.error("[WS-MIDI] Error parsing message:", e);

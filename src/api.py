@@ -495,7 +495,7 @@ def arduino_status():
 def arduino_play(note: int, angklung_id: int = 3):
     if note < 1 or note > 16:
         raise HTTPException(status_code=400, detail="Nomor nada harus antara 1-16")
-    success, response = send_to_arduino(note, angklung_id, play_synth=False)
+    success, response = send_to_arduino(note, angklung_id)
     return {"status": "success", "response": response}
 
 @app.get("/api/arduino/play_chord")
@@ -567,7 +567,6 @@ def play_song_thread(file_content: str, thread_token: int):
     playback_repeater_thread.daemon = True
     playback_repeater_thread.start()
     
-    previous_active_song_notes = set()
     try:
         # 1. Parse Metadata & find all track names
         bpm = 90
@@ -739,7 +738,6 @@ def play_song_thread(file_content: str, thread_token: int):
                     
                 arduino1_notes = []
                 arduino3_notes = []
-                current_active_song_notes = set()
                 
                 for track_name in tracks.keys():
                     token = bar_steps[step_idx].get(track_name, None)
@@ -805,9 +803,7 @@ def play_song_thread(file_content: str, thread_token: int):
                             note_num = BASS_PITCHES.index(p) + 1
                             ang_id = 3
                             
-                        current_active_song_notes.add((note_num, ang_id))
-                        
-                        # Play local sound only if it's a new trigger and no WS client is active
+                        # Play local sound only if it's a new trigger
                         if is_new_trigger:
                             # DAW track mixer volume panel
                             if track_name == 'VB':
@@ -818,25 +814,13 @@ def play_song_thread(file_content: str, thread_token: int):
                                 vol = 1.00  # Lead Melody volume (loudest)
                             else:
                                 vol = 0.70  # Supporting melody volume (V2, V3, etc.)
-                            if not active_midi_websockets:
-                                play_local_sound(note_num, ang_id, vol)
-                                
+                            play_local_sound(note_num, ang_id, vol)
+                            
                         if ntype == "mel1" or ntype == "mel2":
                             arduino1_notes.append(note_num)
                         elif ntype == "bass":
                             arduino3_notes.append(note_num)
                             
-                # Broadcast changes to frontend via WebSocket so the virtual keys animate and play tremolo
-                released_notes = previous_active_song_notes - current_active_song_notes
-                for (note_num, ang_id) in released_notes:
-                    broadcast_midi_event(note_num, ang_id, "up", source="song")
-                    
-                new_notes = current_active_song_notes - previous_active_song_notes
-                for (note_num, ang_id) in new_notes:
-                    broadcast_midi_event(note_num, ang_id, "down", source="song")
-                    
-                previous_active_song_notes = current_active_song_notes
-                
                 # Remove duplicates
                 arduino1_notes = list(set(arduino1_notes))
                 arduino3_notes = list(set(arduino3_notes))
@@ -861,13 +845,6 @@ def play_song_thread(file_content: str, thread_token: int):
             except:
                 pass
             playback_repeater_thread = None
-            
-        # Turn off all remaining active song notes on the frontend
-        try:
-            for (note_num, ang_id) in previous_active_song_notes:
-                broadcast_midi_event(note_num, ang_id, "up", source="song")
-        except:
-            pass
             
         try:
             send_to_arduino(0, 1)
@@ -1031,7 +1008,8 @@ def list_songs():
             "id": rel_path,
             "title": title,
             "region": region,
-            "file_name": rel_path
+            "file_name": rel_path,
+            "folder": folder_name
         })
     return results
 
@@ -1271,11 +1249,11 @@ def startup_event():
     main_event_loop = asyncio.get_event_loop()
     init_midi()
 
-def broadcast_midi_event(note_num: int, angklung_id: int, action: str, source: str = "midi"):
+def broadcast_midi_event(note_num: int, angklung_id: int, action: str):
     global main_event_loop
     if not active_midi_websockets or main_event_loop is None:
         return
-    payload = {"note": note_num, "angklung": angklung_id, "action": action, "source": source}
+    payload = {"note": note_num, "angklung": angklung_id, "action": action}
     for ws in list(active_midi_websockets):
         try:
             asyncio.run_coroutine_threadsafe(ws.send_json(payload), main_event_loop)
@@ -1396,8 +1374,7 @@ def midi_listener_loop(device_id: int):
                                 
                         if resolved_note is not None and resolved_board is not None:
                             if is_note_on:
-                                if not active_midi_websockets:
-                                    play_local_sound(resolved_note, resolved_board, vol, "melody" if resolved_board != 3 else "bass")
+                                play_local_sound(resolved_note, resolved_board, vol, "melody" if resolved_board != 3 else "bass")
                                 with active_midi_notes_lock:
                                     active_midi_notes[(resolved_note, resolved_board)] = time.time()
                                 broadcast_midi_event(resolved_note, resolved_board, "down")

@@ -41,7 +41,7 @@ function getAudioContext() {
   return audioCtx;
 }
 
-function playClientSynthSound(frequency, decayTime = 1.2) {
+function playClientSynthSound(frequency) {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
@@ -50,7 +50,7 @@ function playClientSynthSound(frequency, decayTime = 1.2) {
     const masterGain = ctx.createGain();
     masterGain.gain.setValueAtTime(0, now);
     masterGain.gain.linearRampToValueAtTime(0.7, now + 0.015);
-    masterGain.gain.exponentialRampToValueAtTime(0.0001, now + decayTime);
+    masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
     masterGain.connect(ctx.destination);
     
     // fundamental (f1)
@@ -60,7 +60,7 @@ function playClientSynthSound(frequency, decayTime = 1.2) {
     
     const gain1 = ctx.createGain();
     gain1.gain.setValueAtTime(0.5, now);
-    gain1.gain.exponentialRampToValueAtTime(0.0001, now + decayTime * 0.83);
+    gain1.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
     
     osc1.connect(gain1);
     gain1.connect(masterGain);
@@ -72,7 +72,7 @@ function playClientSynthSound(frequency, decayTime = 1.2) {
     
     const gain2 = ctx.createGain();
     gain2.gain.setValueAtTime(0.4, now);
-    gain2.gain.exponentialRampToValueAtTime(0.0001, now + decayTime);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
     
     osc2.connect(gain2);
     gain2.connect(masterGain);
@@ -84,7 +84,7 @@ function playClientSynthSound(frequency, decayTime = 1.2) {
     
     const gain3 = ctx.createGain();
     gain3.gain.setValueAtTime(0.1, now);
-    gain3.gain.exponentialRampToValueAtTime(0.0001, now + decayTime * 0.5);
+    gain3.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
     
     osc3.connect(gain3);
     gain3.connect(masterGain);
@@ -112,9 +112,9 @@ function playClientSynthSound(frequency, decayTime = 1.2) {
     osc3.start(now);
     noise.start(now);
     
-    osc1.stop(now + decayTime + 0.1);
-    osc2.stop(now + decayTime + 0.1);
-    osc3.stop(now + decayTime + 0.1);
+    osc1.stop(now + 1.3);
+    osc2.stop(now + 1.3);
+    osc3.stop(now + 1.3);
     noise.stop(now + 0.05);
   } catch (e) {
     console.error("Gagal memutar audio Web Audio API:", e);
@@ -137,17 +137,17 @@ function startKeyTrigger(keyElement) {
   keyElement.classList.add('active');
   
   // Function to perform a single strike/shake trigger
-  const triggerStrike = (isInitial = false) => {
+  const triggerStrike = () => {
     const noteNum = parseInt(keyElement.getAttribute('data-note'), 10);
     const label = keyElement.getAttribute('data-label');
     const angklungId = parseInt(keyElement.getAttribute('data-angklung') || '3', 10);
     
     document.getElementById('active-note-display').textContent = label.toUpperCase();
 
-    // Play local synthesizer sound with shorter decay for repeating shakes to prevent muddy accumulation
+    // Play local synthesizer sound
     const freqMap = NOTE_FREQUENCIES[angklungId];
     if (freqMap && freqMap[noteNum]) {
-      playClientSynthSound(freqMap[noteNum], isInitial ? 0.8 : 0.25);
+      playClientSynthSound(freqMap[noteNum]);
     }
 
     // Send to python serial endpoint
@@ -155,10 +155,10 @@ function startKeyTrigger(keyElement) {
   };
   
   // Initial trigger
-  triggerStrike(true);
+  triggerStrike();
   
   // Set interval for continuous shaking/tremolo (every 160ms)
-  const intervalId = setInterval(() => triggerStrike(false), 160);
+  const intervalId = setInterval(triggerStrike, 160);
   keyIntervals.set(noteId, intervalId);
 }
 
@@ -173,51 +173,19 @@ function stopKeyTrigger(keyElement) {
 
 let midiSocket = null;
 
-function setKeyProgrammaticState(noteNum, angklungId, isDown, source = "midi") {
+function setKeyProgrammaticState(noteNum, angklungId, isDown) {
   const key = document.querySelector(`.key[data-note="${noteNum}"][data-angklung="${angklungId}"]`);
   if (key) {
-    const noteId = `midi-${angklungId}-${noteNum}`;
     if (isDown) {
       key.classList.add('active');
       document.getElementById('active-note-display').textContent = key.getAttribute('data-label').toUpperCase();
       
-      // Prevent duplicate programmatic triggers if already held
-      if (keyIntervals.has(noteId)) return;
-      
-      const triggerProgrammaticStrike = (isInitial = false) => {
-        const freqMap = NOTE_FREQUENCIES[angklungId];
-        if (freqMap && freqMap[noteNum]) {
-          // Song playback uses short 0.25s decays for repeating tremolo shakes
-          // Manual MIDI uses natural 1.2s decay for initial strike
-          const decay = source === "song" ? (isInitial ? 0.8 : 0.25) : 1.2;
-          playClientSynthSound(freqMap[noteNum], decay);
-        }
-      };
-      
-      triggerProgrammaticStrike(true);
-      
-      // Only set repeating interval for song playback (to create continuous tremolo)
-      // Manual MIDI keys just trigger once
-      if (source === "song") {
-        const intervalId = setInterval(() => triggerProgrammaticStrike(false), 160);
-        keyIntervals.set(noteId, intervalId);
-      } else {
-        keyIntervals.set(noteId, true);
+      const freqMap = NOTE_FREQUENCIES[angklungId];
+      if (freqMap && freqMap[noteNum]) {
+        playClientSynthSound(freqMap[noteNum]);
       }
     } else {
-      if (keyIntervals.has(noteId)) {
-        const intervalVal = keyIntervals.get(noteId);
-        if (intervalVal !== true) {
-          clearInterval(intervalVal);
-        }
-        keyIntervals.delete(noteId);
-      }
-      
-      // Only remove active visual if not currently held by mouse interaction
-      const mouseNoteId = `${angklungId}-${noteNum}`;
-      if (!keyIntervals.has(mouseNoteId)) {
-        key.classList.remove('active');
-      }
+      key.classList.remove('active');
     }
   }
 }
@@ -228,18 +196,18 @@ function connectMidiWebSocket() {
   if (midiSocket) {
     try { midiSocket.close(); } catch (_) {}
   }
- 
+
   midiSocket = new WebSocket(`${wsHost}/ws/midi`);
- 
+
   midiSocket.onopen = () => {
     console.log("[WS-MIDI] Terhubung ke feedback tuts MIDI.");
   };
- 
+
   midiSocket.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
       if (data.note && data.angklung) {
-        setKeyProgrammaticState(data.note, data.angklung, data.action === "down", data.source || "midi");
+        setKeyProgrammaticState(data.note, data.angklung, data.action === "down");
       }
     } catch (e) {
       console.error("[WS-MIDI] Error parsing message:", e);
@@ -774,9 +742,10 @@ function getSongBtnId(songId) {
 // 8. Pustaka Lagu Section
 function loadSongsList(filter = 'all') {
   const container = document.getElementById('songs-container');
+  if (!container) return;
   container.innerHTML = '';
 
-  const filtered = filter === 'all' ? songs : songs.filter(s => s.category === filter);
+  const filtered = filter === 'all' ? songs : songs.filter(s => s.folder === filter);
 
   filtered.forEach(song => {
     // Escape single quotes for HTML onClick
@@ -789,7 +758,7 @@ function loadSongsList(filter = 'all') {
         <div class="song-icon"><i class="fa-solid fa-music"></i></div>
         <div class="song-details">
           <h4>${song.title}</h4>
-          <p>${song.region}</p>
+          <p>${song.region} (${song.folder})</p>
         </div>
       </div>
       <button class="song-play-btn" id="${btnDomId}" onclick="playSong('${cleanId}')">
@@ -797,6 +766,42 @@ function loadSongsList(filter = 'all') {
       </button>
     `;
     container.appendChild(item);
+  });
+}
+
+// Render dynamic filter tags based on actual folders in the song library
+function renderFilterTags() {
+  const tagContainer = document.querySelector('.filter-tags');
+  if (!tagContainer) return;
+  tagContainer.innerHTML = '';
+
+  // 1. Add "SEMUA" tag
+  const allBtn = document.createElement('button');
+  allBtn.className = 'tag-btn active';
+  allBtn.innerText = 'SEMUA';
+  allBtn.onclick = (e) => {
+    const buttons = document.querySelectorAll('.tag-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    allBtn.classList.add('active');
+    loadSongsList('all');
+  };
+  tagContainer.appendChild(allBtn);
+
+  // 2. Extract unique folder names and sort them
+  const uniqueFolders = [...new Set(songs.map(s => s.folder))].filter(Boolean).sort();
+
+  // 3. Render folder tags
+  uniqueFolders.forEach(folder => {
+    const btn = document.createElement('button');
+    btn.className = 'tag-btn';
+    btn.innerText = folder.toUpperCase();
+    btn.onclick = (e) => {
+      const buttons = document.querySelectorAll('.tag-btn');
+      buttons.forEach(btn => btn.classList.remove('active'));
+      btn.classList.add('active');
+      loadSongsList(folder);
+    };
+    tagContainer.appendChild(btn);
   });
 }
 
@@ -811,11 +816,10 @@ async function loadSongsFromBackend() {
         title: s.title,
         region: s.region,
         file_name: s.file_name,
-        category: s.region.toLowerCase().includes('sunda') ? 'sunda' :
-                  s.region.toLowerCase().includes('jawa') ? 'jawa' :
-                  s.region.toLowerCase().includes('papua') ? 'papua' : 'all'
+        folder: s.folder || 'Umum'
       }));
-      loadSongsList();
+      renderFilterTags();
+      loadSongsList('all');
     }
   } catch (e) {
     console.error("Gagal mengambil daftar lagu dari backend:", e);
@@ -825,8 +829,9 @@ async function loadSongsFromBackend() {
 function filterSongs(category) {
   const buttons = document.querySelectorAll('.tag-btn');
   buttons.forEach(btn => btn.classList.remove('active'));
-  event.target.classList.add('active');
-
+  if (window.event && window.event.target) {
+    window.event.target.classList.add('active');
+  }
   loadSongsList(category);
 }
 

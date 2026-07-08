@@ -28,9 +28,17 @@ except ImportError:
 try:
     import pygame
     HAS_PYGAME = True
+    try:
+        import pygame.midi
+        HAS_MIDI = True
+    except ImportError:
+        HAS_MIDI = False
+        print("[WARN] 'pygame.midi' is not available.")
 except ImportError:
     HAS_PYGAME = False
+    HAS_MIDI = False
     print("[WARN] 'pygame' is not installed. Local laptop synth audio is disabled.")
+
 
 # 3. Protect heavy AI dependencies
 try:
@@ -175,7 +183,7 @@ NOTE_FREQUENCIES = {
     },
     2: { # Angklung 2 (Medium/Green)
         1: 349.23, 2: 369.99, 3: 415.30, 4: 554.37, 5: 622.25, 6: 830.61, 7: 1109.73, 8: 1244.51,
-        9: 1396.91, 10: 1479.98, 11: 1567.98, 12: 1661.22
+        9: 1396.91, 10: 1479.98, 11: 1567.98, 12: 1661.22, 13: 1760.00, 14: 1864.66, 15: 1975.53, 16: 2093.00
     },
     3: { # Angklung 3 (Bass/Blue)
         1: 164.81, 2: 174.61, 3: 185.00, 4: 196.00, 5: 207.65, 6: 220.00, 7: 233.08, 8: 246.94,
@@ -818,7 +826,7 @@ ANGKLUNG1_PITCHES = [
 
 ANGKLUNG2_PITCHES = [
     "f4", "f#4", "g#4", "c#5", "d#5", "g#5", "c#6", "d#6",
-    "f6", "f#6", "g6", "g#6"
+    "f6", "f#6", "g6", "g#6", "a6", "a#6", "b6", "c7"
 ]
 
 BASS_PITCHES = [
@@ -1192,6 +1200,220 @@ async def pitch_websocket(websocket: WebSocket):
     finally:
         stream.stop()
         stream.close()
+# MIDI Global State
+midi_listener_active = False
+midi_thread = None
+connected_midi_device_id = None
+connected_midi_device_name = ""
+active_midi_websockets = []
+main_event_loop = None
+
+@app.on_event("startup")
+def startup_event():
+    global main_event_loop
+    main_event_loop = asyncio.get_event_loop()
+    init_midi()
+
+def broadcast_midi_event(note_num: int, angklung_id: int):
+    global main_event_loop
+    if not active_midi_websockets or main_event_loop is None:
+        return
+    payload = {"note": note_num, "angklung": angklung_id}
+    for ws in list(active_midi_websockets):
+        try:
+            asyncio.run_coroutine_threadsafe(ws.send_json(payload), main_event_loop)
+        except Exception as e:
+            pass
+
+def init_midi():
+    global HAS_MIDI
+    try:
+        import pygame.midi
+        if not pygame.midi.get_init():
+            pygame.midi.init()
+            print("[MIDI] Pygame MIDI berhasil diinisialisasi secara malas (lazy-init).")
+        HAS_MIDI = True
+        return True
+    except Exception as e:
+        print(f"[MIDI] Gagal menginisialisasi Pygame MIDI: {e}")
+        HAS_MIDI = False
+        return False
+
+def midi_listener_loop(device_id: int):
+    global midi_listener_active
+    if not init_midi():
+        print("[MIDI] Pygame MIDI tidak tersedia pada sistem ini.")
+        midi_listener_active = False
+        return
+        
+    try:
+        input_device = pygame.midi.Input(device_id)
+        print(f"[MIDI] Terhubung ke perangkat MIDI ID {device_id}")
+    except Exception as e:
+        print(f"[MIDI] Gagal membuka perangkat MIDI: {e}")
+        midi_listener_active = False
+        return
+
+    while midi_listener_active:
+        try:
+            if input_device.poll():
+                events = input_device.read(10)
+                melody1_notes = []
+                melody2_notes = []
+                bass_notes = []
+                
+                for event in events:
+                    status = event[0][0]
+                    note = event[0][1]
+                    velocity = event[0][2]
+                    
+                    # status 0x90 to 0x9F is note_on
+                    if (status & 0xF0) == 0x90 and velocity > 0:
+                        vol = velocity / 127.0
+                        
+                        # Route note by transposing to nearest physical ranges
+                        matched = False
+                        for octave_shift in [0, 12, -12, 24, -24]:
+                            shifted_note = note + octave_shift
+                            shifted_name = midi_to_note_name(shifted_note)
+                            if shifted_name in ANGKLUNG1_PITCHES:
+                                note_num = ANGKLUNG1_PITCHES.index(shifted_name) + 1
+                                play_local_sound(note_num, 1, vol, "melody")
+                                melody1_notes.append(note_num)
+                                broadcast_midi_event(note_num, 1)
+                                matched = True
+                                break
+                            elif shifted_name in ANGKLUNG2_PITCHES:
+                                note_num = ANGKLUNG2_PITCHES.index(shifted_name) + 1
+                                play_local_sound(note_num, 2, vol, "melody")
+                                melody2_notes.append(note_num)
+                                broadcast_midi_event(note_num, 2)
+                                matched = True
+                                break
+                            elif shifted_name in BASS_PITCHES:
+                                note_num = BASS_PITCHES.index(shifted_name) + 1
+                                play_local_sound(note_num, 3, vol, "bass")
+                                bass_notes.append(note_num)
+                                broadcast_midi_event(note_num, 3)
+                                matched = True
+                                break
+                                
+                if melody1_notes:
+                    send_to_arduino(list(set(melody1_notes)), 1, play_synth=False)
+                if melody2_notes:
+                    send_to_arduino(list(set(melody2_notes)), 2, play_synth=False)
+                if bass_notes:
+                    send_to_arduino(list(set(bass_notes)), 3, play_synth=False)
+                    
+            time.sleep(0.005)
+        except Exception as e:
+            print(f"[MIDI] Error pada loop MIDI: {e}")
+            break
+            
+    try:
+        input_device.close()
+    except Exception as e:
+        print(f"[MIDI] Gagal menutup input device: {e}")
+    print("[MIDI] Sambungan MIDI ditutup.")
+
+@app.get("/api/midi/devices")
+def get_midi_devices():
+    if not init_midi():
+        return []
+        
+    # Re-initialize pygame.midi to query OS for newly plugged-in USB MIDI devices (hot-plug refresh)
+    # Only allowed when no active stream is currently reading to prevent active connection crashes
+    if not midi_listener_active:
+        try:
+            pygame.midi.quit()
+            pygame.midi.init()
+        except:
+            pass
+            
+    devices = []
+    try:
+        for i in range(pygame.midi.get_count()):
+            info = pygame.midi.get_device_info(i)
+            if info[2] == 1: # input device
+                devices.append({
+                    "id": i,
+                    "interface": info[0].decode('utf-8', errors='ignore'),
+                    "name": info[1].decode('utf-8', errors='ignore'),
+                    "opened": info[4]
+                })
+    except Exception as e:
+        print(f"[MIDI] Gagal mengambil daftar MIDI: {e}")
+    return devices
+
+@app.post("/api/midi/connect")
+def connect_midi(data: dict):
+    global midi_listener_active, midi_thread, connected_midi_device_id, connected_midi_device_name
+    if not init_midi():
+        raise HTTPException(status_code=503, detail="Pygame MIDI tidak tersedia pada sistem ini.")
+        
+    device_id = data.get("device_id")
+    if device_id is None:
+        raise HTTPException(status_code=400, detail="ID perangkat MIDI tidak ditentukan.")
+        
+    # Disconnect existing
+    midi_listener_active = False
+    if midi_thread is not None:
+        midi_thread.join(timeout=1.0)
+        
+    dev_name = "Perangkat MIDI"
+    try:
+        info = pygame.midi.get_device_info(device_id)
+        if info:
+            dev_name = info[1].decode('utf-8', errors='ignore')
+    except:
+        pass
+    
+    connected_midi_device_id = device_id
+    connected_midi_device_name = dev_name
+    
+    midi_listener_active = True
+    midi_thread = threading.Thread(target=midi_listener_loop, args=(device_id,))
+    midi_thread.daemon = True
+    midi_thread.start()
+    return {"status": "success", "message": f"Mencoba menyambung ke {dev_name}."}
+
+@app.post("/api/midi/disconnect")
+def disconnect_midi():
+    global midi_listener_active, midi_thread, connected_midi_device_id, connected_midi_device_name
+    midi_listener_active = False
+    if midi_thread is not None:
+        midi_thread.join(timeout=1.0)
+        midi_thread = None
+    connected_midi_device_id = None
+    connected_midi_device_name = ""
+    return {"status": "success", "message": "Koneksi MIDI diputus."}
+
+@app.get("/api/midi/status")
+def get_midi_status():
+    global midi_listener_active, midi_thread, connected_midi_device_id, connected_midi_device_name
+    return {
+        "active": midi_listener_active and midi_thread is not None and midi_thread.is_alive(),
+        "device_id": connected_midi_device_id,
+        "device_name": connected_midi_device_name
+    }
+
+@app.websocket("/ws/midi")
+async def midi_websocket(websocket: WebSocket):
+    await websocket.accept()
+    active_midi_websockets.append(websocket)
+    print(f"[WS-MIDI] Klien terhubung. Total: {len(active_midi_websockets)}")
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if websocket in active_midi_websockets:
+            active_midi_websockets.remove(websocket)
+        print(f"[WS-MIDI] Klien terputus. Sisa: {len(active_midi_websockets)}")
+
+
 
 if __name__ == "__main__":
     uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)
+

@@ -166,6 +166,14 @@
                   <div class="key white" data-angklung="2" data-note="11" data-label="g6"><span class="key-lbl">g6</span></div>
                   <!-- Nada g#6 (Hijau) -->
                   <div class="key black" data-angklung="2" data-note="12" data-label="g#6"></div>
+                  <!-- Nada a6 (Hijau) -->
+                  <div class="key white" data-angklung="2" data-note="13" data-label="a6"><span class="key-lbl">a6</span></div>
+                  <!-- Nada a#6 (Hijau) -->
+                  <div class="key black" data-angklung="2" data-note="14" data-label="a#6"></div>
+                  <!-- Nada b6 (Hijau) -->
+                  <div class="key white" data-angklung="2" data-note="15" data-label="b6"><span class="key-lbl">b6</span></div>
+                  <!-- Nada c7 (Hijau) -->
+                  <div class="key white" data-angklung="2" data-note="16" data-label="c7"><span class="key-lbl">c7</span></div>
 
                 </div>
               </div>
@@ -366,11 +374,29 @@
             <span>Angklung 3 (Rendah):</span>
             <span id="modal-serial-status-3" class="badge badge-red">Offline</span>
           </div>
+        <!-- MIDI Keyboard Settings Section -->
+        <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+        <h4 style="margin: 0 0 10px 0; color: #10b981; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-keyboard"></i> MIDI Keyboard Fisik
+        </h4>
+        <div class="input-group">
+          <label for="select-midi-device">Pilih Input MIDI Device</label>
+          <div style="display: flex; gap: 8px;">
+            <select id="select-midi-device" style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid #444; color: #fff; padding: 8px; border-radius: 4px; cursor: pointer;">
+              <option value="">-- Scan/Pilih Keyboard MIDI --</option>
+            </select>
+            <button class="modal-btn" onclick="scanMidiDevices()" style="padding: 0 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Scan</button>
+          </div>
+        </div>
+        <div class="status-line" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <span>Status MIDI:</span>
+          <span id="modal-midi-status" class="badge badge-red">Offline</span>
         </div>
 
-        <div class="modal-actions">
+        <div class="modal-actions" style="margin-top: 20px;">
           <button class="modal-btn btn-cancel" onclick="toggleSettingsModal()">Tutup</button>
           <button class="modal-btn btn-save" onclick="saveConnectionSettings()">Simpan</button>
+
         </div>
       </div>
     </div>

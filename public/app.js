@@ -21,7 +21,7 @@ const NOTE_FREQUENCIES = {
   },
   2: { // Angklung 2 (Medium/Green)
     1: 349.23, 2: 369.99, 3: 415.30, 4: 554.37, 5: 622.25, 6: 830.61, 7: 1109.73, 8: 1244.51,
-    9: 1396.91, 10: 1479.98, 11: 1567.98, 12: 1661.22
+    9: 1396.91, 10: 1479.98, 11: 1567.98, 12: 1661.22, 13: 1760.00, 14: 1864.66, 15: 1975.53, 16: 2093.00
   },
   3: { // Angklung 3 (Low/Blue)
     1: 164.81, 2: 174.61, 3: 185.00, 4: 196.00, 5: 207.65, 6: 220.00, 7: 233.08, 8: 246.94,
@@ -171,6 +171,42 @@ function stopKeyTrigger(keyElement) {
   keyElement.classList.remove('active');
 }
 
+let midiSocket = null;
+
+function connectMidiWebSocket() {
+  const wsHost = settings.hostApi.replace('http://', 'ws://').replace('https://', 'wss://');
+  
+  if (midiSocket) {
+    try { midiSocket.close(); } catch (_) {}
+  }
+
+  midiSocket = new WebSocket(`${wsHost}/ws/midi`);
+
+  midiSocket.onopen = () => {
+    console.log("[WS-MIDI] Terhubung ke feedback tuts MIDI.");
+  };
+
+  midiSocket.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.note && data.angklung) {
+        highlightKeyProgrammatic(data.note, data.angklung);
+      }
+    } catch (e) {
+      console.error("[WS-MIDI] Error parsing message:", e);
+    }
+  };
+
+  midiSocket.onclose = () => {
+    console.log("[WS-MIDI] Sambungan terputus. Mencoba menghubungkan kembali dalam 5 detik...");
+    setTimeout(connectMidiWebSocket, 5000);
+  };
+
+  midiSocket.onerror = (err) => {
+    console.error("[WS-MIDI] WebSocket error:", err);
+  };
+}
+
 // 3. Application Startup
 document.addEventListener('DOMContentLoaded', () => {
   // Set initial settings values to modal inputs
@@ -183,6 +219,25 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSongsFromBackend();
   checkConnections();
   setInterval(checkConnections, 6000); // Check connections every 6 seconds
+
+  // Auto-connect last MIDI device on startup
+  const savedMidiId = localStorage.getItem('rima_midi_device_id');
+  if (savedMidiId && savedMidiId !== 'null' && savedMidiId !== 'undefined') {
+    const parsedId = parseInt(savedMidiId, 10);
+    if (!isNaN(parsedId)) {
+      fetch(`${settings.hostApi}/api/midi/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: parsedId })
+      }).catch(() => {});
+    }
+  }
+
+  // Connect to MIDI feedback WebSocket
+  connectMidiWebSocket();
+
+
+
 
   // Track global mouse state for slide-to-play
   let isMouseDown = false;
@@ -302,6 +357,9 @@ async function checkConnections() {
 
   // Check serial com status on python for all 3 devices
   let statuses = { angklung1: 'offline', angklung2: 'offline', angklung3: 'offline' };
+  let isMidiActive = false;
+  let midiDeviceName = '';
+
   if (isApiOnline) {
     try {
       // Sync configurations to python backend
@@ -324,6 +382,15 @@ async function checkConnections() {
         statuses.angklung3 = data.angklung3.status;
       }
     } catch (_) {}
+
+    try {
+      const response = await fetch(`${host}/api/midi/status`);
+      if (response.ok) {
+        const data = await response.json();
+        isMidiActive = data.active;
+        midiDeviceName = data.device_name;
+      }
+    } catch (_) {}
   }
 
   // Update Status UI badges in Modal
@@ -337,7 +404,10 @@ async function checkConnections() {
     updateBadge('modal-serial-status-2', statuses.angklung2 === 'online');
     updateBadge('modal-serial-status-3', statuses.angklung3 === 'online');
   }
+
+  updateBadge('modal-midi-status', isMidiActive, isMidiActive ? `Terhubung (${midiDeviceName})` : 'Offline');
 }
+
 
 function updateBadge(id, isOnline, customText = null) {
   const badge = document.getElementById(id);
@@ -362,22 +432,67 @@ function updateBadge(id, isOnline, customText = null) {
 }
 
 // Settings Overlay Handlers
-function toggleSettingsModal() {
+async function scanMidiDevices() {
+  const host = settings.hostApi;
+  const select = document.getElementById('select-midi-device');
+  if (!select) return;
+
+  try {
+    const response = await fetch(`${host}/api/midi/devices`);
+    if (response.ok) {
+      const devices = await response.json();
+      const currentVal = select.value;
+      
+      select.innerHTML = '<option value="">-- Scan/Pilih Keyboard MIDI --</option>';
+      
+      devices.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.id;
+        option.textContent = `${device.name} (${device.interface})`;
+        select.appendChild(option);
+      });
+      
+      if (devices.some(d => d.id.toString() === currentVal)) {
+        select.value = currentVal;
+      }
+    }
+  } catch (err) {
+    console.error("Gagal melakukan scan perangkat MIDI:", err);
+  }
+}
+
+async function toggleSettingsModal() {
   const modal = document.getElementById('settings-modal');
   if (!modal.classList.contains('active')) {
     document.getElementById('input-com-port-1').value = settings.port1;
     document.getElementById('input-com-port-3').value = settings.port3;
     document.getElementById('input-host-api').value = settings.hostApi;
     document.getElementById('input-simulation-mode').checked = settings.simulationMode;
+    
+    await scanMidiDevices();
+    
+    // Check connected midi status
+    const host = settings.hostApi;
+    try {
+      const response = await fetch(`${host}/api/midi/status`);
+      if (response.ok) {
+        const data = await response.json();
+        const selectMidi = document.getElementById('select-midi-device');
+        if (selectMidi && data.active && data.device_id !== null) {
+          selectMidi.value = data.device_id;
+        }
+      }
+    } catch (_) {}
   }
   modal.classList.toggle('active');
 }
 
-function saveConnectionSettings() {
+async function saveConnectionSettings() {
   const p1 = document.getElementById('input-com-port-1').value.trim();
   const p3 = document.getElementById('input-com-port-3').value.trim();
   const hostVal = document.getElementById('input-host-api').value.trim();
   const simMode = document.getElementById('input-simulation-mode').checked;
+  const selectMidi = document.getElementById('select-midi-device');
 
   settings.port1 = p1;
   settings.port2 = p1; // Share same port with Angklung 1
@@ -391,9 +506,30 @@ function saveConnectionSettings() {
   localStorage.setItem('rima_host_api', hostVal);
   localStorage.setItem('rima_simulation_mode', simMode);
 
+  // Connect or disconnect MIDI device
+  if (selectMidi && selectMidi.value !== "") {
+    const deviceId = parseInt(selectMidi.value, 10);
+    try {
+      await fetch(`${hostVal}/api/midi/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId })
+      });
+      localStorage.setItem('rima_midi_device_id', deviceId);
+    } catch (e) {
+      console.error("Gagal menyambung MIDI:", e);
+    }
+  } else {
+    try {
+      await fetch(`${hostVal}/api/midi/disconnect`, { method: 'POST' });
+      localStorage.removeItem('rima_midi_device_id');
+    } catch (_) {}
+  }
+
   toggleSettingsModal();
   checkConnections();
 }
+
 
 // 6. Interactive Keyboard Playback
 function triggerKeyOn(keyElement) {
@@ -457,7 +593,8 @@ const PITCH_TO_HARDWARE = {
   "b5": { angklung: 1, note: 13 }, "c6": { angklung: 1, note: 14 }, "c#6": { angklung: 2, note: 7 },
   "d6": { angklung: 1, note: 15 }, "d#6": { angklung: 2, note: 8 }, "e6": { angklung: 1, note: 16 },
   "f6": { angklung: 2, note: 9 }, "f#6": { angklung: 2, note: 10 }, "g6": { angklung: 2, note: 11 },
-  "g#6": { angklung: 2, note: 12 }
+  "g#6": { angklung: 2, note: 12 }, "a6": { angklung: 2, note: 13 }, "a#6": { angklung: 2, note: 14 },
+  "b6": { angklung: 2, note: 15 }, "c7": { angklung: 2, note: 16 }
 };
 
 function midiToPitchName(midi, preferBass) {

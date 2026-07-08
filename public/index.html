@@ -357,70 +357,78 @@
     <!-- Settings Overlay Modal -->
     <div id="settings-modal" class="modal-overlay">
       <div class="modal-card">
-        <h3>Pengaturan Koneksi</h3>
-        <div class="input-group">
-          <label for="input-com-port-1">Port Angklung 1 (Tinggi)</label>
-          <input type="text" id="input-com-port-1" value="COM10">
-        </div>
-        <div class="input-group">
-          <label for="input-com-port-2">Port Angklung 2 (Sedang)</label>
-          <input type="text" id="input-com-port-2" value="Terintegrasi dengan Angklung 1" disabled style="background-color: rgba(255,255,255,0.05); color: #888; border-color: #444;">
-        </div>
-        <div class="input-group">
-          <label for="input-com-port-3">Port Angklung 3 (Rendah)</label>
-          <input type="text" id="input-com-port-3" value="COM12">
-        </div>
-        <div class="input-group">
-          <label for="input-host-api">Alamat Host API Python</label>
-          <input type="text" id="input-host-api" value="http://localhost:8000">
-        </div>
+        <h3>Pengaturan Sistem &amp; Koneksi</h3>
         
-        <div class="input-group" style="display: flex; align-items: center; gap: 10px; margin-top: 15px; cursor: pointer; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px; border: 1px dashed rgba(255,255,255,0.1);">
-          <input type="checkbox" id="input-simulation-mode" style="width: auto; height: 18px; margin: 0; cursor: pointer;">
-          <label for="input-simulation-mode" style="margin: 0; font-weight: normal; cursor: pointer; color: #38bdf8;">Mode Simulasi (Hanya suara laptop, tanpa Angklung asli)</label>
-        </div>
-        
-        <!-- Status badges in Modal -->
-        <div class="modal-status-box">
-          <div class="status-line">
-            <span>Server FastAPI:</span>
-            <span id="modal-api-status" class="badge badge-red">Offline</span>
+        <div class="modal-body-layout">
+          <!-- Left Column: inputs -->
+          <div class="modal-body-column">
+            <h4 style="margin: 0 0 12px 0; color: #3b82f6; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Koneksi Port Angklung</h4>
+            <div class="input-group">
+              <label for="input-com-port-1">Port Angklung 1 (Tinggi)</label>
+              <input type="text" id="input-com-port-1" value="COM10">
+            </div>
+            <div class="input-group">
+              <label for="input-com-port-2">Port Angklung 2 (Sedang)</label>
+              <input type="text" id="input-com-port-2" value="Terintegrasi dengan Angklung 1" disabled style="background-color: rgba(255,255,255,0.05); color: #888; border-color: #444;">
+            </div>
+            <div class="input-group">
+              <label for="input-com-port-3">Port Angklung 3 (Rendah)</label>
+              <input type="text" id="input-com-port-3" value="COM12">
+            </div>
+            <div class="input-group">
+              <label for="input-host-api">Alamat Host API Python</label>
+              <input type="text" id="input-host-api" value="http://localhost:8000">
+            </div>
+            <div class="input-group" style="display: flex; align-items: center; gap: 10px; margin-top: 10px; cursor: pointer; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px; border: 1px dashed rgba(255,255,255,0.1);">
+              <input type="checkbox" id="input-simulation-mode" style="width: auto; height: 18px; margin: 0; cursor: pointer;">
+              <label for="input-simulation-mode" style="margin: 0; font-weight: normal; cursor: pointer; color: #38bdf8;">Mode Simulasi (Hanya suara laptop)</label>
+            </div>
           </div>
-          <div class="status-line">
-            <span>Angklung 1 (Tinggi):</span>
-            <span id="modal-serial-status-1" class="badge badge-red">Offline</span>
+          
+          <!-- Right Column: status & MIDI -->
+          <div class="modal-body-column">
+            <h4 style="margin: 0 0 12px 0; color: #f43f5e; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Status Perangkat</h4>
+            <div class="modal-status-box" style="margin-bottom: 20px;">
+              <div class="status-line">
+                <span>Server FastAPI:</span>
+                <span id="modal-api-status" class="badge badge-red">Offline</span>
+              </div>
+              <div class="status-line">
+                <span>Angklung 1 (Tinggi):</span>
+                <span id="modal-serial-status-1" class="badge badge-red">Offline</span>
+              </div>
+              <div class="status-line">
+                <span>Angklung 2 (Sedang):</span>
+                <span id="modal-serial-status-2" class="badge badge-red">Offline</span>
+              </div>
+              <div class="status-line">
+                <span>Angklung 3 (Rendah):</span>
+                <span id="modal-serial-status-3" class="badge badge-red">Offline</span>
+              </div>
+            </div>
+            
+            <h4 style="margin: 0 0 12px 0; color: #10b981; display: flex; align-items: center; gap: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+              <i class="fa-solid fa-keyboard"></i> MIDI Keyboard Fisik
+            </h4>
+            <div class="input-group">
+              <label for="select-midi-device">Pilih Input MIDI Device</label>
+              <div style="display: flex; gap: 8px;">
+                <select id="select-midi-device" style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid #444; color: #fff; padding: 8px; border-radius: 4px; cursor: pointer;">
+                  <option value="">-- Scan/Pilih Keyboard MIDI --</option>
+                </select>
+                <button class="modal-btn" onclick="scanMidiDevices()" style="padding: 0 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; flex: none;">Scan</button>
+              </div>
+            </div>
+            <div class="status-line" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+              <span>Status MIDI:</span>
+              <span id="modal-midi-status" class="badge badge-red">Offline</span>
+            </div>
           </div>
-          <div class="status-line">
-            <span>Angklung 2 (Sedang):</span>
-            <span id="modal-serial-status-2" class="badge badge-red">Offline</span>
-          </div>
-          <div class="status-line">
-            <span>Angklung 3 (Rendah):</span>
-            <span id="modal-serial-status-3" class="badge badge-red">Offline</span>
-          </div>
-        <!-- MIDI Keyboard Settings Section -->
-        <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
-        <h4 style="margin: 0 0 10px 0; color: #10b981; display: flex; align-items: center; gap: 8px;">
-          <i class="fa-solid fa-keyboard"></i> MIDI Keyboard Fisik
-        </h4>
-        <div class="input-group">
-          <label for="select-midi-device">Pilih Input MIDI Device</label>
-          <div style="display: flex; gap: 8px;">
-            <select id="select-midi-device" style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid #444; color: #fff; padding: 8px; border-radius: 4px; cursor: pointer;">
-              <option value="">-- Scan/Pilih Keyboard MIDI --</option>
-            </select>
-            <button class="modal-btn" onclick="scanMidiDevices()" style="padding: 0 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Scan</button>
-          </div>
-        </div>
-        <div class="status-line" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-          <span>Status MIDI:</span>
-          <span id="modal-midi-status" class="badge badge-red">Offline</span>
         </div>
 
-        <div class="modal-actions" style="margin-top: 20px;">
+        <div class="modal-actions" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;">
           <button class="modal-btn btn-cancel" onclick="toggleSettingsModal()">Tutup</button>
           <button class="modal-btn btn-save" onclick="saveConnectionSettings()">Simpan</button>
-
         </div>
       </div>
     </div>

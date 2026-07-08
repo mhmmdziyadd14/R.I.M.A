@@ -541,6 +541,17 @@ active_playback_notes_lock = threading.Lock()
 playback_repeater_thread = None
 playback_repeater_active = False
 
+current_playback_status = {
+    "active": False,
+    "song_title": "",
+    "current_section": "",
+    "current_bar": 0,
+    "total_bars": 0,
+    "elapsed_seconds": 0.0,
+    "total_seconds": 0.0
+}
+current_playback_status_lock = threading.Lock()
+
 def playback_repeater_loop():
     global playback_repeater_active
     while playback_repeater_active:
@@ -573,10 +584,16 @@ def play_song_thread(file_content: str, thread_token: int):
         key_sig = "F"
         beats_per_bar = 4.0
         denominator = 4
+        song_title = "Unknown Song"
         lines = file_content.split('\n')
+        
+        sections = []
+        current_section_name = "UMUM"
+        current_bar_count = 0
         
         # Helper to process blocks with alignment
         def process_block(block_lines, target_tracks, all_tracks):
+            nonlocal current_bar_count
             block_tracks = {}
             for bline in block_lines:
                 parts = bline.split(':', 1)
@@ -601,6 +618,11 @@ def play_song_thread(file_content: str, thread_token: int):
                     target_tracks[tname].extend(bars)
                 else:
                     target_tracks[tname].extend(["0"] * num_bars)
+                    
+            if not sections:
+                sections.append({"name": current_section_name, "start_bar": 0, "end_bar": 0})
+            sections[-1]["end_bar"] = current_bar_count + num_bars - 1
+            current_bar_count += num_bars
 
         # First pass: find all track names in the entire file
         all_track_names = set()
@@ -626,6 +648,14 @@ def play_song_thread(file_content: str, thread_token: int):
                     current_block = []
                 continue
                 
+            if line.startswith('$'):
+                current_section_name = line.replace('$', '').strip()
+                sections.append({"name": current_section_name, "start_bar": current_bar_count, "end_bar": current_bar_count})
+                if current_block:
+                    process_block(current_block, tracks, all_track_names)
+                    current_block = []
+                continue
+                
             is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
             if is_track:
                 in_music_part = True
@@ -637,7 +667,9 @@ def play_song_thread(file_content: str, thread_token: int):
                 
                 if not in_music_part:
                     # Parse header
-                    if line.startswith('Q:'):
+                    if line.startswith('T:'):
+                        song_title = line.split(':', 1)[1].strip()
+                    elif line.startswith('Q:'):
                         try:
                             bpm = int(line.split(':')[1].strip())
                         except:
@@ -699,6 +731,15 @@ def play_song_thread(file_content: str, thread_token: int):
 
         sub_beat_duration = ((60.0 / bpm) * tempo_beats_per_bar) / steps_per_bar
         
+        with current_playback_status_lock:
+            current_playback_status["active"] = True
+            current_playback_status["song_title"] = song_title
+            current_playback_status["current_section"] = "INTRO" if any(s["name"] == "INTRO" for s in sections) else "UMUM"
+            current_playback_status["current_bar"] = 1
+            current_playback_status["total_bars"] = max_bars
+            current_playback_status["elapsed_seconds"] = 0.0
+            current_playback_status["total_seconds"] = round(max_bars * steps_per_bar * sub_beat_duration, 1)
+
         # 3. Main Playback Loop
         last_active_notes = {track: [] for track in tracks.keys()}
         
@@ -830,12 +871,33 @@ def play_song_thread(file_content: str, thread_token: int):
                     active_playback_notes[1] = set(arduino1_notes)
                     active_playback_notes[3] = set(arduino3_notes)
                     
+                # Calculate active section
+                active_sec = "UMUM"
+                for sec in sections:
+                    if sec["start_bar"] <= bar_idx <= sec["end_bar"]:
+                        active_sec = sec["name"]
+                        break
+                        
+                with current_playback_status_lock:
+                    current_playback_status["active"] = True
+                    current_playback_status["current_section"] = active_sec
+                    current_playback_status["current_bar"] = bar_idx + 1
+                    current_playback_status["elapsed_seconds"] = round((bar_idx * steps_per_bar + step_idx) * sub_beat_duration, 1)
+                    
                 time.sleep(sub_beat_duration)
         print("[PARSER] Pemutaran lagu selesai.")
     except Exception as e:
         print(f"[PARSER] Error fatal saat memainkan lagu: {e}")
     finally:
         song_playback_active = False
+        
+        # Reset playback status
+        with current_playback_status_lock:
+            current_playback_status["active"] = False
+            current_playback_status["current_section"] = ""
+            current_playback_status["current_bar"] = 0
+            current_playback_status["elapsed_seconds"] = 0.0
+            current_playback_status["total_seconds"] = 0.0
         
         # Stop background playback repeater safely
         playback_repeater_active = False
@@ -1080,6 +1142,11 @@ def stop_song():
         print(f"[SERIAL] Gagal mengirim perintah reset ke Arduino: {e}")
         
     return {"status": "success", "message": "Song playback stopped."}
+
+@app.get("/api/arduino/playback_status")
+def get_playback_status():
+    with current_playback_status_lock:
+        return current_playback_status
 
 @app.post("/api/record-and-classify")
 def record_and_classify():

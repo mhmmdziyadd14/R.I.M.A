@@ -330,6 +330,30 @@
       </div>
     </section>
 
+    <!-- Global Song Playback Player Panel (Floating HUD) -->
+    <div id="global-player-panel" class="player-panel hide">
+      <div class="player-content">
+        <div class="player-details">
+          <div class="player-disc"><i class="fa-solid fa-compact-disc fa-spin"></i></div>
+          <div class="player-text">
+            <h4 id="player-song-title">Judul Lagu</h4>
+            <span id="player-song-section" class="badge-section">INTRO</span>
+          </div>
+        </div>
+        <div class="player-controls">
+          <div class="time-display">
+            <span id="player-time-elapsed">0:00</span>
+            <span>/</span>
+            <span id="player-time-total">0:00</span>
+          </div>
+          <button class="player-stop-btn" onclick="stopSongPlayback()"><i class="fa-solid fa-stop"></i></button>
+        </div>
+      </div>
+      <div class="player-progress-bar">
+        <div id="player-progress-fill" style="width: 0%;"></div>
+      </div>
+    </div>
+
     <!-- Settings Overlay Modal -->
     <div id="settings-modal" class="modal-overlay">
       <div class="modal-card">

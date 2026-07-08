@@ -835,6 +835,98 @@ function filterSongs(category) {
   loadSongsList(category);
 }
 
+let playbackStatusInterval = null;
+
+function startPlaybackStatusPolling() {
+  if (playbackStatusInterval) clearInterval(playbackStatusInterval);
+  
+  playbackStatusInterval = setInterval(async () => {
+    try {
+      const response = await fetch(`${settings.hostApi}/api/arduino/playback_status`);
+      if (response.ok) {
+        const status = await response.json();
+        if (status.active) {
+          showPlayerPanel(status);
+        } else {
+          stopPlaybackStatusPolling();
+          hidePlayerPanel();
+          
+          // Clear active playing state icons on buttons
+          const playButtons = document.querySelectorAll('.song-play-btn');
+          playButtons.forEach(btn => {
+            btn.classList.remove('playing');
+            btn.innerHTML = '<i class="fa-solid fa-play"></i>';
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Gagal mendapatkan status playback:", e);
+    }
+  }, 250);
+}
+
+function stopPlaybackStatusPolling() {
+  if (playbackStatusInterval) {
+    clearInterval(playbackStatusInterval);
+    playbackStatusInterval = null;
+  }
+}
+
+function formatTime(seconds) {
+  if (isNaN(seconds) || seconds === undefined) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
+
+function showPlayerPanel(status) {
+  const panel = document.getElementById('global-player-panel');
+  if (!panel) return;
+  
+  panel.classList.remove('hide');
+  
+  // Update UI texts
+  const titleEl = document.getElementById('player-song-title');
+  const sectionEl = document.getElementById('player-song-section');
+  const elapsedEl = document.getElementById('player-time-elapsed');
+  const totalEl = document.getElementById('player-time-total');
+  const progressFill = document.getElementById('player-progress-fill');
+  
+  if (titleEl) titleEl.innerText = status.song_title || 'Unknown Song';
+  if (sectionEl) {
+    sectionEl.innerText = status.current_section || 'UMUM';
+    // Hide section badge if it is default empty/UMUM
+    if (status.current_section === 'UMUM' || !status.current_section) {
+      sectionEl.style.display = 'none';
+    } else {
+      sectionEl.style.display = 'inline-block';
+    }
+  }
+  if (elapsedEl) elapsedEl.innerText = formatTime(status.elapsed_seconds);
+  if (totalEl) totalEl.innerText = formatTime(status.total_seconds);
+  
+  if (progressFill) {
+    const percent = status.total_seconds > 0 ? (status.elapsed_seconds / status.total_seconds) * 100 : 0;
+    progressFill.style.width = `${Math.min(percent, 100)}%`;
+  }
+}
+
+function hidePlayerPanel() {
+  const panel = document.getElementById('global-player-panel');
+  if (panel) {
+    panel.classList.add('hide');
+  }
+}
+
+async function stopSongPlayback() {
+  try {
+    await fetch(`${settings.hostApi}/api/arduino/stop_song`);
+  } catch (e) {
+    console.error("Gagal menghentikan lagu:", e);
+  }
+  stopAllPlaybacks();
+}
+
 async function playSong(songId) {
   const playBtn = document.getElementById(getSongBtnId(songId));
   
@@ -855,7 +947,9 @@ async function playSong(songId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ file_name: songId })
     });
-    if (!response.ok) {
+    if (response.ok) {
+      startPlaybackStatusPolling();
+    } else {
       alert("Gagal memutar lagu di server.");
       stopAllPlaybacks();
     }
@@ -886,6 +980,7 @@ function uploadAndPlaySong(inputElement) {
       
       if (response.ok) {
         console.log("[PLAYER] Memulai pemutaran file .123 di server.");
+        startPlaybackStatusPolling();
       } else {
         alert("Gagal memutar file lagu di server.");
       }
@@ -1003,6 +1098,10 @@ async function triggerLanguageClassification() {
 
 // Helper: Stop all active timers/sockets when exiting a page
 function stopAllPlaybacks() {
+  // Stop playback status polling and hide panel
+  stopPlaybackStatusPolling();
+  hidePlayerPanel();
+
   // Stop Song Interval
   if (activeSongInterval) {
     clearInterval(activeSongInterval);

@@ -872,3 +872,121 @@ body {
 .mini-kbd .key-lbl {
   font-size: 8px;
 }
+
+/* Global Floating Player Panel Style */
+.player-panel {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(0);
+  width: 90%;
+  max-width: 600px;
+  background: rgba(26, 26, 36, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4), 0 0 25px rgba(233, 30, 99, 0.15);
+  z-index: 999;
+  overflow: hidden;
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+}
+
+.player-panel.hide {
+  transform: translateX(-50%) translateY(120px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.player-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+
+.player-details {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.player-disc {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, var(--color-pink), var(--color-orange));
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 20px;
+  box-shadow: 0 0 15px rgba(233, 30, 99, 0.4);
+}
+
+.player-text h4 {
+  margin: 0 0 2px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  font-family: var(--font-header);
+}
+
+.badge-section {
+  font-size: 9px;
+  font-weight: 800;
+  color: white;
+  background: var(--color-pink);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.time-display {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  gap: 4px;
+}
+
+.player-stop-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.player-stop-btn:hover {
+  background: var(--color-pink);
+  transform: scale(1.1);
+  box-shadow: 0 0 10px rgba(233, 30, 99, 0.4);
+}
+
+.player-progress-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  width: 100%;
+}
+
+#player-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-pink), var(--color-orange));
+  border-radius: 0 2px 2px 0;
+  transition: width 0.2s linear;
+}

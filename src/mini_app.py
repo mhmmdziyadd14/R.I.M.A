@@ -47,9 +47,7 @@ app.add_middleware(
 @app.get("/api/health")
 def health_check():
     return {
-        "status": "healthy",
-        "model_loaded": model is not None,
-        "classes": config.CLASSES
+        "status": "healthy"
     }
 
 # Map of the 16 Angklung note channels for the 3 distinct frames

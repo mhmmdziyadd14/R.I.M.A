@@ -45,7 +45,7 @@ function getAudioContext() {
 function playClientSynthSound(frequency) {
   try {
     const ctx = getAudioContext();
-    const now = ctx.currentTime;
+    const now = ctx.currentTime + 0.05; // 50ms buffer to prevent audio engine glitch
     
     // Create master gain envelope
     const masterGain = ctx.createGain();
@@ -121,10 +121,11 @@ function playClientSynthSound(frequency) {
     console.error("Gagal memutar audio Web Audio API:", e);
   }
 }
-
 let activeSongInterval = null;
-let repeaterSocket = null;
-let isRepeaterListening = false;
+
+let repeaterState = 'idle';
+let recordedSequence = [];
+let repeaterPlaybackInterval = null;
 let audioContext = null;
 let micStream = null;
 let scriptProcessor = null;
@@ -672,6 +673,8 @@ async function playSong(songId) {
     if (!response.ok) {
       alert("Gagal memutar lagu di server.");
       stopAllPlaybacks();
+    } else {
+      window.isSongPlaying = true;
     }
   } catch (e) {
     alert("Gagal menghubungi server.");
@@ -700,6 +703,7 @@ function uploadAndPlaySong(inputElement) {
       
       if (response.ok) {
         console.log("[PLAYER] Memulai pemutaran file .123 di server.");
+        window.isSongPlaying = true;
       } else {
         alert("Gagal memutar file lagu di server.");
       }
@@ -721,78 +725,191 @@ function stopSongFile() {
 }
 
 // 9. Repeater Section (Pitch Tuning via Websocket)
+
+// --- LOCAL PITCH DETECTION (Repeater) ---
+const NOTE_FREQS = {};
+// Build NOTE_FREQS dynamically from PITCH_TO_HARDWARE and NOTE_FREQUENCIES
+for (const [pitch, hw] of Object.entries(PITCH_TO_HARDWARE)) {
+  const ang = hw.angklung;
+  const num = hw.note;
+  if (NOTE_FREQUENCIES[ang] && NOTE_FREQUENCIES[ang][num]) {
+    NOTE_FREQS[pitch.toUpperCase()] = NOTE_FREQUENCIES[ang][num];
+  }
+}
+
+function frequencyToNote(freq) {
+  if (freq < 150 || freq > 1700) return null; // Angklung range: 164Hz - 1661Hz
+  let closestNote = null;
+  let minDiff = Infinity;
+  for (const [note, noteFreq] of Object.entries(NOTE_FREQS)) {
+    const diff = Math.abs(freq - noteFreq);
+    if (diff < minDiff && diff < 20) { // allow max 20hz deviation
+      minDiff = diff;
+      closestNote = note;
+    }
+  }
+  return closestNote;
+}
+
+function detectPitch(buffer, sampleRate) {
+  let size = buffer.length;
+  let rms = 0;
+  for (let i = 0; i < size; i++) rms += buffer[i] * buffer[i];
+  rms = Math.sqrt(rms / size);
+  if (rms < 0.01) return 0; // noise gate
+
+  // Angklung bounds: ~150Hz to ~1700Hz
+  let minLag = Math.floor(sampleRate / 1700);
+  let maxLag = Math.ceil(sampleRate / 150);
+  
+  let maxval = -1;
+  let maxpos = -1;
+  
+  for (let i = minLag; i <= maxLag; i++) {
+    let sum = 0;
+    for (let j = 0; j < size - i; j++) {
+      sum += buffer[j] * buffer[j + i];
+    }
+    if (sum > maxval) {
+      maxval = sum;
+      maxpos = i;
+    }
+  }
+
+  let T0 = maxpos;
+  if (T0 === -1) return 0;
+  return sampleRate / T0;
+}
+async function playRepeaterSequence(sequence, statusText, micBtn, sonar) {
+  if (sequence.length === 0) {
+    repeaterState = 'idle';
+    micBtn.classList.remove('active');
+    sonar.classList.remove('active');
+    statusText.textContent = 'Siap mendengarkan nada baru.';
+    return;
+  }
+
+  let index = 0;
+  let currentPlaybackNote = null;
+  let framesSustained = 0;
+  
+  repeaterPlaybackInterval = setInterval(() => {
+    if (repeaterState !== 'playing' || index >= sequence.length) {
+      clearInterval(repeaterPlaybackInterval);
+      repeaterPlaybackInterval = null;
+      repeaterState = 'idle';
+      micBtn.classList.remove('active');
+      sonar.classList.remove('active');
+      statusText.textContent = 'Siap mendengarkan nada baru.';
+      return;
+    }
+
+    const note = sequence[index];
+    
+    // Play sound and trigger animation
+    if (note) {
+      // Re-trigger note every ~184ms (4 frames) to simulate Angklung tremolo (shaking)
+      if (note !== currentPlaybackNote || framesSustained >= 4) {
+        const hw = PITCH_TO_HARDWARE[note.toLowerCase()];
+        if (hw) {
+          highlightKeyProgrammatic(hw.note, hw.angklung);
+          document.getElementById('repeater-note').textContent = note;
+        }
+        framesSustained = 0;
+      } else {
+        framesSustained++;
+      }
+    } else {
+      framesSustained = 0;
+    }
+    
+    currentPlaybackNote = note;
+    index++;
+  }, 46);
+}
+
 async function toggleRepeaterListening() {
   const micBtn = document.getElementById('mic-repeater-btn');
   const sonar = document.querySelector('.sonar-wave.wave-green');
   const statusText = document.getElementById('repeater-status');
 
-  if (isRepeaterListening) {
+  if (repeaterState === 'playing') {
+    // Stop playback prematurely
+    repeaterState = 'idle';
+    if (repeaterPlaybackInterval) clearInterval(repeaterPlaybackInterval);
     stopAllPlaybacks();
+    micBtn.classList.remove('active');
+    sonar.classList.remove('active');
+    statusText.textContent = 'Siap mendengarkan nada baru.';
     return;
   }
 
-  isRepeaterListening = true;
+  if (repeaterState === 'recording') {
+    // Stop recording, start playback
+    repeaterState = 'playing';
+    statusText.textContent = `Memutar ulang...`;
+    
+    if (micStream) {
+      micStream.getTracks().forEach(track => track.stop());
+      micStream = null;
+    }
+    if (scriptProcessor) {
+      scriptProcessor.disconnect();
+      scriptProcessor = null;
+    }
+    if (audioContext && audioContext.state !== 'closed') {
+      audioContext.close();
+      audioContext = null;
+    }
+    
+    playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+    return;
+  }
+
+  // Start recording
+  repeaterState = 'recording';
+  recordedSequence = [];
   micBtn.classList.add('active');
   sonar.classList.add('active');
   statusText.textContent = 'Meminta izin mikrofon...';
+  
+  getAudioContext();
 
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    statusText.textContent = 'Mendengarkan nada... Dekatkan angklung ke mikrofon!';
+    statusText.textContent = 'Merekam nada... Tekan mic lagi untuk memutar ulang!';
     
-    const wsHost = settings.aiApi.replace('http://', 'ws://');
-    repeaterSocket = new WebSocket(`${wsHost}/ws/pitch`);
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioContext.createMediaStreamSource(micStream);
     
-    repeaterSocket.onopen = () => {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioContext.createMediaStreamSource(micStream);
+    scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+    source.connect(scriptProcessor);
+    scriptProcessor.connect(audioContext.destination);
+    
+    scriptProcessor.onaudioprocess = (e) => {
+      if (repeaterState !== 'recording') return;
+      const inputData = e.inputBuffer.getChannelData(0);
+      const freq = detectPitch(inputData, audioContext.sampleRate);
       
-      // Send sample rate meta
-      repeaterSocket.send(JSON.stringify({ sampleRate: audioContext.sampleRate }));
+      let note = null;
+      if (freq > 0) {
+        note = frequencyToNote(freq);
+      }
+      recordedSequence.push(note);
       
-      scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
-      source.connect(scriptProcessor);
-      scriptProcessor.connect(audioContext.destination);
-      
-      scriptProcessor.onaudioprocess = (e) => {
-        if (repeaterSocket.readyState === WebSocket.OPEN) {
-          const inputData = e.inputBuffer.getChannelData(0);
-          repeaterSocket.send(inputData.buffer); // Float32Array PCM
-        }
-      };
-    };
-
-    repeaterSocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.frequency > 0) {
-        document.getElementById('repeater-note').textContent = data.note;
-        document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
-        if (data.note) {
-          const matchedNote = mapPitchNameToNoteNumber(data.note);
-          if (matchedNote) highlightKeyProgrammatic(matchedNote);
-        }
+      if (note) {
+        document.getElementById('repeater-note').textContent = note;
+        document.getElementById('repeater-freq').textContent = `${freq.toFixed(1)} Hz`;
       }
     };
 
-    repeaterSocket.onclose = () => {
-      if (isRepeaterListening) stopAllPlaybacks();
-    };
   } catch (e) {
     console.error(e);
     statusText.textContent = 'Gagal mengakses mikrofon browser.';
+    repeaterState = 'idle';
     stopAllPlaybacks();
   }
 }
-// Maps incoming WebSocket pitch names back to 1-16 note keys
-function mapPitchNameToNoteNumber(pitchName) {
-  const map = {
-    'C3': 1, 'C#3': 2, 'D3': 3, 'D#3': 4, 'E3': 5, 'F3': 6, 'F#3': 7, 'G3': 8,
-    'E2': 9, 'F2': 10, 'F#2': 11, 'G2': 12, 'G#2': 13, 'A2': 14, 'A#2': 15, 'B2': 16
-  };
-  return map[pitchName.toUpperCase()] || null;
-}
-
-// 10. Language Classification (AI Perekam)
 // Simple WAV Encoder
 function encodeWAV(samples, sampleRate) {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
@@ -942,11 +1059,11 @@ function stopAllPlaybacks() {
     audioContext = null;
   }
 
-  if (repeaterSocket) {
-    try { repeaterSocket.close(); } catch (_) {}
-    repeaterSocket = null;
+    if (repeaterPlaybackInterval) {
+    clearInterval(repeaterPlaybackInterval);
+    repeaterPlaybackInterval = null;
   }
-  isRepeaterListening = false;  
+  repeaterState = 'idle';
   const micBtn = document.getElementById('mic-repeater-btn');
   if (micBtn) micBtn.classList.remove('active');
   
@@ -956,6 +1073,9 @@ function stopAllPlaybacks() {
   const repStatus = document.getElementById('repeater-status');
   if (repStatus) repStatus.textContent = 'Ketuk mikrofon untuk mendengarkan nada';
 
-  // Stop any custom song playing on Python backend
-  fetch(`${settings.localApi}/api/arduino/stop_song`).catch(() => {});
+  // Stop any custom song playing on Python backend only if a song was playing
+  if (window.isSongPlaying) {
+    fetch(`${settings.localApi}/api/arduino/stop_song`).catch(() => {});
+    window.isSongPlaying = false;
+  }
 }

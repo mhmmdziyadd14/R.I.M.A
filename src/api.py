@@ -536,8 +536,36 @@ song_playback_active = False
 current_playback_thread = None
 current_playback_token = 0
 
+active_playback_notes = {1: set(), 3: set()}
+active_playback_notes_lock = threading.Lock()
+playback_repeater_thread = None
+playback_repeater_active = False
+
+def playback_repeater_loop():
+    global playback_repeater_active
+    while playback_repeater_active:
+        with active_playback_notes_lock:
+            notes_1 = list(active_playback_notes[1])
+            notes_3 = list(active_playback_notes[3])
+            
+        if notes_1:
+            send_to_arduino(notes_1, 1, play_synth=False)
+        if notes_3:
+            send_to_arduino(notes_3, 3, play_synth=False)
+            
+        time.sleep(0.09)
+
 def play_song_thread(file_content: str, thread_token: int):
-    global song_playback_active, current_playback_token
+    global song_playback_active, current_playback_token, playback_repeater_active, playback_repeater_thread
+    
+    # Initialize and start the background song playback repeater
+    with active_playback_notes_lock:
+        active_playback_notes[1] = set()
+        active_playback_notes[3] = set()
+    playback_repeater_active = True
+    playback_repeater_thread = threading.Thread(target=playback_repeater_loop)
+    playback_repeater_thread.daemon = True
+    playback_repeater_thread.start()
     
     try:
         # 1. Parse Metadata & find all track names
@@ -797,14 +825,10 @@ def play_song_thread(file_content: str, thread_token: int):
                 arduino1_notes = list(set(arduino1_notes))
                 arduino3_notes = list(set(arduino3_notes))
                 
-                # Play in parallel if there are active notes (disable play_synth inside send_to_arduino)
-                if arduino1_notes or arduino3_notes:
-                    t1 = threading.Thread(target=send_to_arduino, args=(arduino1_notes, 1, False))
-                    t3 = threading.Thread(target=send_to_arduino, args=(arduino3_notes, 3, False))
-                    t1.start()
-                    t3.start()
-                    t1.join(timeout=0.5)
-                    t3.join(timeout=0.5)
+                # Update the background playback repeater active note registers
+                with active_playback_notes_lock:
+                    active_playback_notes[1] = set(arduino1_notes)
+                    active_playback_notes[3] = set(arduino3_notes)
                     
                 time.sleep(sub_beat_duration)
         print("[PARSER] Pemutaran lagu selesai.")
@@ -812,6 +836,16 @@ def play_song_thread(file_content: str, thread_token: int):
         print(f"[PARSER] Error fatal saat memainkan lagu: {e}")
     finally:
         song_playback_active = False
+        
+        # Stop background playback repeater safely
+        playback_repeater_active = False
+        if playback_repeater_thread is not None:
+            try:
+                playback_repeater_thread.join(timeout=0.5)
+            except:
+                pass
+            playback_repeater_thread = None
+            
         try:
             send_to_arduino(0, 1)
             send_to_arduino(0, 3)

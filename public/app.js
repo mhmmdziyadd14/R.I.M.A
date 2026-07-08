@@ -173,7 +173,7 @@ function stopKeyTrigger(keyElement) {
 
 let midiSocket = null;
 
-function setKeyProgrammaticState(noteNum, angklungId, isDown) {
+function setKeyProgrammaticState(noteNum, angklungId, isDown, source = "midi") {
   const key = document.querySelector(`.key[data-note="${noteNum}"][data-angklung="${angklungId}"]`);
   if (key) {
     const noteId = `midi-${angklungId}-${noteNum}`;
@@ -187,17 +187,29 @@ function setKeyProgrammaticState(noteNum, angklungId, isDown) {
       const triggerProgrammaticStrike = (isInitial = false) => {
         const freqMap = NOTE_FREQUENCIES[angklungId];
         if (freqMap && freqMap[noteNum]) {
-          playClientSynthSound(freqMap[noteNum], isInitial ? 0.8 : 0.25);
+          // Song playback uses short 0.25s decays for repeating tremolo shakes
+          // Manual MIDI uses natural 1.2s decay for initial strike
+          const decay = source === "song" ? (isInitial ? 0.8 : 0.25) : 1.2;
+          playClientSynthSound(freqMap[noteNum], decay);
         }
       };
       
       triggerProgrammaticStrike(true);
-      // Repeat synthesizer shake every 160ms for continuous sound while key is held
-      const intervalId = setInterval(() => triggerProgrammaticStrike(false), 160);
-      keyIntervals.set(noteId, intervalId);
+      
+      // Only set repeating interval for song playback (to create continuous tremolo)
+      // Manual MIDI keys just trigger once
+      if (source === "song") {
+        const intervalId = setInterval(() => triggerProgrammaticStrike(false), 160);
+        keyIntervals.set(noteId, intervalId);
+      } else {
+        keyIntervals.set(noteId, true);
+      }
     } else {
       if (keyIntervals.has(noteId)) {
-        clearInterval(keyIntervals.get(noteId));
+        const intervalVal = keyIntervals.get(noteId);
+        if (intervalVal !== true) {
+          clearInterval(intervalVal);
+        }
         keyIntervals.delete(noteId);
       }
       
@@ -216,18 +228,18 @@ function connectMidiWebSocket() {
   if (midiSocket) {
     try { midiSocket.close(); } catch (_) {}
   }
-
+ 
   midiSocket = new WebSocket(`${wsHost}/ws/midi`);
-
+ 
   midiSocket.onopen = () => {
     console.log("[WS-MIDI] Terhubung ke feedback tuts MIDI.");
   };
-
+ 
   midiSocket.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
       if (data.note && data.angklung) {
-        setKeyProgrammaticState(data.note, data.angklung, data.action === "down");
+        setKeyProgrammaticState(data.note, data.angklung, data.action === "down", data.source || "midi");
       }
     } catch (e) {
       console.error("[WS-MIDI] Error parsing message:", e);

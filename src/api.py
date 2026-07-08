@@ -829,11 +829,11 @@ def play_song_thread(file_content: str, thread_token: int):
                 # Broadcast changes to frontend via WebSocket so the virtual keys animate and play tremolo
                 released_notes = previous_active_song_notes - current_active_song_notes
                 for (note_num, ang_id) in released_notes:
-                    broadcast_midi_event(note_num, ang_id, "up")
+                    broadcast_midi_event(note_num, ang_id, "up", source="song")
                     
                 new_notes = current_active_song_notes - previous_active_song_notes
                 for (note_num, ang_id) in new_notes:
-                    broadcast_midi_event(note_num, ang_id, "down")
+                    broadcast_midi_event(note_num, ang_id, "down", source="song")
                     
                 previous_active_song_notes = current_active_song_notes
                 
@@ -865,7 +865,7 @@ def play_song_thread(file_content: str, thread_token: int):
         # Turn off all remaining active song notes on the frontend
         try:
             for (note_num, ang_id) in previous_active_song_notes:
-                broadcast_midi_event(note_num, ang_id, "up")
+                broadcast_midi_event(note_num, ang_id, "up", source="song")
         except:
             pass
             
@@ -1271,11 +1271,11 @@ def startup_event():
     main_event_loop = asyncio.get_event_loop()
     init_midi()
 
-def broadcast_midi_event(note_num: int, angklung_id: int, action: str):
+def broadcast_midi_event(note_num: int, angklung_id: int, action: str, source: str = "midi"):
     global main_event_loop
     if not active_midi_websockets or main_event_loop is None:
         return
-    payload = {"note": note_num, "angklung": angklung_id, "action": action}
+    payload = {"note": note_num, "angklung": angklung_id, "action": action, "source": source}
     for ws in list(active_midi_websockets):
         try:
             asyncio.run_coroutine_threadsafe(ws.send_json(payload), main_event_loop)

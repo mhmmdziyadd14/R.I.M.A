@@ -495,7 +495,7 @@ def arduino_status():
 def arduino_play(note: int, angklung_id: int = 3):
     if note < 1 or note > 16:
         raise HTTPException(status_code=400, detail="Nomor nada harus antara 1-16")
-    success, response = send_to_arduino(note, angklung_id)
+    success, response = send_to_arduino(note, angklung_id, play_synth=False)
     return {"status": "success", "response": response}
 
 @app.get("/api/arduino/play_chord")
@@ -509,7 +509,7 @@ def arduino_play_chord(notes: str, angklung_id: int = 3):
     if not valid_notes:
         raise HTTPException(status_code=400, detail="Tidak ada nada valid (1-16)")
         
-    success, response = send_to_arduino(valid_notes, angklung_id)
+    success, response = send_to_arduino(valid_notes, angklung_id, play_synth=False)
     return {"status": "success", "response": response}
 
 @app.get("/api/arduino/play_multi")
@@ -520,7 +520,7 @@ def arduino_play_multi(a1: str = "", a3: str = ""):
         try:
             notes_list = [int(n) for n in notes_str.split(",") if n.strip().isdigit()]
             if notes_list:
-                send_to_arduino(notes_list, board_id)
+                send_to_arduino(notes_list, board_id, play_synth=False)
         except Exception as e:
             print(f"[API] Error in play_multi thread for board {board_id}: {e}")
             
@@ -1441,7 +1441,6 @@ def midi_listener_loop(device_id: int):
                                 
                         if resolved_note is not None and resolved_board is not None:
                             if is_note_on:
-                                play_local_sound(resolved_note, resolved_board, vol, "melody" if resolved_board != 3 else "bass")
                                 with active_midi_notes_lock:
                                     active_midi_notes[(resolved_note, resolved_board)] = time.time()
                                 broadcast_midi_event(resolved_note, resolved_board, "down")

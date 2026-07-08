@@ -553,6 +553,8 @@ current_playback_status = {
 }
 current_playback_status_lock = threading.Lock()
 
+seek_bar_index = -1
+
 def playback_repeater_loop():
     global playback_repeater_active
     while playback_repeater_active:
@@ -744,9 +746,23 @@ def play_song_thread(file_content: str, thread_token: int):
         # 3. Main Playback Loop
         last_active_notes = {track: [] for track in tracks.keys()}
         
-        for bar_idx in range(max_bars):
+        bar_idx = 0
+        while bar_idx < max_bars:
             if not song_playback_active or thread_token != current_playback_token:
                 break
+                
+            global seek_bar_index
+            if seek_bar_index >= 0:
+                bar_idx = min(seek_bar_index, max_bars - 1)
+                seek_bar_index = -1
+                with active_playback_notes_lock:
+                    active_playback_notes[1] = set()
+                    active_playback_notes[3] = set()
+                try:
+                    send_to_arduino(0, 1)
+                    send_to_arduino(0, 3)
+                except:
+                    pass
                 
             bar_steps = [{} for _ in range(steps_per_bar)]
             
@@ -775,7 +791,7 @@ def play_song_thread(file_content: str, thread_token: int):
                     current_beat += token_dur
                         
             for step_idx in range(steps_per_bar):
-                if not song_playback_active or thread_token != current_playback_token:
+                if not song_playback_active or thread_token != current_playback_token or seek_bar_index >= 0:
                     break
                     
                 arduino1_notes = []
@@ -886,6 +902,7 @@ def play_song_thread(file_content: str, thread_token: int):
                     current_playback_status["elapsed_seconds"] = round((bar_idx * steps_per_bar + step_idx) * sub_beat_duration, 1)
                     
                 time.sleep(sub_beat_duration)
+            bar_idx += 1
         print("[PARSER] Pemutaran lagu selesai.")
     except Exception as e:
         print(f"[PARSER] Error fatal saat memainkan lagu: {e}")
@@ -1148,6 +1165,22 @@ def stop_song():
 def get_playback_status():
     with current_playback_status_lock:
         return current_playback_status
+
+@app.post("/api/arduino/seek_song")
+def seek_song(data: dict):
+    global seek_bar_index
+    percent = data.get("percent", 0.0)
+    percent = max(0.0, min(1.0, float(percent)))
+    
+    with current_playback_status_lock:
+        total_bars = current_playback_status.get("total_bars", 0)
+        
+    if total_bars > 0:
+        target_bar = int(percent * total_bars)
+        seek_bar_index = max(0, min(total_bars - 1, target_bar))
+        return {"status": "success", "seek_bar": seek_bar_index}
+    else:
+        raise HTTPException(status_code=400, detail="Tidak ada lagu yang sedang aktif diputar.")
 
 @app.post("/api/record-and-classify")
 def record_and_classify():

@@ -927,6 +927,23 @@ async function stopSongPlayback() {
   stopAllPlaybacks();
 }
 
+async function seekSong(event) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const clickX = event.clientX - rect.left;
+  const width = rect.width;
+  const percent = clickX / width;
+  
+  try {
+    await fetch(`${settings.hostApi}/api/arduino/seek_song`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percent: percent })
+    });
+  } catch (e) {
+    console.error("Gagal melakukan seek lagu:", e);
+  }
+}
+
 async function playSong(songId) {
   const playBtn = document.getElementById(getSongBtnId(songId));
   

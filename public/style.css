@@ -979,14 +979,21 @@ body {
 }
 
 .player-progress-bar {
-  height: 4px;
+  height: 6px;
   background: rgba(255, 255, 255, 0.1);
   width: 100%;
+  cursor: pointer;
+  position: relative;
+  transition: height 0.1s ease;
+}
+
+.player-progress-bar:hover {
+  height: 9px;
 }
 
 #player-progress-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--color-pink), var(--color-orange));
-  border-radius: 0 2px 2px 0;
-  transition: width 0.2s linear;
+  border-radius: 0 3px 3px 0;
+  transition: width 0.1s linear;
 }

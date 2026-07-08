@@ -748,10 +748,10 @@ def play_song_thread(file_content: str, thread_token: int):
                                     if pitch in BASS_PITCHES:
                                         active.append({"pitch": pitch, "type": "bass"})
                                 else:
-                                    # Shift to Melody physical range [65, 92] (f4 to g#6)
+                                    # Shift to Melody physical range [65, 96] (f4 to c7)
                                     while midi_val < 65:
                                         midi_val += 12
-                                    while midi_val > 92:
+                                    while midi_val > 96:
                                         midi_val -= 12
                                     pitch = midi_to_note_name(midi_val)
                                     if pitch in ANGKLUNG1_PITCHES:
@@ -918,7 +918,7 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
     for m in midi_notes:
         while m < 65: # f4 is midi 65
             m += 12
-        while m > 92: # g#6 is midi 92
+        while m > 96: # c7 is midi 96
             m -= 12
         pitches.append(midi_to_note_name(m))
     return pitches

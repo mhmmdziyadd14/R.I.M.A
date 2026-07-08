@@ -5,7 +5,7 @@
       "name": "R.I.M.A Web Controller (Chrome)",
       "type": "chrome",
       "request": "launch",
-      "url": "http://localhost:3000",
+      "url": "http://localhost:8000",
       "webRoot": "${workspaceFolder}/public",
       "preLaunchTask": "Jalankan Semua Server"
     }

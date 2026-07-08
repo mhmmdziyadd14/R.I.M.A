@@ -6,7 +6,8 @@ let settings = {
   port1: localStorage.getItem('rima_port_1') || 'COM10',
   port2: localStorage.getItem('rima_port_2') || 'COM11',
   port3: localStorage.getItem('rima_port_3') || 'COM12',
-  hostApi: localStorage.getItem('rima_host_api') || 'http://localhost:8000',
+  aiApi: localStorage.getItem('rima_ai_api') || 'http://192.168.1.100:8001',
+  localApi: 'http://localhost:8000',
   simulationMode: localStorage.getItem('rima_simulation_mode') === null ? true : localStorage.getItem('rima_simulation_mode') === 'true'
 };
 
@@ -124,6 +125,9 @@ function playClientSynthSound(frequency) {
 let activeSongInterval = null;
 let repeaterSocket = null;
 let isRepeaterListening = false;
+let audioContext = null;
+let micStream = null;
+let scriptProcessor = null;
 let keyIntervals = new Map();
 let chordIntervals = new Map();
 
@@ -151,7 +155,7 @@ function startKeyTrigger(keyElement) {
     }
 
     // Send to python serial endpoint
-    fetch(`${settings.hostApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}`).catch(() => {});
+    fetch(`${settings.localApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}`).catch(() => {});
   };
   
   // Initial trigger
@@ -177,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('input-com-port-1').value = settings.port1;
   document.getElementById('input-com-port-2').value = "Terintegrasi dengan Angklung 1";
   document.getElementById('input-com-port-3').value = settings.port3;
-  document.getElementById('input-host-api').value = settings.hostApi;
+  document.getElementById('input-host-api').value = settings.aiApi;
 
   // Initialize view and run background connection checks
   loadSongsFromBackend();
@@ -291,12 +295,13 @@ function navigateTo(pageId) {
 
 // 5. Connection Diagnostics
 async function checkConnections() {
-  const host = settings.hostApi;
+  const localHost = settings.localApi;
+  const aiHost = settings.aiApi;
 
   // Check python FastAPI status
   let isApiOnline = false;
   try {
-    const response = await fetch(`${host}/api/health`, { method: 'GET' });
+    const response = await fetch(`${localHost}/api/health`, { method: 'GET' });
     if (response.ok) isApiOnline = true;
   } catch (_) {}
 
@@ -305,7 +310,7 @@ async function checkConnections() {
   if (isApiOnline) {
     try {
       // Sync configurations to python backend
-      await fetch(`${host}/api/config-arduino`, {
+      await fetch(`${localHost}/api/config-arduino`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -316,7 +321,7 @@ async function checkConnections() {
         })
       });
 
-      const response = await fetch(`${host}/api/arduino/status`);
+      const response = await fetch(`${localHost}/api/arduino/status`);
       if (response.ok) {
         const data = await response.json();
         statuses.angklung1 = data.angklung1.status;
@@ -367,7 +372,7 @@ function toggleSettingsModal() {
   if (!modal.classList.contains('active')) {
     document.getElementById('input-com-port-1').value = settings.port1;
     document.getElementById('input-com-port-3').value = settings.port3;
-    document.getElementById('input-host-api').value = settings.hostApi;
+    document.getElementById('input-host-api').value = settings.aiApi;
     document.getElementById('input-simulation-mode').checked = settings.simulationMode;
   }
   modal.classList.toggle('active');
@@ -382,13 +387,13 @@ function saveConnectionSettings() {
   settings.port1 = p1;
   settings.port2 = p1; // Share same port with Angklung 1
   settings.port3 = p3;
-  settings.hostApi = hostVal;
+  settings.aiApi = hostVal;
   settings.simulationMode = simMode;
 
   localStorage.setItem('rima_port_1', p1);
   localStorage.setItem('rima_port_2', p1);
   localStorage.setItem('rima_port_3', p3);
-  localStorage.setItem('rima_host_api', hostVal);
+  localStorage.setItem('rima_ai_api', hostVal);
   localStorage.setItem('rima_simulation_mode', simMode);
 
   toggleSettingsModal();
@@ -412,7 +417,7 @@ function triggerKeyOn(keyElement) {
   }
 
   // Send request to python backend
-  fetch(`${settings.hostApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}`).catch(() => {});
+  fetch(`${settings.localApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}`).catch(() => {});
 
   // Remove active visual after transient delay
   setTimeout(() => {
@@ -551,7 +556,7 @@ function playChord(chordName) {
 
   const a1Param = arduino1Notes.join(',');
   const a3Param = arduino3Notes.join(',');
-  fetch(`${settings.hostApi}/api/arduino/play_multi?a1=${a1Param}&a3=${a3Param}`).catch(() => {});
+  fetch(`${settings.localApi}/api/arduino/play_multi?a1=${a1Param}&a3=${a3Param}`).catch(() => {});
 }
 
 function startChordTrigger(chordName, btnElement) {
@@ -617,7 +622,7 @@ function loadSongsList(filter = 'all') {
 // 8.1 Backend Song Loader
 async function loadSongsFromBackend() {
   try {
-    const response = await fetch(`${settings.hostApi}/api/songs`);
+    const response = await fetch(`${settings.localApi}/api/songs`);
     if (response.ok) {
       const backendSongs = await response.json();
       songs = backendSongs.map(s => ({
@@ -659,7 +664,7 @@ async function playSong(songId) {
   }
 
   try {
-    const response = await fetch(`${settings.hostApi}/api/arduino/play_song_file`, {
+    const response = await fetch(`${settings.localApi}/api/arduino/play_song_file`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ file_name: songId })
@@ -687,7 +692,7 @@ function uploadAndPlaySong(inputElement) {
     stopAllPlaybacks();
     
     try {
-      const response = await fetch(`${settings.hostApi}/api/arduino/play_song_file`, {
+      const response = await fetch(`${settings.localApi}/api/arduino/play_song_file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ file_content: text })
@@ -708,7 +713,7 @@ function uploadAndPlaySong(inputElement) {
 
 function stopSongFile() {
   // Send stop request to python backend
-  fetch(`${settings.hostApi}/api/arduino/stop_song`)
+  fetch(`${settings.localApi}/api/arduino/stop_song`)
     .then(() => {
       console.log("[PLAYER] Menghentikan pemutaran lagu di server.");
     })
@@ -716,7 +721,7 @@ function stopSongFile() {
 }
 
 // 9. Repeater Section (Pitch Tuning via Websocket)
-function toggleRepeaterListening() {
+async function toggleRepeaterListening() {
   const micBtn = document.getElementById('mic-repeater-btn');
   const sonar = document.querySelector('.sonar-wave.wave-green');
   const statusText = document.getElementById('repeater-status');
@@ -729,20 +734,39 @@ function toggleRepeaterListening() {
   isRepeaterListening = true;
   micBtn.classList.add('active');
   sonar.classList.add('active');
-  statusText.textContent = 'Mendengarkan nada... Dekatkan angklung ke mikrofon!';
+  statusText.textContent = 'Meminta izin mikrofon...';
 
-  // Connect to FastAPI WebSocket endpoint
-  const wsHost = settings.hostApi.replace('http://', 'ws://');
   try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    statusText.textContent = 'Mendengarkan nada... Dekatkan angklung ke mikrofon!';
+    
+    const wsHost = settings.aiApi.replace('http://', 'ws://');
     repeaterSocket = new WebSocket(`${wsHost}/ws/pitch`);
     
+    repeaterSocket.onopen = () => {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(micStream);
+      
+      // Send sample rate meta
+      repeaterSocket.send(JSON.stringify({ sampleRate: audioContext.sampleRate }));
+      
+      scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+      source.connect(scriptProcessor);
+      scriptProcessor.connect(audioContext.destination);
+      
+      scriptProcessor.onaudioprocess = (e) => {
+        if (repeaterSocket.readyState === WebSocket.OPEN) {
+          const inputData = e.inputBuffer.getChannelData(0);
+          repeaterSocket.send(inputData.buffer); // Float32Array PCM
+        }
+      };
+    };
+
     repeaterSocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.frequency > 0) {
         document.getElementById('repeater-note').textContent = data.note;
         document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
-        
-        // Match frequency to closest note number and trigger flash
         if (data.note) {
           const matchedNote = mapPitchNameToNoteNumber(data.note);
           if (matchedNote) highlightKeyProgrammatic(matchedNote);
@@ -755,10 +779,10 @@ function toggleRepeaterListening() {
     };
   } catch (e) {
     console.error(e);
+    statusText.textContent = 'Gagal mengakses mikrofon browser.';
     stopAllPlaybacks();
   }
 }
-
 // Maps incoming WebSocket pitch names back to 1-16 note keys
 function mapPitchNameToNoteNumber(pitchName) {
   const map = {
@@ -769,6 +793,39 @@ function mapPitchNameToNoteNumber(pitchName) {
 }
 
 // 10. Language Classification (AI Perekam)
+// Simple WAV Encoder
+function encodeWAV(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  
+  const writeString = (view, offset, string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+  
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); 
+  view.setUint16(22, 1, true); 
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+  
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    let s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return new Blob([view], { type: 'audio/wav' });
+}
+
 async function triggerLanguageClassification() {
   const micBtn = document.getElementById('mic-bahasa-btn');
   const sonar = document.getElementById('ai-waves');
@@ -777,61 +834,119 @@ async function triggerLanguageClassification() {
   micBtn.disabled = true;
   micBtn.classList.add('active');
   sonar.classList.add('active');
-  statusText.textContent = 'Merekam ucapan Anda selama 1.5 detik...';
+  statusText.textContent = 'Meminta izin mikrofon...';
 
   try {
-    const response = await fetch(`${settings.hostApi}/api/record-and-classify`, { method: 'POST' });
-    if (response.ok) {
-      const data = await response.json();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    statusText.textContent = 'Merekam ucapan Anda selama 1.5 detik...';
+    
+    const actx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = actx.createMediaStreamSource(stream);
+    const processor = actx.createScriptProcessor(4096, 1, 1);
+    
+    let recordedBuffers = [];
+    let recordingLength = 0;
+    let isRecording = true;
+    
+    source.connect(processor);
+    processor.connect(actx.destination);
+    
+    processor.onaudioprocess = (e) => {
+      if (!isRecording) return;
+      const input = e.inputBuffer.getChannelData(0);
+      recordedBuffers.push(new Float32Array(input));
+      recordingLength += input.length;
+    };
+    
+    setTimeout(async () => {
+      isRecording = false;
+      stream.getTracks().forEach(track => track.stop());
+      processor.disconnect();
+      if (actx.state !== 'closed') actx.close();
+      statusText.textContent = 'Menganalisis audio...';
       
-      document.getElementById('ai-class').textContent = data.predicted_class.toUpperCase();
-      document.getElementById('ai-conf').textContent = `${(data.confidence * 100).toFixed(0)}%`;
-      statusText.textContent = `Deteksi selesai! Wilayah: ${data.region}`;
-
-      // Automatically play corresponding regional song
-      if (data.song) {
-        const matchedSong = songs.find(s => s.id === data.song);
-        if (matchedSong) {
-          setTimeout(() => {
-            navigateTo('page-pustaka');
-            playSong(matchedSong.id, matchedSong.notes);
-          }, 1500);
-        }
+      const result = new Float32Array(recordingLength);
+      let offset = 0;
+      for (let i = 0; i < recordedBuffers.length; i++) {
+        result.set(recordedBuffers[i], offset);
+        offset += recordedBuffers[i].length;
       }
-    } else {
-      statusText.textContent = 'Gagal memproses klasifikasi suara.';
-    }
+      
+      const wavBlob = encodeWAV(result, actx.sampleRate);
+      const formData = new FormData();
+      formData.append("file", wavBlob, "recording.wav");
+      
+      try {
+        const response = await fetch(`${settings.aiApi}/api/classify-audio`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          document.getElementById('ai-class').textContent = data.predicted_class.toUpperCase();
+          document.getElementById('ai-conf').textContent = `${(data.confidence * 100).toFixed(0)}%`;
+          statusText.textContent = `Deteksi selesai! Wilayah: ${data.region}`;
+
+          if (data.song) {
+            const matchedSong = songs.find(s => s.id === data.song);
+            if (matchedSong) {
+              setTimeout(() => {
+                navigateTo('page-pustaka');
+                playSong(matchedSong.id, matchedSong.notes);
+              }, 1500);
+            }
+          }
+        } else {
+          statusText.textContent = 'Gagal memproses klasifikasi suara.';
+        }
+      } catch (e) {
+        statusText.textContent = 'Gagal menghubungi server backend AI.';
+      } finally {
+        micBtn.disabled = false;
+        micBtn.classList.remove('active');
+        sonar.classList.remove('active');
+      }
+    }, 1500);
+    
   } catch (e) {
-    statusText.textContent = 'Gagal menghubungi server backend AI.';
-  } finally {
+    statusText.textContent = 'Gagal mengakses mikrofon browser.';
     micBtn.disabled = false;
     micBtn.classList.remove('active');
     sonar.classList.remove('active');
   }
 }
-
 // Helper: Stop all active timers/sockets when exiting a page
 function stopAllPlaybacks() {
-  // Stop Song Interval
   if (activeSongInterval) {
     clearInterval(activeSongInterval);
     activeSongInterval = null;
   }
 
-  // Stop Play buttons class
   const playButtons = document.querySelectorAll('.song-play-btn');
   playButtons.forEach(btn => {
     btn.classList.remove('playing');
     btn.innerHTML = '<i class="fa-solid fa-play"></i>';
   });
 
-  // Stop Repeater WebSocket
+  if (micStream) {
+    micStream.getTracks().forEach(track => track.stop());
+    micStream = null;
+  }
+  if (scriptProcessor) {
+    scriptProcessor.disconnect();
+    scriptProcessor = null;
+  }
+  if (audioContext && audioContext.state !== 'closed') {
+    audioContext.close();
+    audioContext = null;
+  }
+
   if (repeaterSocket) {
     try { repeaterSocket.close(); } catch (_) {}
     repeaterSocket = null;
   }
-  isRepeaterListening = false;
-  
+  isRepeaterListening = false;  
   const micBtn = document.getElementById('mic-repeater-btn');
   if (micBtn) micBtn.classList.remove('active');
   
@@ -842,5 +957,5 @@ function stopAllPlaybacks() {
   if (repStatus) repStatus.textContent = 'Ketuk mikrofon untuk mendengarkan nada';
 
   // Stop any custom song playing on Python backend
-  fetch(`${settings.hostApi}/api/arduino/stop_song`).catch(() => {});
+  fetch(`${settings.localApi}/api/arduino/stop_song`).catch(() => {});
 }

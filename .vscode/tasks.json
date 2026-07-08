@@ -2,9 +2,34 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Jalankan FastAPI AI Backend",
+      "label": "Jalankan Mini PC (PWA & IoT Gateway)",
       "type": "shell",
-      "command": "python -m src.api",
+      "command": "python src/mini_app.py",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "servers"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": {
+          "regexp": "."
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Uvicorn running",
+          "endsPattern": "Application startup complete"
+        }
+      }
+    },
+    {
+      "label": "Jalankan AI Server",
+      "type": "shell",
+      "command": "python src/ai_server.py",
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -52,36 +77,11 @@
       }
     },
     {
-      "label": "Jalankan Node.js Server",
-      "type": "shell",
-      "command": "node server.js",
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "group": "servers"
-      },
-      "isBackground": true,
-      "problemMatcher": {
-        "owner": "custom",
-        "pattern": {
-          "regexp": "."
-        },
-        "background": {
-          "activeOnStart": true,
-          "beginsPattern": "running at",
-          "endsPattern": "http://localhost"
-        }
-      }
-    },
-    {
       "label": "Jalankan Semua Server",
       "dependsOn": [
-        "Jalankan FastAPI AI Backend",
-        "Jalankan Mock IoT Server",
-        "Jalankan Node.js Server"
+        "Jalankan Mini PC (PWA & IoT Gateway)",
+        "Jalankan AI Server",
+        "Jalankan Mock IoT Server"
       ],
       "problemMatcher": []
     }

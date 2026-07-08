@@ -495,7 +495,7 @@ def arduino_status():
 def arduino_play(note: int, angklung_id: int = 3):
     if note < 1 or note > 16:
         raise HTTPException(status_code=400, detail="Nomor nada harus antara 1-16")
-    success, response = send_to_arduino(note, angklung_id)
+    success, response = send_to_arduino(note, angklung_id, play_synth=False)
     return {"status": "success", "response": response}
 
 @app.get("/api/arduino/play_chord")
@@ -1373,7 +1373,8 @@ def midi_listener_loop(device_id: int):
                                 
                         if resolved_note is not None and resolved_board is not None:
                             if is_note_on:
-                                play_local_sound(resolved_note, resolved_board, vol, "melody" if resolved_board != 3 else "bass")
+                                if not active_midi_websockets:
+                                    play_local_sound(resolved_note, resolved_board, vol, "melody" if resolved_board != 3 else "bass")
                                 with active_midi_notes_lock:
                                     active_midi_notes[(resolved_note, resolved_board)] = time.time()
                                 broadcast_midi_event(resolved_note, resolved_board, "down")

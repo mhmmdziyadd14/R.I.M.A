@@ -31,7 +31,7 @@ const char* namaNada[32] = {
   "f6", "f#6", "g6", "g#6", "a6", "a#6", "b6", "c7"
 };
 
-const int durasiGetar = 85; 
+int durasiGetar = 85; 
 
 // Prototipe fungsi
 void updateAllShiftRegisters(byte d8, byte d9, byte d10);
@@ -75,8 +75,18 @@ void loop() {
     String input = Serial.readStringUntil('\n');
     input.trim();
     if (input.length() > 0) {
-      mainkanBanyakNada(input);
-      Serial.println(F("OK")); // Kirim respon balik ke laptop
+      if (input.startsWith("P")) {
+        int newDur = input.substring(1).toInt();
+        if (newDur >= 10 && newDur <= 200) {
+          durasiGetar = newDur;
+          Serial.println(F("DUR_OK"));
+        } else {
+          Serial.println(F("DUR_ERR"));
+        }
+      } else {
+        mainkanBanyakNada(input);
+        Serial.println(F("OK")); // Kirim respon balik ke laptop
+      }
     }
   }
 }

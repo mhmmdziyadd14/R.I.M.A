@@ -833,6 +833,8 @@ def play_song_thread(file_content: str, thread_token: int):
                     
                 arduino1_notes = []
                 arduino3_notes = []
+                one_shot_arduino1 = []
+                one_shot_arduino3 = []
                 
                 for track_name in tracks.keys():
                     event = bar_steps[step_idx].get(track_name, None)
@@ -930,12 +932,31 @@ def play_song_thread(file_content: str, thread_token: int):
                         if ntype == "mel1" or ntype == "mel2":
                             # Only play the chord's root note physically to prevent clashes
                             if not note_info.get("is_chord_member", False):
-                                arduino1_notes.append(note_num)
+                                if track_name == 'V1':
+                                    arduino1_notes.append(note_num)
+                                else:
+                                    if is_new_trigger:
+                                        one_shot_arduino1.append(note_num)
                         elif ntype == "bass":
-                            arduino3_notes.append(note_num)
+                            if track_name == 'VB':
+                                arduino3_notes.append(note_num)
+                            else:
+                                if is_new_trigger:
+                                    one_shot_arduino3.append(note_num)
                             
                 arduino1_notes = list(set(arduino1_notes))
                 arduino3_notes = list(set(arduino3_notes))
+                one_shot_arduino1 = list(set(one_shot_arduino1))
+                one_shot_arduino3 = list(set(one_shot_arduino3))
+                
+                # Combined immediate strike: vibrating notes + staccato notes
+                immediate1 = list(set(arduino1_notes + one_shot_arduino1))
+                immediate3 = list(set(arduino3_notes + one_shot_arduino3))
+                
+                if immediate1:
+                    threading.Thread(target=send_to_arduino, args=(immediate1, 1, False), daemon=True).start()
+                if immediate3:
+                    threading.Thread(target=send_to_arduino, args=(immediate3, 3, False), daemon=True).start()
                 
                 with active_playback_notes_lock:
                     active_playback_notes[1] = set(arduino1_notes)

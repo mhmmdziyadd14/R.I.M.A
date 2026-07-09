@@ -743,7 +743,7 @@ def parse_partitur_data(file_content: str) -> dict:
     # Specific override for Can't Help Falling in Love
     song_title = metadata.get("T", "").lower()
     if "can't help falling in love" in song_title or "cant help falling in love" in song_title:
-        metadata["Q"] = metadata.get("Q", 90) * 3
+        metadata["Q"] = int(metadata.get("Q", 90) * 1.5)
                 
     # 2. Extract Tracks
     raw_tracks = {}

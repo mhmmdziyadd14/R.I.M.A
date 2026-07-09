@@ -603,13 +603,13 @@ global_v2_staccato = False
 global_vb_staccato = False
 global_va_staccato = False
 
-def parse_subtoken(sub_tok: str, key_sig: str) -> dict:
+def parse_subtoken(sub_tok: str, key_sig: str, time_sig_scale: float = 1.0) -> dict:
     # 1. Determine duration
-    duration = 1.0
+    duration = 1.0 * time_sig_scale
     if '=' in sub_tok:
-        duration = 0.25
+        duration = 0.25 * time_sig_scale
     elif '-' in sub_tok:
-        duration = 0.5
+        duration = 0.5 * time_sig_scale
         
     if sub_tok.startswith('.'):
         return {
@@ -720,8 +720,14 @@ def parse_partitur_data(file_content: str) -> dict:
             metadata["M"] = m_val
             if '/' in m_val:
                 try:
-                    metadata["beats_per_bar"] = float(m_val.split('/')[0])
-                    metadata["denominator"] = int(m_val.split('/')[1])
+                    num_str, den_str = m_val.split('/')
+                    num = float(num_str)
+                    den = int(den_str)
+                    metadata["denominator"] = den
+                    if den == 8:
+                        metadata["beats_per_bar"] = num / 3.0
+                    else:
+                        metadata["beats_per_bar"] = num
                 except: pass
             else:
                 try:
@@ -778,7 +784,9 @@ def parse_partitur_data(file_content: str) -> dict:
                 matches = subtoken_pattern.findall(tok)
                 for sub_tok in matches:
                     if sub_tok:
-                        p_sub = parse_subtoken(sub_tok, key_sig)
+                        den = metadata.get("denominator", 4)
+                        time_sig_scale = 1.0 / 3.0 if den == 8 else 1.0
+                        p_sub = parse_subtoken(sub_tok, key_sig, time_sig_scale)
                         if p_sub:
                             parsed_subtokens.append(p_sub)
                     

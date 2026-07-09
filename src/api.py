@@ -696,115 +696,67 @@ def parse_partitur_data(file_content: str) -> dict:
     current_section_name = "UMUM"
     current_bar_count = 0
     
-    # First pass: find all track names in the entire file
-    all_track_names = set()
+    # 1. Parse Metadata and Sections
     for line in lines:
         line = line.strip()
         if not line: continue
-        is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
-        if is_track:
-            tname = line.split(':', 1)[0].strip()
-            all_track_names.add(tname)
-            
-    # Initialize tracks with empty lists
-    raw_tracks = {tname: [] for tname in all_track_names}
-    
-    # Helper to process blocks with alignment
-    def process_block(block_lines):
-        nonlocal current_bar_count
-        block_tracks = {}
-        for bline in block_lines:
-            parts = bline.split(':', 1)
-            if len(parts) != 2:
-                continue
-            tname = parts[0].strip()
-            tcontent = parts[1].strip()
-            
-            # Split into bars using '|'
-            bars = [b.strip() for b in tcontent.split('|') if b.strip()]
-            block_tracks[tname] = bars
-            
-        if not block_tracks:
-            return
-            
-        num_bars = max(len(b) for b in block_tracks.values())
-        for tname in all_track_names:
-            if tname in block_tracks:
-                bars = block_tracks[tname]
-                # Pad with empty bars ("0") if this track has fewer bars in this block
-                while len(bars) < num_bars:
-                    bars.append("0")
-                raw_tracks[tname].extend(bars)
-            else:
-                raw_tracks[tname].extend(["0"] * num_bars)
-                
-        if not sections:
-            sections.append({"name": current_section_name, "start_bar": 0, "end_bar": 0})
-        sections[-1]["end_bar"] = current_bar_count + num_bars - 1
-        current_bar_count += num_bars
-
-    # Second pass: group into blocks and parse
-    current_block = []
-    in_music_part = False
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            if current_block:
-                process_block(current_block)
-                current_block = []
-            continue
-            
         if line.startswith('$'):
             current_section_name = line.replace('$', '').strip()
             sections.append({"name": current_section_name, "start_bar": current_bar_count, "end_bar": current_bar_count})
-            if current_block:
-                process_block(current_block)
-                current_block = []
             continue
             
+        if line.startswith('T:'):
+            metadata["T"] = line.split(':', 1)[1].strip()
+        elif line.startswith('Q:'):
+            try:
+                metadata["Q"] = int(line.split(':', 1)[1].strip())
+            except: pass
+        elif line.startswith('K:'):
+            k_val = line.split(':', 1)[1].strip().upper()
+            k_val = re.sub(r"[^A-Z#B]", "", k_val)
+            metadata["K"] = k_val if k_val else "C"
+        elif line.startswith('M:'):
+            m_val = line.split(':', 1)[1].strip()
+            metadata["M"] = m_val
+            if '/' in m_val:
+                try:
+                    metadata["beats_per_bar"] = float(m_val.split('/')[0])
+                    metadata["denominator"] = int(m_val.split('/')[1])
+                except: pass
+            else:
+                try:
+                    metadata["beats_per_bar"] = float(m_val)
+                except: pass
+        
         is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
         if is_track:
-            in_music_part = True
-            current_block.append(line)
-        else:
-            if current_block:
-                process_block(current_block)
-                current_block = []
+            parts = line.split(':', 1)
+            tcontent = parts[1].strip()
+            bars = [b.strip() for b in tcontent.split('|') if b.strip()]
+            num_bars = len(bars)
+            if not sections:
+                sections.append({"name": current_section_name, "start_bar": 0, "end_bar": 0})
+            sections[-1]["end_bar"] = max(sections[-1]["end_bar"], current_bar_count + num_bars - 1)
+            if parts[0].strip() == 'V1':
+                current_bar_count += num_bars
+                
+    # 2. Extract Tracks
+    raw_tracks = {}
+    for line in lines:
+        line = line.strip()
+        if not line: continue
+        if line.startswith('$'): continue
+        if ':' in line:
+            parts = line.split(':', 1)
+            prefix = parts[0].strip()
+            content = parts[1].strip()
             
-            if not in_music_part:
-                # Parse header
-                if line.startswith('T:'):
-                    metadata["T"] = line.split(':', 1)[1].strip()
-                elif line.startswith('Q:'):
-                    try:
-                        metadata["Q"] = int(line.split(':', 1)[1].strip())
-                    except: pass
-                elif line.startswith('K:'):
-                    k_val = line.split(':', 1)[1].strip().upper()
-                    k_val = re.sub(r"[^A-Z#B]", "", k_val)
-                    metadata["K"] = k_val if k_val else "C"
-                elif line.startswith('M:'):
-                    m_val = line.split(':', 1)[1].strip()
-                    metadata["M"] = m_val
-                    if '/' in m_val:
-                        try:
-                            metadata["beats_per_bar"] = float(m_val.split('/')[0])
-                            metadata["denominator"] = int(m_val.split('/')[1])
-                        except: pass
-                    else:
-                        try:
-                            metadata["beats_per_bar"] = float(m_val)
-                        except: pass
-                        
-    if current_block:
-        process_block(current_block)
-
-    # Specific override for Can't Help Falling in Love
-    song_title = metadata.get("T", "").lower()
-    if "can't help falling in love" in song_title or "cant help falling in love" in song_title:
-        metadata["Q"] = 204
-        
+            if prefix.startswith('V') or prefix.startswith('VA'):
+                if prefix not in raw_tracks:
+                    raw_tracks[prefix] = []
+                bars = [b.strip() for b in content.split('|') if b.strip()]
+                raw_tracks[prefix].extend(bars)
+                
     # 3. Tokenize & Parse
     parsed_tracks = {}
     key_sig = metadata["K"]
@@ -863,7 +815,7 @@ def midi_to_note_name(midi_num: int) -> str:
     note_name = names[midi_num % 12]
     return f"{note_name}{octave}"
 
-def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
+def resolve_chord_pitches(chord_symbol: str, key_sig: str, transpose: int = 0) -> list:
     key_roots = {
         "C": 60, "C#": 61, "DB": 61, "D": 62, "D#": 63, "EB": 63,
         "E": 64, "F": 65, "F#": 66, "GB": 66, "G": 67, "G#": 68,
@@ -902,9 +854,9 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
         fifth_offset = 7
         
         midi_notes = [
-            chord_root_midi,
-            chord_root_midi + third_offset,
-            chord_root_midi + fifth_offset
+            chord_root_midi + transpose,
+            chord_root_midi + third_offset + transpose,
+            chord_root_midi + fifth_offset + transpose
         ]
     else:
         # Standard alphabetical chord (e.g. C, Am, G7, F#m, Bb)
@@ -927,9 +879,9 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
         fifth_offset = 7
         
         midi_notes = [
-            chord_root_midi,
-            chord_root_midi + third_offset,
-            chord_root_midi + fifth_offset
+            chord_root_midi + transpose,
+            chord_root_midi + third_offset + transpose,
+            chord_root_midi + fifth_offset + transpose
         ]
         
     pitches = []
@@ -978,11 +930,10 @@ def play_song_thread(file_content: str, thread_token: int):
         if auto_transpose != 0:
             print(f"[PARSER] Auto-Transpose dinamis diterapkan: {auto_transpose} semitone.")
             for track_name, bars in parsed["tracks"].items():
-                if track_name == 'V1':
-                    for bar in bars:
-                        for tok in bar["tokens"]:
-                            if tok["type"] == "note":
-                                tok["midi_value"] += auto_transpose
+                for bar in bars:
+                    for tok in bar["tokens"]:
+                        if tok["type"] == "note":
+                            tok["midi_value"] += auto_transpose
         # ----------------------------
         
         events_by_time = {}
@@ -992,7 +943,10 @@ def play_song_thread(file_content: str, thread_token: int):
                 events_by_time[time_beat] = []
             events_by_time[time_beat].append({"action": action, "track": track, "data": data})
 
+        denominator = parsed["metadata"]["denominator"]
         seconds_per_beat = 60.0 / bpm
+        if denominator == 8:
+            seconds_per_beat /= 3.0
         gap_beats = 0.05 / seconds_per_beat
 
         def schedule_note_events(tok_start, total_duration, track_name, tok):
@@ -1138,8 +1092,8 @@ def play_song_thread(file_content: str, thread_token: int):
                 current_playback_status["elapsed_seconds"] = round(elapsed_seconds, 1)
                 current_playback_status["current_section"] = active_sec
                 
-            has_action_1 = False
-            has_action_3 = False
+            arduino1_on_notes = []
+            arduino3_on_notes = []
             
             for ev in events_by_time[beat_time]:
                 action = ev["action"]
@@ -1164,7 +1118,7 @@ def play_song_thread(file_content: str, thread_token: int):
                             pitches_to_play.append((pitch, "mel2", False))
                             
                 elif tok["type"] == "chord":
-                    chord_pitches = resolve_chord_pitches(tok["chord_sym"], key_sig)
+                    chord_pitches = resolve_chord_pitches(tok["chord_sym"], key_sig, transpose=auto_transpose)
                     for idx, pitch in enumerate(chord_pitches):
                         is_member = idx > 0
                         if pitch in ANGKLUNG1_PITCHES:
@@ -1182,15 +1136,15 @@ def play_song_thread(file_content: str, thread_token: int):
                     if ptype == "bass":
                         note_num = BASS_PITCHES.index(pitch) + 1
                         physical_set = current_physical_notes_3
-                        has_action_3 = True
+                        arduino_notes = arduino3_on_notes
                     elif ptype == "mel1":
                         note_num = ANGKLUNG1_PITCHES.index(pitch) + 1
                         physical_set = current_physical_notes_1
-                        has_action_1 = True
+                        arduino_notes = arduino1_on_notes
                     else: # "mel2"
                         note_num = ANGKLUNG2_PITCHES.index(pitch) + 1 + 16
                         physical_set = current_physical_notes_1
-                        has_action_1 = True
+                        arduino_notes = arduino1_on_notes
                         
                     if action == "ON":
                         if track == 'VB': vol = global_vb_volume
@@ -1203,20 +1157,22 @@ def play_song_thread(file_content: str, thread_token: int):
                         
                         if not is_chord_member:
                             physical_set.add(note_num)
+                            arduino_notes.append(note_num)
                             
                     elif action == "ARDUINO_HIT":
-                        # Hit events keep the note in the active sending list
-                        pass
-                        
+                        if note_num in physical_set:
+                            arduino_notes.append(note_num)
+                            
                     elif action == "OFF":
                         physical_set.discard(note_num)
             
-            if has_action_1:
-                notes_1 = list(current_physical_notes_1) if current_physical_notes_1 else [0]
-                send_to_arduino(notes_1, 1, play_synth=False)
-            if has_action_3:
-                notes_3 = list(current_physical_notes_3) if current_physical_notes_3 else [0]
-                send_to_arduino(notes_3, 3, play_synth=False)
+            arduino1_on_notes = list(set(arduino1_on_notes))
+            arduino3_on_notes = list(set(arduino3_on_notes))
+            
+            if arduino1_on_notes:
+                send_to_arduino(arduino1_on_notes, 1, play_synth=False)
+            if arduino3_on_notes:
+                send_to_arduino(arduino3_on_notes, 3, play_synth=False)
                 
             event_idx += 1
             
@@ -1231,80 +1187,6 @@ def play_song_thread(file_content: str, thread_token: int):
             send_to_arduino(0, 1)
             send_to_arduino(0, 3)
         except: pass
-
-def midi_to_note_name(midi_num: int) -> str:
-    names = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"]
-    octave = (midi_num // 12) - 1
-    note_name = names[midi_num % 12]
-    return f"{note_name}{octave}"
-
-def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
-    key_roots = {
-        "C": 60, "C#": 61, "DB": 61, "D": 62, "D#": 63, "EB": 63,
-        "E": 64, "F": 65, "F#": 66, "GB": 66, "G": 67, "G#": 68,
-        "AB": 68, "A": 69, "A#": 70, "BB": 70, "B": 71
-    }
-    
-    symbol = chord_symbol.replace('@', '').strip()
-    if not symbol:
-        return []
-        
-    # Check if it starts with a numeral degree (1-7)
-    if symbol[0].isdigit():
-        root_midi = key_roots.get(key_sig.upper(), 60)
-        
-        # Accidentals: / raises by 1 semitone, \ lowers by 1 semitone
-        accidental = 0
-        accidental += symbol.count("/")
-        accidental -= symbol.count("\\")
-        
-        clean_sym = symbol.replace("/", "").replace("\\", "")
-        digit = ""
-        for c in clean_sym:
-            if c.isdigit():
-                digit += c
-        degree = int(digit) if digit else 1
-        
-        intervals = {1: 0, 2: 2, 3: 4, 4: 5, 5: 7, 6: 9, 7: 11}
-        chord_root_midi = root_midi + intervals.get(degree, 0) + accidental
-        
-        is_minor = 'm' in clean_sym
-        # Diatonic major key defaults: degrees 2, 3, 6, 7 are naturally Minor/Diminished
-        if not is_minor and not ('M' in symbol or 'maj' in symbol):
-            if degree in [2, 3, 6, 7]:
-                is_minor = True
-    else:
-        # Alphabet chord name (e.g. C, Dm, F#, Bb)
-        # Extract root
-        if len(symbol) >= 2 and symbol[1].upper() in ['#', 'B']:
-            root = symbol[:2].upper()
-            if root[1] == 'B': # Normalize Bb to BB
-                root = root[0] + 'B'
-            modifier = symbol[2:]
-        else:
-            root = symbol[0].upper()
-            modifier = symbol[1:]
-            
-        chord_root_midi = key_roots.get(root, 60)
-        is_minor = 'm' in modifier or 'min' in modifier
-        
-    third_offset = 3 if is_minor else 4
-    fifth_offset = 7
-    
-    midi_notes = [
-        chord_root_midi,
-        chord_root_midi + third_offset,
-        chord_root_midi + fifth_offset
-    ]
-    
-    pitches = []
-    for m in midi_notes:
-        while m < 65: # f4 is midi 65
-            m += 12
-        while m > 96: # c7 is midi 96
-            m -= 12
-        pitches.append(midi_to_note_name(m))
-    return pitches
 
 def read_file_safely(file_path: str) -> str:
     try:
@@ -1371,7 +1253,7 @@ def play_song_file(data: dict):
         
     # Resolve absolute path and block directory traversal attacks
     file_path = os.path.abspath(os.path.join(SONGS_DIR, file_name))
-    if not file_path.startswith(os.path.abspath(SONGS_DIR)):
+    if not file_path.lower().startswith(os.path.abspath(SONGS_DIR).lower()):
         raise HTTPException(status_code=400, detail="Akses file tidak diizinkan.")
         
     if not os.path.exists(file_path):

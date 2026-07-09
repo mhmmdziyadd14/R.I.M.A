@@ -860,6 +860,8 @@ function loadSongsList(filter = 'all') {
   const filtered = filter === 'all' ? songs : songs.filter(s => s.folder === filter);
 
   filtered.forEach(song => {
+    // Escape single quotes for HTML onClick
+    const cleanId = song.id.replace(/'/g, "\\'");
     const btnDomId = getSongBtnId(song.id);
     const item = document.createElement('div');
     item.className = 'song-item';
@@ -871,7 +873,7 @@ function loadSongsList(filter = 'all') {
           <p>${song.region} (${song.folder})</p>
         </div>
       </div>
-      <button class="song-play-btn" id="${btnDomId}" data-id="${song.id}" onclick="playSong(this.dataset.id)">
+      <button class="song-play-btn" id="${btnDomId}" onclick="playSong('${cleanId}')">
         <i class="fa-solid fa-play"></i>
       </button>
     `;

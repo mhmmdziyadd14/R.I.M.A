@@ -1408,10 +1408,11 @@ def set_volume_settings(data: dict):
     if phys_power is not None:
         global_physical_power = max(10, min(100, int(phys_power)))
         
-        # Calculate dynamic pulse width (durasiGetar) based on user's new baseline:
-        # Mel/Chord (Arduino 1) -> max 30ms, Bass (Arduino 3) -> max 20ms
-        duration_mel = max(10, int(30 * (global_physical_power / 100.0)))
-        duration_bass = max(10, int(20 * (global_physical_power / 100.0)))
+        # Calculate dynamic pulse width (durasiGetar) to cover the full physical range:
+        # Mel/Chord (Arduino 1): 10% -> ~22ms, 100% -> 85ms (maksimal kencang)
+        # Bass (Arduino 3): 10% -> ~17ms, 100% -> 60ms (maksimal kencang)
+        duration_mel = int(15 + (global_physical_power / 100.0) * 70)
+        duration_bass = int(12 + (global_physical_power / 100.0) * 48)
         
         # Send raw duration change command 'P<duration>' to Arduinos
         def update_arduinos():

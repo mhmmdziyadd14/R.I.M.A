@@ -375,7 +375,7 @@ def get_arduino_connection(angklung_id: int):
         arduino_serials[angklung_id] = None
         return None
 
-def send_to_arduino(note_num, angklung_id: int = 3, play_synth: bool = True):
+def send_to_arduino(note_num, angklung_id: int = 3, play_synth: bool = True, wait_response: bool = False):
     if isinstance(note_num, int):
         notes_list = [note_num]
     elif isinstance(note_num, str):
@@ -415,10 +415,13 @@ def send_to_arduino(note_num, angklung_id: int = 3, play_synth: bool = True):
             try:
                 ser.reset_input_buffer()
                 ser.write(f"{payload}\n".encode('utf-8'))
-                response = ser.readline().decode('utf-8').strip()
-                if not response:
+                if wait_response:
                     response = ser.readline().decode('utf-8').strip()
-                return True, response if response else f"Sent {payload} to Arduino {target_id}"
+                    if not response:
+                        response = ser.readline().decode('utf-8').strip()
+                    return True, response
+                else:
+                    return True, f"Sent {payload} to Arduino {target_id}"
             except Exception as e:
                 print(f"[SERIAL] Gagal kirim nada {payload} ke Angklung {target_id}: {e}")
                 try:

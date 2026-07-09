@@ -594,6 +594,10 @@ seek_bar_index = -1
 
 global_synth_volume = 0.8
 global_physical_power = 100
+global_v1_volume = 1.00
+global_v2_volume = 0.18
+global_vb_volume = 0.25
+global_va_volume = 0.06
 
 def parse_subtoken(sub_tok: str, key_sig: str) -> dict:
     # 1. Determine duration
@@ -886,7 +890,7 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
     return pitches
 
 def play_song_thread(file_content: str, thread_token: int):
-    global song_playback_active, current_playback_token
+    global song_playback_active, current_playback_token, global_v1_volume, global_v2_volume, global_vb_volume, global_va_volume
     
     try:
         parsed = parse_partitur_data(file_content)
@@ -1117,10 +1121,10 @@ def play_song_thread(file_content: str, thread_token: int):
                         arduino_notes = arduino1_on_notes
                         
                     if action == "ON":
-                        if track == 'VB': vol = 0.25
-                        elif track == 'VA' or track == 'VA^': vol = 0.06
-                        elif track == 'V1': vol = 1.00
-                        else: vol = 0.18
+                        if track == 'VB': vol = global_vb_volume
+                        elif track == 'VA' or track == 'VA^': vol = global_va_volume
+                        elif track == 'V1': vol = global_v1_volume
+                        else: vol = global_v2_volume
                         
                         ang_id = 3 if ptype == "bass" else 1
                         play_local_sound(note_num, ang_id, vol, ptype)
@@ -1379,13 +1383,26 @@ def seek_song(data: dict):
 
 @app.post("/api/arduino/volume")
 def set_volume_settings(data: dict):
-    global global_synth_volume, global_physical_power
+    global global_synth_volume, global_physical_power, global_v1_volume, global_v2_volume, global_vb_volume, global_va_volume
     
     synth_vol = data.get("synth_volume", None)
     phys_power = data.get("physical_power", None)
+    v1_vol = data.get("v1_volume", None)
+    v2_vol = data.get("v2_volume", None)
+    vb_vol = data.get("vb_volume", None)
+    va_vol = data.get("va_volume", None)
     
     if synth_vol is not None:
         global_synth_volume = max(0.0, min(1.0, float(synth_vol)))
+        
+    if v1_vol is not None:
+        global_v1_volume = max(0.0, min(1.0, float(v1_vol)))
+    if v2_vol is not None:
+        global_v2_volume = max(0.0, min(1.0, float(v2_vol)))
+    if vb_vol is not None:
+        global_vb_volume = max(0.0, min(1.0, float(vb_vol)))
+    if va_vol is not None:
+        global_va_volume = max(0.0, min(1.0, float(va_vol)))
         
     if phys_power is not None:
         global_physical_power = max(10, min(100, int(phys_power)))
@@ -1408,7 +1425,11 @@ def set_volume_settings(data: dict):
     return {
         "status": "success",
         "synth_volume": global_synth_volume,
-        "physical_power": global_physical_power
+        "physical_power": global_physical_power,
+        "v1_volume": global_v1_volume,
+        "v2_volume": global_v2_volume,
+        "vb_volume": global_vb_volume,
+        "va_volume": global_va_volume
     }
 
 @app.post("/api/record-and-classify")

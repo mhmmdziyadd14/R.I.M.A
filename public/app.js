@@ -9,7 +9,11 @@ let settings = {
   hostApi: localStorage.getItem('rima_host_api') || 'http://localhost:8000',
   simulationMode: localStorage.getItem('rima_simulation_mode') === null ? true : localStorage.getItem('rima_simulation_mode') === 'true',
   synthVolume: localStorage.getItem('rima_synth_volume') === null ? 0.7 : parseFloat(localStorage.getItem('rima_synth_volume')),
-  physicalPower: localStorage.getItem('rima_physical_power') === null ? 100 : parseInt(localStorage.getItem('rima_physical_power'))
+  physicalPower: localStorage.getItem('rima_physical_power') === null ? 100 : parseInt(localStorage.getItem('rima_physical_power')),
+  v1Volume: localStorage.getItem('rima_v1_volume') === null ? 1.0 : parseFloat(localStorage.getItem('rima_v1_volume')),
+  v2Volume: localStorage.getItem('rima_v2_volume') === null ? 0.18 : parseFloat(localStorage.getItem('rima_v2_volume')),
+  vbVolume: localStorage.getItem('rima_vb_volume') === null ? 0.25 : parseFloat(localStorage.getItem('rima_vb_volume')),
+  vaVolume: localStorage.getItem('rima_va_volume') === null ? 0.06 : parseFloat(localStorage.getItem('rima_va_volume'))
 };
 
 // 2. Song Database (Loaded Dynamically)
@@ -261,7 +265,11 @@ document.addEventListener('DOMContentLoaded', () => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       synth_volume: settings.synthVolume,
-      physical_power: settings.physicalPower
+      physical_power: settings.physicalPower,
+      v1_volume: settings.v1Volume,
+      v2_volume: settings.v2Volume,
+      vb_volume: settings.vbVolume,
+      va_volume: settings.vaVolume
     })
   }).catch(() => {});
 
@@ -499,6 +507,10 @@ async function toggleSettingsModal() {
     document.getElementById('input-simulation-mode').checked = settings.simulationMode;
     document.getElementById('input-synth-volume').value = Math.round(settings.synthVolume * 100);
     document.getElementById('input-physical-volume').value = settings.physicalPower;
+    document.getElementById('input-volume-v1').value = Math.round(settings.v1Volume * 100);
+    document.getElementById('input-volume-v2').value = Math.round(settings.v2Volume * 100);
+    document.getElementById('input-volume-vb').value = Math.round(settings.vbVolume * 100);
+    document.getElementById('input-volume-va').value = Math.round(settings.vaVolume * 100);
     updateVolumeLabels();
     
     await scanMidiDevices();
@@ -522,8 +534,17 @@ async function toggleSettingsModal() {
 function updateVolumeLabels() {
   const synthVal = document.getElementById('input-synth-volume').value;
   const physVal = document.getElementById('input-physical-volume').value;
+  const v1Val = document.getElementById('input-volume-v1').value;
+  const v2Val = document.getElementById('input-volume-v2').value;
+  const vbVal = document.getElementById('input-volume-vb').value;
+  const vaVal = document.getElementById('input-volume-va').value;
+
   document.getElementById('label-synth-volume').innerText = `${synthVal}%`;
   document.getElementById('label-physical-volume').innerText = `${physVal}%`;
+  document.getElementById('label-volume-v1').innerText = `${v1Val}%`;
+  document.getElementById('label-volume-v2').innerText = `${v2Val}%`;
+  document.getElementById('label-volume-vb').innerText = `${vbVal}%`;
+  document.getElementById('label-volume-va').innerText = `${vaVal}%`;
 }
 
 async function saveConnectionSettings() {
@@ -533,6 +554,12 @@ async function saveConnectionSettings() {
   const simMode = document.getElementById('input-simulation-mode').checked;
   const synthVolVal = parseFloat(document.getElementById('input-synth-volume').value) / 100;
   const physVolVal = parseInt(document.getElementById('input-physical-volume').value);
+  
+  const v1VolVal = parseFloat(document.getElementById('input-volume-v1').value) / 100;
+  const v2VolVal = parseFloat(document.getElementById('input-volume-v2').value) / 100;
+  const vbVolVal = parseFloat(document.getElementById('input-volume-vb').value) / 100;
+  const vaVolVal = parseFloat(document.getElementById('input-volume-va').value) / 100;
+  
   const selectMidi = document.getElementById('select-midi-device');
 
   settings.port1 = p1;
@@ -542,6 +569,10 @@ async function saveConnectionSettings() {
   settings.simulationMode = simMode;
   settings.synthVolume = synthVolVal;
   settings.physicalPower = physVolVal;
+  settings.v1Volume = v1VolVal;
+  settings.v2Volume = v2VolVal;
+  settings.vbVolume = vbVolVal;
+  settings.vaVolume = vaVolVal;
 
   localStorage.setItem('rima_port_1', p1);
   localStorage.setItem('rima_port_2', p1);
@@ -550,6 +581,10 @@ async function saveConnectionSettings() {
   localStorage.setItem('rima_simulation_mode', simMode);
   localStorage.setItem('rima_synth_volume', synthVolVal);
   localStorage.setItem('rima_physical_power', physVolVal);
+  localStorage.setItem('rima_v1_volume', v1VolVal);
+  localStorage.setItem('rima_v2_volume', v2VolVal);
+  localStorage.setItem('rima_vb_volume', vbVolVal);
+  localStorage.setItem('rima_va_volume', vaVolVal);
 
   // Send volume settings to API
   try {
@@ -558,7 +593,11 @@ async function saveConnectionSettings() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         synth_volume: synthVolVal,
-        physical_power: physVolVal
+        physical_power: physVolVal,
+        v1_volume: v1VolVal,
+        v2_volume: v2VolVal,
+        vb_volume: vbVolVal,
+        va_volume: vaVolVal
       })
     });
   } catch (err) {

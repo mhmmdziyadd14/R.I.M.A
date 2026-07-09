@@ -753,26 +753,10 @@ def play_song_thread(file_content: str, thread_token: int):
         max_bars = max(len(bars) for bars in tracks.values())
         
         # Determine dynamic steps per bar based on beats_per_bar
-        # 12/8 -> 12 steps, 3/4 -> 6 steps, 2/4 -> 8 steps, 4/4 -> 8 steps
-        if beats_per_bar == 12.0:
-            steps_per_bar = 12
-        elif beats_per_bar == 3.0:
-            steps_per_bar = 6
-        elif beats_per_bar == 2.0:
-            steps_per_bar = 8
-        elif beats_per_bar == 4.0:
-            steps_per_bar = 8
-        else:
-            steps_per_bar = 8
-
-        # Compound meter correction (denominator = 8 like 12/8, 6/8):
-        # The tempo Q refers to dotted quarter notes, which consist of 3 eighth notes.
-        if denominator == 8:
-            tempo_beats_per_bar = beats_per_bar / 3.0
-        else:
-            tempo_beats_per_bar = beats_per_bar
-
-        sub_beat_duration = ((60.0 / bpm) * tempo_beats_per_bar) / steps_per_bar
+        # High-resolution step timing (24 ticks per beat for standard, 36 ticks for compound)
+        ticks_per_beat = 36.0 if denominator == 8 else 24.0
+        steps_per_bar = int(beats_per_bar * 24)
+        sub_beat_duration = (60.0 / bpm) / ticks_per_beat
         
         with current_playback_status_lock:
             current_playback_status["active"] = True
@@ -829,8 +813,7 @@ def play_song_thread(file_content: str, thread_token: int):
                             bars[bar_idx] = "0"
 
             bar_steps = [{} for _ in range(steps_per_bar)]
-            total_ticks = int(beats_per_bar * 24)
-            ticks_per_step = total_ticks / steps_per_bar
+            ticks_per_step = 1.0
             
             for track_name, bars in tracks.items():
                 if bar_idx >= len(bars):
@@ -877,11 +860,12 @@ def play_song_thread(file_content: str, thread_token: int):
                         elif etype == "chord":
                             active = []
                             is_new_trigger = True
-                            for pitch in resolve_chord_pitches(event["symbol"], key_sig):
+                            pitches = resolve_chord_pitches(event["symbol"], key_sig)
+                            for idx, pitch in enumerate(pitches):
                                 if pitch in ANGKLUNG1_PITCHES:
-                                    active.append({"pitch": pitch, "type": "mel1"})
+                                    active.append({"pitch": pitch, "type": "mel1", "is_chord_member": idx > 0})
                                 elif pitch in ANGKLUNG2_PITCHES:
-                                    active.append({"pitch": pitch, "type": "mel2"})
+                                    active.append({"pitch": pitch, "type": "mel2", "is_chord_member": idx > 0})
                             last_active_notes[track_name] = active
                         elif etype == "note":
                             active = []
@@ -932,19 +916,21 @@ def play_song_thread(file_content: str, thread_token: int):
                             
                         if is_new_trigger:
                             if track_name == 'VB':
-                                vol = 0.40  # Bass (was 0.65)
+                                vol = 0.35  # Bass
                             elif track_name == 'VA^' or track_name == 'VA':
-                                vol = 0.15  # Chords (was 0.35)
+                                vol = 0.08  # Soft backing chords
                             elif track_name == 'V1':
-                                vol = 1.00  # Lead Melody (kept at 1.00)
+                                vol = 1.00  # Lead Melody
                             elif ntype == "drum":
-                                vol = 0.20  # Drums (was 0.50)
+                                vol = 0.15  # Drums
                             else:
-                                vol = 0.30  # Supporting melody V2, V3, V4 (was 0.70)
+                                vol = 0.25  # Supporting harmonies
                             play_local_sound(note_num, ang_id, vol, instr_name)
                             
                         if ntype == "mel1" or ntype == "mel2":
-                            arduino1_notes.append(note_num)
+                            # Only play the chord's root note physically to prevent clashes
+                            if not note_info.get("is_chord_member", False):
+                                arduino1_notes.append(note_num)
                         elif ntype == "bass":
                             arduino3_notes.append(note_num)
                             

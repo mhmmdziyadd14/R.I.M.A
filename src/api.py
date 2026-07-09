@@ -1408,14 +1408,14 @@ def set_volume_settings(data: dict):
     if phys_power is not None:
         global_physical_power = max(10, min(100, int(phys_power)))
         
-        # Calculate dynamic pulse width (durasiGetar)
-        # 100% -> 85ms, 10% -> 22ms, linear mapping
-        duration = int(15 + (global_physical_power / 100.0) * 70)
+        # Calculate dynamic pulse width (durasiGetar) based on user's new baseline:
+        # Mel/Chord (Arduino 1) -> max 30ms, Bass (Arduino 3) -> max 20ms
+        duration_mel = max(10, int(30 * (global_physical_power / 100.0)))
+        duration_bass = max(10, int(20 * (global_physical_power / 100.0)))
         
         # Send raw duration change command 'P<duration>' to Arduinos
         def update_arduinos():
-            duration_bass = max(20, int(duration * 0.70))
-            send_raw_command_to_arduino(f"P{duration}", 1)
+            send_raw_command_to_arduino(f"P{duration_mel}", 1)
             send_raw_command_to_arduino(f"P{duration_bass}", 3)
             
         t = threading.Thread(target=update_arduinos)

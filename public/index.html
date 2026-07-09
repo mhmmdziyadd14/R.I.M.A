@@ -379,6 +379,14 @@
               <label for="input-host-api">Alamat Host API Python</label>
               <input type="text" id="input-host-api" value="http://localhost:8000">
             </div>
+            <div class="input-group">
+              <label for="input-synth-volume">Volume Suara Virtual (Synth Laptop): <span id="label-synth-volume">70%</span></label>
+              <input type="range" id="input-synth-volume" min="0" max="100" value="70" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
+            </div>
+            <div class="input-group">
+              <label for="input-physical-volume">Volume Suara Fisik (Angklung): <span id="label-physical-volume">100%</span></label>
+              <input type="range" id="input-physical-volume" min="10" max="100" value="100" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
+            </div>
             <div class="input-group" style="display: none;">
               <input type="checkbox" id="input-simulation-mode" style="width: auto; height: 18px; margin: 0; cursor: pointer;">
               <label for="input-simulation-mode" style="margin: 0; font-weight: normal; cursor: pointer; color: #38bdf8;">Mode Simulasi (Hanya suara laptop)</label>

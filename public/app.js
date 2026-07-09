@@ -7,7 +7,9 @@ let settings = {
   port2: localStorage.getItem('rima_port_2') || 'COM11',
   port3: localStorage.getItem('rima_port_3') || 'COM12',
   hostApi: localStorage.getItem('rima_host_api') || 'http://localhost:8000',
-  simulationMode: localStorage.getItem('rima_simulation_mode') === null ? true : localStorage.getItem('rima_simulation_mode') === 'true'
+  simulationMode: localStorage.getItem('rima_simulation_mode') === null ? true : localStorage.getItem('rima_simulation_mode') === 'true',
+  synthVolume: localStorage.getItem('rima_synth_volume') === null ? 0.7 : parseFloat(localStorage.getItem('rima_synth_volume')),
+  physicalPower: localStorage.getItem('rima_physical_power') === null ? 100 : parseInt(localStorage.getItem('rima_physical_power'))
 };
 
 // 2. Song Database (Loaded Dynamically)
@@ -253,6 +255,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Connect to MIDI feedback WebSocket
   connectMidiWebSocket();
 
+  // Initialize volume settings on backend
+  fetch(`${settings.hostApi}/api/arduino/volume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      synth_volume: settings.synthVolume,
+      physical_power: settings.physicalPower
+    })
+  }).catch(() => {});
+
 
 
 
@@ -485,6 +497,9 @@ async function toggleSettingsModal() {
     document.getElementById('input-com-port-3').value = settings.port3;
     document.getElementById('input-host-api').value = settings.hostApi;
     document.getElementById('input-simulation-mode').checked = settings.simulationMode;
+    document.getElementById('input-synth-volume').value = Math.round(settings.synthVolume * 100);
+    document.getElementById('input-physical-volume').value = settings.physicalPower;
+    updateVolumeLabels();
     
     await scanMidiDevices();
     
@@ -504,11 +519,20 @@ async function toggleSettingsModal() {
   modal.classList.toggle('active');
 }
 
+function updateVolumeLabels() {
+  const synthVal = document.getElementById('input-synth-volume').value;
+  const physVal = document.getElementById('input-physical-volume').value;
+  document.getElementById('label-synth-volume').innerText = `${synthVal}%`;
+  document.getElementById('label-physical-volume').innerText = `${physVal}%`;
+}
+
 async function saveConnectionSettings() {
   const p1 = document.getElementById('input-com-port-1').value.trim();
   const p3 = document.getElementById('input-com-port-3').value.trim();
   const hostVal = document.getElementById('input-host-api').value.trim();
   const simMode = document.getElementById('input-simulation-mode').checked;
+  const synthVolVal = parseFloat(document.getElementById('input-synth-volume').value) / 100;
+  const physVolVal = parseInt(document.getElementById('input-physical-volume').value);
   const selectMidi = document.getElementById('select-midi-device');
 
   settings.port1 = p1;
@@ -516,12 +540,30 @@ async function saveConnectionSettings() {
   settings.port3 = p3;
   settings.hostApi = hostVal;
   settings.simulationMode = simMode;
+  settings.synthVolume = synthVolVal;
+  settings.physicalPower = physVolVal;
 
   localStorage.setItem('rima_port_1', p1);
   localStorage.setItem('rima_port_2', p1);
   localStorage.setItem('rima_port_3', p3);
   localStorage.setItem('rima_host_api', hostVal);
   localStorage.setItem('rima_simulation_mode', simMode);
+  localStorage.setItem('rima_synth_volume', synthVolVal);
+  localStorage.setItem('rima_physical_power', physVolVal);
+
+  // Send volume settings to API
+  try {
+    await fetch(`${hostVal}/api/arduino/volume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        synth_volume: synthVolVal,
+        physical_power: physVolVal
+      })
+    });
+  } catch (err) {
+    console.error("Gagal mengirim pengaturan volume:", err);
+  }
 
   // Connect or disconnect MIDI device
   if (selectMidi && selectMidi.value !== "") {

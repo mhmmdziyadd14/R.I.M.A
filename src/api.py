@@ -696,72 +696,115 @@ def parse_partitur_data(file_content: str) -> dict:
     current_section_name = "UMUM"
     current_bar_count = 0
     
-    # 1. Parse Metadata and Sections
+    # First pass: find all track names in the entire file
+    all_track_names = set()
     for line in lines:
         line = line.strip()
         if not line: continue
+        is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
+        if is_track:
+            tname = line.split(':', 1)[0].strip()
+            all_track_names.add(tname)
+            
+    # Initialize tracks with empty lists
+    raw_tracks = {tname: [] for tname in all_track_names}
+    
+    # Helper to process blocks with alignment
+    def process_block(block_lines):
+        nonlocal current_bar_count
+        block_tracks = {}
+        for bline in block_lines:
+            parts = bline.split(':', 1)
+            if len(parts) != 2:
+                continue
+            tname = parts[0].strip()
+            tcontent = parts[1].strip()
+            
+            # Split into bars using '|'
+            bars = [b.strip() for b in tcontent.split('|') if b.strip()]
+            block_tracks[tname] = bars
+            
+        if not block_tracks:
+            return
+            
+        num_bars = max(len(b) for b in block_tracks.values())
+        for tname in all_track_names:
+            if tname in block_tracks:
+                bars = block_tracks[tname]
+                # Pad with empty bars ("0") if this track has fewer bars in this block
+                while len(bars) < num_bars:
+                    bars.append("0")
+                raw_tracks[tname].extend(bars)
+            else:
+                raw_tracks[tname].extend(["0"] * num_bars)
+                
+        if not sections:
+            sections.append({"name": current_section_name, "start_bar": 0, "end_bar": 0})
+        sections[-1]["end_bar"] = current_bar_count + num_bars - 1
+        current_bar_count += num_bars
+
+    # Second pass: group into blocks and parse
+    current_block = []
+    in_music_part = False
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            if current_block:
+                process_block(current_block)
+                current_block = []
+            continue
+            
         if line.startswith('$'):
             current_section_name = line.replace('$', '').strip()
             sections.append({"name": current_section_name, "start_bar": current_bar_count, "end_bar": current_bar_count})
+            if current_block:
+                process_block(current_block)
+                current_block = []
             continue
             
-        if line.startswith('T:'):
-            metadata["T"] = line.split(':', 1)[1].strip()
-        elif line.startswith('Q:'):
-            try:
-                metadata["Q"] = int(line.split(':', 1)[1].strip())
-            except: pass
-        elif line.startswith('K:'):
-            k_val = line.split(':', 1)[1].strip().upper()
-            k_val = re.sub(r"[^A-Z#B]", "", k_val)
-            metadata["K"] = k_val if k_val else "C"
-        elif line.startswith('M:'):
-            m_val = line.split(':', 1)[1].strip()
-            metadata["M"] = m_val
-            if '/' in m_val:
-                try:
-                    metadata["beats_per_bar"] = float(m_val.split('/')[0])
-                    metadata["denominator"] = int(m_val.split('/')[1])
-                except: pass
-            else:
-                try:
-                    metadata["beats_per_bar"] = float(m_val)
-                except: pass
-        
         is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
         if is_track:
-            parts = line.split(':', 1)
-            tcontent = parts[1].strip()
-            bars = [b.strip() for b in tcontent.split('|') if b.strip()]
-            num_bars = len(bars)
-            if not sections:
-                sections.append({"name": current_section_name, "start_bar": 0, "end_bar": 0})
-            sections[-1]["end_bar"] = max(sections[-1]["end_bar"], current_bar_count + num_bars - 1)
-            if parts[0].strip() == 'V1':
-                current_bar_count += num_bars
+            in_music_part = True
+            current_block.append(line)
+        else:
+            if current_block:
+                process_block(current_block)
+                current_block = []
+            
+            if not in_music_part:
+                # Parse header
+                if line.startswith('T:'):
+                    metadata["T"] = line.split(':', 1)[1].strip()
+                elif line.startswith('Q:'):
+                    try:
+                        metadata["Q"] = int(line.split(':', 1)[1].strip())
+                    except: pass
+                elif line.startswith('K:'):
+                    k_val = line.split(':', 1)[1].strip().upper()
+                    k_val = re.sub(r"[^A-Z#B]", "", k_val)
+                    metadata["K"] = k_val if k_val else "C"
+                elif line.startswith('M:'):
+                    m_val = line.split(':', 1)[1].strip()
+                    metadata["M"] = m_val
+                    if '/' in m_val:
+                        try:
+                            metadata["beats_per_bar"] = float(m_val.split('/')[0])
+                            metadata["denominator"] = int(m_val.split('/')[1])
+                        except: pass
+                    else:
+                        try:
+                            metadata["beats_per_bar"] = float(m_val)
+                        except: pass
+                        
+    if current_block:
+        process_block(current_block)
 
     # Specific override for Can't Help Falling in Love
     song_title = metadata.get("T", "").lower()
     if "can't help falling in love" in song_title or "cant help falling in love" in song_title:
         metadata["Q"] = int(metadata.get("Q", 90) * 1.5)
-                
-    # 2. Extract Tracks
-    raw_tracks = {}
-    for line in lines:
-        line = line.strip()
-        if not line: continue
-        if line.startswith('$'): continue
-        if ':' in line:
-            parts = line.split(':', 1)
-            prefix = parts[0].strip()
-            content = parts[1].strip()
-            
-            if prefix.startswith('V') or prefix.startswith('VA'):
-                if prefix not in raw_tracks:
-                    raw_tracks[prefix] = []
-                bars = [b.strip() for b in content.split('|') if b.strip()]
-                raw_tracks[prefix].extend(bars)
-                
+        
     # 3. Tokenize & Parse
     parsed_tracks = {}
     key_sig = metadata["K"]

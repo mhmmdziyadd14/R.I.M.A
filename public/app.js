@@ -13,7 +13,11 @@ let settings = {
   v1Volume: localStorage.getItem('rima_v1_volume') === null ? 1.0 : parseFloat(localStorage.getItem('rima_v1_volume')),
   v2Volume: localStorage.getItem('rima_v2_volume') === null ? 0.18 : parseFloat(localStorage.getItem('rima_v2_volume')),
   vbVolume: localStorage.getItem('rima_vb_volume') === null ? 0.25 : parseFloat(localStorage.getItem('rima_vb_volume')),
-  vaVolume: localStorage.getItem('rima_va_volume') === null ? 0.06 : parseFloat(localStorage.getItem('rima_va_volume'))
+  vaVolume: localStorage.getItem('rima_va_volume') === null ? 0.06 : parseFloat(localStorage.getItem('rima_va_volume')),
+  v1Staccato: localStorage.getItem('rima_v1_staccato') === 'true',
+  v2Staccato: localStorage.getItem('rima_v2_staccato') === 'true',
+  vbStaccato: localStorage.getItem('rima_vb_staccato') === 'true',
+  vaStaccato: localStorage.getItem('rima_va_staccato') === 'true'
 };
 
 // 2. Song Database (Loaded Dynamically)
@@ -269,7 +273,11 @@ document.addEventListener('DOMContentLoaded', () => {
       v1_volume: settings.v1Volume,
       v2_volume: settings.v2Volume,
       vb_volume: settings.vbVolume,
-      va_volume: settings.vaVolume
+      va_volume: settings.vaVolume,
+      v1_staccato: settings.v1Staccato,
+      v2_staccato: settings.v2Staccato,
+      vb_staccato: settings.vbStaccato,
+      va_staccato: settings.vaStaccato
     })
   }).catch(() => {});
 
@@ -511,6 +519,12 @@ async function toggleSettingsModal() {
     document.getElementById('input-volume-v2').value = Math.round(settings.v2Volume * 100);
     document.getElementById('input-volume-vb').value = Math.round(settings.vbVolume * 100);
     document.getElementById('input-volume-va').value = Math.round(settings.vaVolume * 100);
+    
+    document.getElementById('input-staccato-v1').checked = settings.v1Staccato;
+    document.getElementById('input-staccato-v2').checked = settings.v2Staccato;
+    document.getElementById('input-staccato-vb').checked = settings.vbStaccato;
+    document.getElementById('input-staccato-va').checked = settings.vaStaccato;
+    
     updateVolumeLabels();
     
     await scanMidiDevices();
@@ -560,6 +574,11 @@ async function saveConnectionSettings() {
   const vbVolVal = parseFloat(document.getElementById('input-volume-vb').value) / 100;
   const vaVolVal = parseFloat(document.getElementById('input-volume-va').value) / 100;
   
+  const v1StacVal = document.getElementById('input-staccato-v1').checked;
+  const v2StacVal = document.getElementById('input-staccato-v2').checked;
+  const vbStacVal = document.getElementById('input-staccato-vb').checked;
+  const vaStacVal = document.getElementById('input-staccato-va').checked;
+  
   const selectMidi = document.getElementById('select-midi-device');
 
   settings.port1 = p1;
@@ -573,6 +592,10 @@ async function saveConnectionSettings() {
   settings.v2Volume = v2VolVal;
   settings.vbVolume = vbVolVal;
   settings.vaVolume = vaVolVal;
+  settings.v1Staccato = v1StacVal;
+  settings.v2Staccato = v2StacVal;
+  settings.vbStaccato = vbStacVal;
+  settings.vaStaccato = vaStacVal;
 
   localStorage.setItem('rima_port_1', p1);
   localStorage.setItem('rima_port_2', p1);
@@ -585,6 +608,10 @@ async function saveConnectionSettings() {
   localStorage.setItem('rima_v2_volume', v2VolVal);
   localStorage.setItem('rima_vb_volume', vbVolVal);
   localStorage.setItem('rima_va_volume', vaVolVal);
+  localStorage.setItem('rima_v1_staccato', v1StacVal);
+  localStorage.setItem('rima_v2_staccato', v2StacVal);
+  localStorage.setItem('rima_vb_staccato', vbStacVal);
+  localStorage.setItem('rima_va_staccato', vaStacVal);
 
   // Send volume settings to API
   try {
@@ -597,7 +624,11 @@ async function saveConnectionSettings() {
         v1_volume: v1VolVal,
         v2_volume: v2VolVal,
         vb_volume: vbVolVal,
-        va_volume: vaVolVal
+        va_volume: vaVolVal,
+        v1_staccato: v1StacVal,
+        v2_staccato: v2StacVal,
+        vb_staccato: vbStacVal,
+        va_staccato: vaStacVal
       })
     });
   } catch (err) {

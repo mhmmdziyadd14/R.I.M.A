@@ -390,19 +390,43 @@
             <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 12px; padding-top: 12px;">
               <h4 style="margin: 0 0 10px 0; color: #a855f7; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Keseimbangan Jalur Suara (Track Mix)</h4>
               <div class="input-group">
-                <label for="input-volume-v1">Melodi Utama (V1): <span id="label-volume-v1">100%</span></label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label for="input-volume-v1" style="margin: 0;">Melodi Utama (V1): <span id="label-volume-v1">100%</span></label>
+                  <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; margin: 0; cursor: pointer; color: #c084fc;">
+                    <input type="checkbox" id="input-staccato-v1" style="width: auto; height: auto; margin: 0; cursor: pointer;">
+                    Staccato (Singkat)
+                  </label>
+                </div>
                 <input type="range" id="input-volume-v1" min="0" max="100" value="100" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
               </div>
               <div class="input-group">
-                <label for="input-volume-v2">Harmoni/Melodi 2 (V2): <span id="label-volume-v2">18%</span></label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label for="input-volume-v2" style="margin: 0;">Harmoni/Melodi 2 (V2): <span id="label-volume-v2">18%</span></label>
+                  <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; margin: 0; cursor: pointer; color: #c084fc;">
+                    <input type="checkbox" id="input-staccato-v2" style="width: auto; height: auto; margin: 0; cursor: pointer;">
+                    Staccato (Singkat)
+                  </label>
+                </div>
                 <input type="range" id="input-volume-v2" min="0" max="100" value="18" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
               </div>
               <div class="input-group">
-                <label for="input-volume-vb">Bass (VB): <span id="label-volume-vb">25%</span></label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label for="input-volume-vb" style="margin: 0;">Bass (VB): <span id="label-volume-vb">25%</span></label>
+                  <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; margin: 0; cursor: pointer; color: #c084fc;">
+                    <input type="checkbox" id="input-staccato-vb" style="width: auto; height: auto; margin: 0; cursor: pointer;">
+                    Staccato (Singkat)
+                  </label>
+                </div>
                 <input type="range" id="input-volume-vb" min="0" max="100" value="25" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
               </div>
               <div class="input-group">
-                <label for="input-volume-va">Akord & Iringan (VA): <span id="label-volume-va">6%</span></label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label for="input-volume-va" style="margin: 0;">Akord & Iringan (VA): <span id="label-volume-va">6%</span></label>
+                  <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; margin: 0; cursor: pointer; color: #c084fc;">
+                    <input type="checkbox" id="input-staccato-va" style="width: auto; height: auto; margin: 0; cursor: pointer;">
+                    Staccato (Singkat)
+                  </label>
+                </div>
                 <input type="range" id="input-volume-va" min="0" max="100" value="6" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
               </div>
             </div>

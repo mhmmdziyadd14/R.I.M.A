@@ -598,6 +598,10 @@ global_v1_volume = 1.00
 global_v2_volume = 0.18
 global_vb_volume = 0.25
 global_va_volume = 0.06
+global_v1_staccato = False
+global_v2_staccato = False
+global_vb_staccato = False
+global_va_staccato = False
 
 def parse_subtoken(sub_tok: str, key_sig: str) -> dict:
     # 1. Determine duration
@@ -944,19 +948,39 @@ def play_song_thread(file_content: str, thread_token: int):
         gap_beats = 0.05 / seconds_per_beat
 
         def schedule_note_events(tok_start, total_duration, track_name, tok):
-            actual_duration = max(0.05, total_duration - gap_beats)
+            # Check if this track is staccato
+            is_staccato = False
+            if track_name == 'V1' and global_v1_staccato:
+                is_staccato = True
+            elif track_name == 'VB' and global_vb_staccato:
+                is_staccato = True
+            elif track_name in ('VA', 'VA^') and global_va_staccato:
+                is_staccato = True
+            elif track_name not in ('V1', 'VB', 'VA', 'VA^', 'VD') and global_v2_staccato:
+                is_staccato = True
+                
+            if is_staccato:
+                # Staccato: play for only 30% of total duration (max 0.12 seconds, min 0.04 seconds)
+                stac_sec = min(0.12, total_duration * seconds_per_beat * 0.3)
+                stac_beats = stac_sec / seconds_per_beat
+                actual_duration = max(0.04, stac_beats)
+            else:
+                # Legato (normal long note): play for full duration minus gap
+                actual_duration = max(0.05, total_duration - gap_beats)
+                
             tok_end = tok_start + actual_duration
             
             add_event(tok_start, "ON", track_name, tok)
             add_event(tok_end, "OFF", track_name, tok)
             
-            tremolo_interval_beats = 0.09 / seconds_per_beat
-            
-            if track_name in ('V1', 'VB') or (track_name.startswith('V') and track_name != 'VA' and track_name != 'VA^' and track_name != 'VD'):
-                hit_beat = tok_start + tremolo_interval_beats
-                while hit_beat < tok_end - (0.02 / seconds_per_beat):
-                    add_event(hit_beat, "ARDUINO_HIT", track_name, tok)
-                    hit_beat += tremolo_interval_beats
+            # Tremolo is only triggered for normal legato notes that are long enough
+            if not is_staccato:
+                tremolo_interval_beats = 0.09 / seconds_per_beat
+                if track_name in ('V1', 'VB') or (track_name.startswith('V') and track_name != 'VA' and track_name != 'VA^' and track_name != 'VD'):
+                    hit_beat = tok_start + tremolo_interval_beats
+                    while hit_beat < tok_end - (0.02 / seconds_per_beat):
+                        add_event(hit_beat, "ARDUINO_HIT", track_name, tok)
+                        hit_beat += tremolo_interval_beats
 
         for track_name, bars in parsed["tracks"].items():
             current_note_event = None
@@ -1384,6 +1408,7 @@ def seek_song(data: dict):
 @app.post("/api/arduino/volume")
 def set_volume_settings(data: dict):
     global global_synth_volume, global_physical_power, global_v1_volume, global_v2_volume, global_vb_volume, global_va_volume
+    global global_v1_staccato, global_v2_staccato, global_vb_staccato, global_va_staccato
     
     synth_vol = data.get("synth_volume", None)
     phys_power = data.get("physical_power", None)
@@ -1391,6 +1416,11 @@ def set_volume_settings(data: dict):
     v2_vol = data.get("v2_volume", None)
     vb_vol = data.get("vb_volume", None)
     va_vol = data.get("va_volume", None)
+    
+    v1_stac = data.get("v1_staccato", None)
+    v2_stac = data.get("v2_staccato", None)
+    vb_stac = data.get("vb_staccato", None)
+    va_stac = data.get("va_staccato", None)
     
     if synth_vol is not None:
         global_synth_volume = max(0.0, min(1.0, float(synth_vol)))
@@ -1403,6 +1433,15 @@ def set_volume_settings(data: dict):
         global_vb_volume = max(0.0, min(1.0, float(vb_vol)))
     if va_vol is not None:
         global_va_volume = max(0.0, min(1.0, float(va_vol)))
+        
+    if v1_stac is not None:
+        global_v1_staccato = bool(v1_stac)
+    if v2_stac is not None:
+        global_v2_staccato = bool(v2_stac)
+    if vb_stac is not None:
+        global_vb_staccato = bool(vb_stac)
+    if va_stac is not None:
+        global_va_staccato = bool(va_stac)
         
     if phys_power is not None:
         global_physical_power = max(10, min(100, int(phys_power)))
@@ -1429,7 +1468,11 @@ def set_volume_settings(data: dict):
         "v1_volume": global_v1_volume,
         "v2_volume": global_v2_volume,
         "vb_volume": global_vb_volume,
-        "va_volume": global_va_volume
+        "va_volume": global_va_volume,
+        "v1_staccato": global_v1_staccato,
+        "v2_staccato": global_v2_staccato,
+        "vb_staccato": global_vb_staccato,
+        "va_staccato": global_va_staccato
     }
 
 @app.post("/api/record-and-classify")

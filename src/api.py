@@ -916,15 +916,15 @@ def play_song_thread(file_content: str, thread_token: int):
                             
                         if is_new_trigger:
                             if track_name == 'VB':
-                                vol = 0.35  # Bass
+                                vol = 0.25  # Quiet Bass
                             elif track_name == 'VA^' or track_name == 'VA':
-                                vol = 0.08  # Soft backing chords
+                                vol = 0.06  # Ambient backing chords
                             elif track_name == 'V1':
-                                vol = 1.00  # Lead Melody
+                                vol = 1.00  # Dominant Lead Melody
                             elif ntype == "drum":
-                                vol = 0.15  # Drums
+                                vol = 0.10  # Soft percussion
                             else:
-                                vol = 0.25  # Supporting harmonies
+                                vol = 0.18  # Soft harmonies (V2, V3, V4)
                             play_local_sound(note_num, ang_id, vol, instr_name)
                             
                         if ntype == "mel1" or ntype == "mel2":

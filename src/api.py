@@ -932,15 +932,15 @@ def play_song_thread(file_content: str, thread_token: int):
                             
                         if is_new_trigger:
                             if track_name == 'VB':
-                                vol = 0.65
+                                vol = 0.40  # Bass (was 0.65)
                             elif track_name == 'VA^' or track_name == 'VA':
-                                vol = 0.35
+                                vol = 0.15  # Chords (was 0.35)
                             elif track_name == 'V1':
-                                vol = 1.00
+                                vol = 1.00  # Lead Melody (kept at 1.00)
                             elif ntype == "drum":
-                                vol = 0.50
+                                vol = 0.20  # Drums (was 0.50)
                             else:
-                                vol = 0.70
+                                vol = 0.30  # Supporting melody V2, V3, V4 (was 0.70)
                             play_local_sound(note_num, ang_id, vol, instr_name)
                             
                         if ntype == "mel1" or ntype == "mel2":
@@ -1428,8 +1428,9 @@ def set_volume_settings(data: dict):
         
         # Send raw duration change command 'P<duration>' to Arduinos
         def update_arduinos():
+            duration_bass = max(20, int(duration * 0.70))
             send_raw_command_to_arduino(f"P{duration}", 1)
-            send_raw_command_to_arduino(f"P{duration}", 3)
+            send_raw_command_to_arduino(f"P{duration_bass}", 3)
             
         t = threading.Thread(target=update_arduinos)
         t.daemon = True

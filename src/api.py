@@ -603,151 +603,201 @@ global_v2_staccato = False
 global_vb_staccato = False
 global_va_staccato = False
 
-def parse_doremi_bar(bar_str: str, key_sig: str, beats_per_bar: float) -> list:
-    events = []
-    current_tick = 0
-    i = 0
-    n = len(bar_str)
-    
-    def parse_modifiers(start_idx):
-        idx = start_idx
-        length = 24
-        octave_mod = 0
-        accidental_mod = 0
-        accent = 1
+def parse_subtoken(sub_tok: str, key_sig: str) -> dict:
+    # 1. Determine duration
+    duration = 1.0
+    if '=' in sub_tok:
+        duration = 0.25
+    elif '-' in sub_tok:
+        duration = 0.5
         
-        while idx < n:
-            c = bar_str[idx]
-            if c == ' ':
-                idx += 1
-                continue
-            elif c == '-':
-                length //= 2
-                idx += 1
-            elif c == '=':
-                length //= 4
-                idx += 1
-            elif c == '+':
-                length = (length * 2) // 3
-                idx += 1
-            elif c == "'":
-                octave_mod += 1
-                idx += 1
-            elif c == '"':
-                octave_mod += 2
-                idx += 1
-            elif c == ',':
-                octave_mod -= 1
-                idx += 1
-            elif c == ';':
-                octave_mod -= 2
-                idx += 1
-            elif c == '/':
-                accidental_mod += 1
-                idx += 1
-            elif c == '\\':
-                accidental_mod -= 1
-                idx += 1
-            elif c == '^':
-                accent = 2
-                idx += 1
-            elif c == '~':
-                accent = 3
-                idx += 1
-            else:
-                break
-        return length, octave_mod, accidental_mod, accent, idx
+    if sub_tok.startswith('.'):
+        return {
+            "type": "sustain",
+            "duration": duration,
+            "raw": sub_tok
+        }
+        
+    if sub_tok.startswith('0'):
+        return {
+            "type": "rest",
+            "duration": duration,
+            "raw": sub_tok
+        }
+        
+    if sub_tok.startswith('@'):
+        chord_sym = sub_tok.replace('@', '').replace('-', '').replace('=', '').replace('^', '')
+        return {
+            "type": "chord",
+            "chord_sym": chord_sym,
+            "duration": duration,
+            "raw": sub_tok
+        }
+        
+    if sub_tok and sub_tok[0].isalpha():
+        return {
+            "type": "drum",
+            "instrument": sub_tok[0],
+            "duration": duration,
+            "raw": sub_tok
+        }
+        
+    # Standard Note [1-7]
+    digit = 0
+    if sub_tok and sub_tok[0].isdigit():
+        digit = int(sub_tok[0])
+    
+    # Octave modifiers
+    octave_mod = 0
+    octave_mod += sub_tok.count("'") * 12
+    octave_mod -= sub_tok.count(",") * 12
+    octave_mod -= sub_tok.count(";") * 24
+    
+    # Accidentals
+    accidental = sub_tok.count("/") - sub_tok.count("\\")
+    
+    key_roots = {
+        "C": 60, "C#": 61, "DB": 61, "D": 62, "D#": 63, "EB": 63,
+        "E": 64, "F": 65, "F#": 66, "GB": 66, "G": 67, "G#": 68,
+        "AB": 68, "A": 69, "A#": 70, "BB": 70, "B": 71
+    }
+    root = key_roots.get(key_sig.upper(), 60)
+    intervals = {1: 0, 2: 2, 3: 4, 4: 5, 5: 7, 6: 9, 7: 11}
+    interval = intervals.get(digit, 0)
+    
+    GLOBAL_TRANSPOSE = 0
+    
+    midi_val = root + interval + octave_mod + accidental + GLOBAL_TRANSPOSE
+    original_midi = midi_val
+    is_transposed = False
+        
+    return {
+        "type": "note",
+        "digit": digit,
+        "midi_value": midi_val,
+        "original_midi": original_midi,
+        "is_transposed": is_transposed,
+        "duration": duration,
+        "raw": sub_tok
+    }
 
-    while i < n:
-        c = bar_str[i]
-        if c == ' ' or c == '_' or c == '{' or c == '}':
-            i += 1
+def parse_partitur_data(file_content: str) -> dict:
+    metadata = {
+        "T": "Unknown",
+        "M": "4/4",
+        "Q": 90,
+        "K": "C",
+        "beats_per_bar": 4.0,
+        "denominator": 4
+    }
+    
+    lines = file_content.split('\n')
+    sections = []
+    current_section_name = "UMUM"
+    current_bar_count = 0
+    
+    # 1. Parse Metadata and Sections
+    for line in lines:
+        line = line.strip()
+        if not line: continue
+        if line.startswith('$'):
+            current_section_name = line.replace('$', '').strip()
+            sections.append({"name": current_section_name, "start_bar": current_bar_count, "end_bar": current_bar_count})
             continue
             
-        elif c == '.':
-            length, _, _, _, next_i = parse_modifiers(i + 1)
-            events.append({"tick": current_tick, "type": "sustain", "length": length})
-            current_tick += length
-            i = next_i
-            
-        elif c == '0':
-            length, _, _, _, next_i = parse_modifiers(i + 1)
-            events.append({"tick": current_tick, "type": "rest", "length": length})
-            current_tick += length
-            i = next_i
-            
-        elif c >= '1' and c <= '7':
-            val = int(c)
-            length, octave_mod, accidental_mod, accent, next_i = parse_modifiers(i + 1)
-            events.append({
-                "tick": current_tick,
-                "type": "note",
-                "val": val,
-                "length": length,
-                "octave_mod": octave_mod,
-                "accidental_mod": accidental_mod,
-                "accent": accent
-            })
-            current_tick += length
-            i = next_i
-            
-        elif (c >= 'A' and c <= 'G') or (c >= 'a' and c <= 'g') or c == '@':
-            if c == '@':
-                i += 1
-                if i >= n:
-                    break
-                c = bar_str[i]
-            
-            root_char = c
-            i += 1
-            
-            chord_accidental = 0
-            if i < n and bar_str[i] in ['#', '/']:
-                chord_accidental = 1
-                i += 1
-            elif i < n and bar_str[i] == '\\':
-                chord_accidental = -1
-                i += 1
+        if line.startswith('T:'):
+            metadata["T"] = line.split(':', 1)[1].strip()
+        elif line.startswith('Q:'):
+            try:
+                metadata["Q"] = int(line.split(':', 1)[1].strip())
+            except: pass
+        elif line.startswith('K:'):
+            k_val = line.split(':', 1)[1].strip().upper()
+            k_val = re.sub(r"[^A-Z#B]", "", k_val)
+            metadata["K"] = k_val if k_val else "C"
+        elif line.startswith('M:'):
+            m_val = line.split(':', 1)[1].strip()
+            metadata["M"] = m_val
+            if '/' in m_val:
+                try:
+                    metadata["beats_per_bar"] = float(m_val.split('/')[0])
+                    metadata["denominator"] = int(m_val.split('/')[1])
+                except: pass
+            else:
+                try:
+                    metadata["beats_per_bar"] = float(m_val)
+                except: pass
+        
+        is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
+        if is_track:
+            parts = line.split(':', 1)
+            tcontent = parts[1].strip()
+            bars = [b.strip() for b in tcontent.split('|') if b.strip()]
+            num_bars = len(bars)
+            if not sections:
+                sections.append({"name": current_section_name, "start_bar": 0, "end_bar": 0})
+            sections[-1]["end_bar"] = max(sections[-1]["end_bar"], current_bar_count + num_bars - 1)
+            if parts[0].strip() == 'V1':
+                current_bar_count += num_bars
+
+    # Specific override for Can't Help Falling in Love
+    song_title = metadata.get("T", "").lower()
+    if "can't help falling in love" in song_title or "cant help falling in love" in song_title:
+        metadata["Q"] = metadata.get("Q", 90) * 3
                 
-            chord_mod = ""
-            while i < n and bar_str[i].isalnum():
-                chord_mod += bar_str[i]
-                i += 1
+    # 2. Extract Tracks
+    raw_tracks = {}
+    for line in lines:
+        line = line.strip()
+        if not line: continue
+        if line.startswith('$'): continue
+        if ':' in line:
+            parts = line.split(':', 1)
+            prefix = parts[0].strip()
+            content = parts[1].strip()
+            
+            if prefix.startswith('V') or prefix.startswith('VA'):
+                if prefix not in raw_tracks:
+                    raw_tracks[prefix] = []
+                bars = [b.strip() for b in content.split('|') if b.strip()]
+                raw_tracks[prefix].extend(bars)
                 
-            length, octave_mod, accidental_mod, accent, next_i = parse_modifiers(i)
+    # 3. Tokenize & Parse
+    parsed_tracks = {}
+    key_sig = metadata["K"]
+    subtoken_pattern = re.compile(r'(@[a-zA-Z0-9#]+[\-\=]*|[0-7\.a-zA-Z][^0-7\.@a-zA-Z]*)')
+    
+    for track_name, bars in raw_tracks.items():
+        parsed_bars = []
+        for bar_idx, bar_str in enumerate(bars):
+            if bar_str.strip() == '%':
+                if bar_idx > 0:
+                    bar_str = bars[bar_idx - 1]
+                else:
+                    bar_str = "0"
             
-            acc_str = "#" if chord_accidental > 0 else ("b" if chord_accidental < 0 else "")
-            chord_symbol = f"{root_char}{acc_str}{chord_mod}"
+            tokens = bar_str.split()
+            parsed_subtokens = []
             
-            events.append({
-                "tick": current_tick,
-                "type": "chord",
-                "symbol": chord_symbol,
-                "length": length,
-                "octave_mod": octave_mod,
-                "accidental_mod": accidental_mod,
-                "accent": accent
+            for tok in tokens:
+                matches = subtoken_pattern.findall(tok)
+                for sub_tok in matches:
+                    if sub_tok:
+                        p_sub = parse_subtoken(sub_tok, key_sig)
+                        if p_sub:
+                            parsed_subtokens.append(p_sub)
+                    
+            parsed_bars.append({
+                "bar_index": bar_idx,
+                "tokens": parsed_subtokens
             })
-            current_tick += length
-            i = next_i
-            
-        elif (c >= 'O' and c <= 'Z') or (c >= 'o' and c <= 'z'):
-            drum_char = c.lower()
-            length, octave_mod, accidental_mod, accent, next_i = parse_modifiers(i + 1)
-            events.append({
-                "tick": current_tick,
-                "type": "drum",
-                "symbol": drum_char,
-                "length": length,
-                "accent": accent
-            })
-            current_tick += length
-            i = next_i
-            
-        else:
-            i += 1
-            
-    return events
+        parsed_tracks[track_name] = parsed_bars
+        
+    return {
+        "metadata": metadata,
+        "tracks": parsed_tracks,
+        "sections": sections
+    }
 
 ANGKLUNG1_PITCHES = [
     "g4", "a4", "a#4", "b4", "c5", "d5", "e5", "f5",
@@ -781,9 +831,11 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
     if not symbol:
         return []
         
+    # Check if it starts with a numeral degree (1-7)
     if symbol[0].isdigit():
         root_midi = key_roots.get(key_sig.upper(), 60)
         
+        # Accidentals: / raises by 1 semitone, \ lowers by 1 semitone
         accidental = 0
         accidental += symbol.count("/")
         accidental -= symbol.count("\\")
@@ -812,6 +864,7 @@ def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
             chord_root_midi + fifth_offset
         ]
     else:
+        # Standard alphabetical chord (e.g. C, Am, G7, F#m, Bb)
         match = re.match(r"^([A-Ga-g])([#b]?)", symbol)
         if not match:
             return []
@@ -849,236 +902,152 @@ def play_song_thread(file_content: str, thread_token: int):
     global song_playback_active, current_playback_token, global_v1_volume, global_v2_volume, global_vb_volume, global_va_volume
     
     try:
-        bpm = 90
-        key_sig = "F"
-        beats_per_bar = 4.0
-        denominator = 4
-        song_title = "Unknown Song"
-        lines = file_content.split('\n')
-        
-        sections = []
-        current_section_name = "UMUM"
-        current_bar_count = 0
-        
-        def process_block(block_lines, target_tracks, all_tracks):
-            nonlocal current_bar_count
-            block_tracks = {}
-            for bline in block_lines:
-                parts = bline.split(':', 1)
-                if len(parts) != 2:
-                    continue
-                tname = parts[0].strip()
-                tcontent = parts[1].strip()
-                
-                bars = [b.strip() for b in tcontent.split('|') if b.strip()]
-                block_tracks[tname] = bars
-                
-            if not block_tracks:
-                return
-                
-            num_bars = max(len(b) for b in block_tracks.values())
-            for tname in all_tracks:
-                if tname in block_tracks:
-                    bars = block_tracks[tname]
-                    while len(bars) < num_bars:
-                        bars.append("0")
-                    target_tracks[tname].extend(bars)
-                else:
-                    target_tracks[tname].extend(["0"] * num_bars)
-                    
-            if not sections:
-                sections.append({"name": current_section_name, "start_bar": 0, "end_bar": 0})
-            sections[-1]["end_bar"] = current_bar_count + num_bars - 1
-            current_bar_count += num_bars
-
-        all_track_names = set()
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
-            if is_track:
-                tname = line.split(':', 1)[0].strip()
-                all_track_names.add(tname)
-                
-        tracks = {tname: [] for tname in all_track_names}
-        current_block = []
-        in_music_part = False
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                if current_block:
-                    process_block(current_block, tracks, all_track_names)
-                    current_block = []
-                continue
-                
-            if line.startswith('$'):
-                current_section_name = line.replace('$', '').strip()
-                sections.append({"name": current_section_name, "start_bar": current_bar_count, "end_bar": current_bar_count})
-                if current_block:
-                    process_block(current_block, tracks, all_track_names)
-                    current_block = []
-                continue
-                
-            is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
-            if is_track:
-                in_music_part = True
-                current_block.append(line)
-            else:
-                if current_block:
-                    process_block(current_block, tracks, all_track_names)
-                    current_block = []
-                
-                if not in_music_part:
-                    if line.startswith('T:'):
-                        song_title = line.split(':', 1)[1].strip()
-                    elif line.startswith('Q:'):
-                        try:
-                            bpm = int(line.split(':')[1].strip())
-                        except:
-                            pass
-                    elif line.startswith('K:'):
-                        key_sig = line.split(':')[1].strip().upper()
-                        key_sig = re.sub(r"[^A-Z#B]", "", key_sig)
-                        if not key_sig:
-                            key_sig = "C"
-                    elif line.startswith('M:'):
-                        try:
-                            m_val = line.split(':')[1].strip()
-                            if '/' in m_val:
-                                beats_per_bar = float(m_val.split('/')[0])
-                                denominator = int(m_val.split('/')[1])
-                            else:
-                                beats_per_bar = float(m_val)
-                                denominator = 4
-                        except:
-                            pass
-                            
-        if current_block:
-            process_block(current_block, tracks, all_track_names)
-            
-        if not tracks or all(len(b) == 0 for b in tracks.values()):
+        parsed = parse_partitur_data(file_content)
+        if not parsed["tracks"]:
             print("[PARSER] Tidak ada data musik yang ditemukan.")
             song_playback_active = False
             return
             
-        ticks_per_beat = 36.0 if denominator == 8 else 24.0
-        steps_per_bar = int(beats_per_bar * 24)
-        sub_beat_duration = (60.0 / bpm) / ticks_per_beat
-        
+        bpm = parsed["metadata"]["Q"]
+        key_sig = parsed["metadata"]["K"]
+        beats_per_bar = parsed["metadata"]["beats_per_bar"]
+        song_title = parsed["metadata"]["T"]
         print(f"[PARSER] Memulai pemutaran lagu. Tempo: {bpm} BPM, Nada Dasar: {key_sig}, Beats/Bar: {beats_per_bar}")
         
-        parsed_tracks = {tname: [] for tname in tracks.keys()}
-        for tname, bars in tracks.items():
-            for bar_idx, bar_str in enumerate(bars):
-                if bar_str.strip() == '%':
-                    if bar_idx > 0:
-                        bar_str = bars[bar_idx - 1]
-                    else:
-                        bar_str = "0"
-                events = parse_doremi_bar(bar_str, key_sig, beats_per_bar)
-                parsed_tracks[tname].append(events)
-
+        # --- Auto-Transpose Logic ---
         min_midi = 999
         max_midi = 0
-        def doremi_event_to_midi(event: dict, key_sig: str) -> int:
-            key_roots = {
-                "C": 60, "C#": 61, "DB": 61, "D": 62, "D#": 63, "EB": 63,
-                "E": 64, "F": 65, "F#": 66, "GB": 66, "G": 67, "G#": 68,
-                "AB": 68, "A": 69, "A#": 70, "BB": 70, "B": 71
-            }
-            root = key_roots.get(key_sig.upper(), 60)
-            val = event["val"]
-            intervals = {1: 0, 2: 2, 3: 4, 4: 5, 5: 7, 6: 9, 7: 11}
-            interval = intervals.get(val, 0)
-            octave_mod = event["octave_mod"] * 12 + event["accidental_mod"]
-            return root + interval + octave_mod
-
-        if 'V1' in parsed_tracks:
-            for bar_events in parsed_tracks['V1']:
-                for ev in bar_events:
-                    if ev["type"] == "note":
-                        midi_val = doremi_event_to_midi(ev, key_sig)
-                        min_midi = min(min_midi, midi_val)
-                        max_midi = max(max_midi, midi_val)
-                        
+        for track_name, bars in parsed["tracks"].items():
+            if track_name == 'V1':
+                for bar in bars:
+                    for tok in bar["tokens"]:
+                        if tok["type"] == "note":
+                            min_midi = min(min_midi, tok["midi_value"])
+                            max_midi = max(max_midi, tok["midi_value"])
+        
         auto_transpose = 0
         if min_midi < 999 and max_midi > 0:
             while min_midi + auto_transpose < 67:
                 auto_transpose += 12
             while max_midi + auto_transpose > 88 and (min_midi + auto_transpose - 12) >= 67:
                 auto_transpose -= 12
+                
         if auto_transpose != 0:
             print(f"[PARSER] Auto-Transpose dinamis diterapkan: {auto_transpose} semitone.")
-
+            for track_name, bars in parsed["tracks"].items():
+                if track_name == 'V1':
+                    for bar in bars:
+                        for tok in bar["tokens"]:
+                            if tok["type"] == "note":
+                                tok["midi_value"] += auto_transpose
+        # ----------------------------
+        
         events_by_time = {}
-        def add_event(time_sec, action, track, data):
-            time_sec = round(time_sec, 4)
-            if time_sec not in events_by_time:
-                events_by_time[time_sec] = []
-            events_by_time[time_sec].append({"action": action, "track": track, "data": data})
+        def add_event(time_beat, action, track, data):
+            time_beat = round(time_beat, 4)
+            if time_beat not in events_by_time:
+                events_by_time[time_beat] = []
+            events_by_time[time_beat].append({"action": action, "track": track, "data": data})
 
-        max_time_sec = 0.0
-        for track_name, bars_events in parsed_tracks.items():
-            for bar_idx, bar_events in enumerate(bars_events):
-                for ev in bar_events:
-                    if ev["type"] in ("rest", "sustain"):
-                        continue
-                        
-                    start_sec = (bar_idx * steps_per_bar + ev["tick"]) * sub_beat_duration
-                    dur_sec = ev["length"] * sub_beat_duration
-                    end_sec = start_sec + dur_sec
-                    
-                    max_time_sec = max(max_time_sec, end_sec)
-                    
-                    is_staccato = False
-                    if track_name == 'V1' and global_v1_staccato:
-                        is_staccato = True
-                    elif track_name == 'VB' and global_vb_staccato:
-                        is_staccato = True
-                    elif track_name in ('VA', 'VA^') and global_va_staccato:
-                        is_staccato = True
-                    elif track_name not in ('V1', 'VB', 'VA', 'VA^', 'VD') and global_v2_staccato:
-                        is_staccato = True
-                        
-                    if is_staccato:
-                        actual_dur = min(0.12, dur_sec * 0.3)
-                        end_sec = start_sec + actual_dur
-                    
-                    if ev["type"] == "note":
-                        midi_val = doremi_event_to_midi(ev, key_sig)
-                        if track_name == 'V1':
-                            midi_val += auto_transpose
-                        ev["resolved_midi"] = midi_val
-                        
-                    add_event(start_sec, "ON", track_name, ev)
-                    add_event(end_sec, "OFF", track_name, ev)
-                    
-                    if not is_staccato:
-                        if track_name in ('V1', 'VB') or (track_name.startswith('V') and track_name != 'VA' and track_name != 'VA^' and track_name != 'VD'):
-                            hit_sec = start_sec + 0.09
-                            while hit_sec < end_sec - 0.02:
-                                add_event(hit_sec, "ARDUINO_HIT", track_name, ev)
-                                hit_sec += 0.09
+        seconds_per_beat = 60.0 / bpm
+        gap_beats = 0.05 / seconds_per_beat
 
+        def schedule_note_events(tok_start, total_duration, track_name, tok):
+            # Check if this track is staccato
+            is_staccato = False
+            if track_name == 'V1' and global_v1_staccato:
+                is_staccato = True
+            elif track_name == 'VB' and global_vb_staccato:
+                is_staccato = True
+            elif track_name in ('VA', 'VA^') and global_va_staccato:
+                is_staccato = True
+            elif track_name not in ('V1', 'VB', 'VA', 'VA^', 'VD') and global_v2_staccato:
+                is_staccato = True
+                
+            if is_staccato:
+                # Staccato: play for only 30% of total duration (max 0.12 seconds, min 0.04 seconds)
+                stac_sec = min(0.12, total_duration * seconds_per_beat * 0.3)
+                stac_beats = stac_sec / seconds_per_beat
+                actual_duration = max(0.04, stac_beats)
+            else:
+                # Legato (normal long note): play for full duration minus gap
+                actual_duration = max(0.05, total_duration - gap_beats)
+                
+            tok_end = tok_start + actual_duration
+            
+            add_event(tok_start, "ON", track_name, tok)
+            add_event(tok_end, "OFF", track_name, tok)
+            
+            # Tremolo is only triggered for normal legato notes that are long enough
+            if not is_staccato:
+                tremolo_interval_beats = 0.09 / seconds_per_beat
+                if track_name in ('V1', 'VB') or (track_name.startswith('V') and track_name != 'VA' and track_name != 'VA^' and track_name != 'VD'):
+                    hit_beat = tok_start + tremolo_interval_beats
+                    while hit_beat < tok_end - (0.02 / seconds_per_beat):
+                        add_event(hit_beat, "ARDUINO_HIT", track_name, tok)
+                        hit_beat += tremolo_interval_beats
+
+        for track_name, bars in parsed["tracks"].items():
+            current_note_event = None
+            
+            for bar_idx, bar in enumerate(bars):
+                bar_start_beat = bar_idx * beats_per_bar
+                current_beat = bar_start_beat
+                
+                for tok in bar["tokens"]:
+                    if tok["type"] == "sustain":
+                        if current_note_event:
+                            current_note_event["total_duration"] += tok["duration"]
+                    elif tok["type"] == "rest":
+                        if current_note_event:
+                            schedule_note_events(
+                                current_note_event["start_beat"], 
+                                current_note_event["total_duration"], 
+                                track_name, 
+                                current_note_event["tok"]
+                            )
+                            current_note_event = None
+                    else: # note, chord, drum
+                        if current_note_event:
+                            schedule_note_events(
+                                current_note_event["start_beat"], 
+                                current_note_event["total_duration"], 
+                                track_name, 
+                                current_note_event["tok"]
+                            )
+                        
+                        current_note_event = {
+                            "tok": tok,
+                            "start_beat": current_beat,
+                            "total_duration": tok["duration"]
+                        }
+                    
+                    current_beat += tok["duration"]
+                    
+            if current_note_event:
+                schedule_note_events(
+                    current_note_event["start_beat"], 
+                    current_note_event["total_duration"], 
+                    track_name, 
+                    current_note_event["tok"]
+                )
+                
         sorted_times = sorted(events_by_time.keys())
-        max_time = sorted_times[-1] if sorted_times else 0.0
-        max_bars = len(tracks['V1']) if 'V1' in tracks else 1
+        max_beat = sorted_times[-1] if sorted_times else 0.0
         
         with current_playback_status_lock:
             current_playback_status["active"] = True
             current_playback_status["song_title"] = song_title
             current_playback_status["current_section"] = "INTRO"
             current_playback_status["current_bar"] = 1
-            current_playback_status["total_bars"] = max_bars
+            current_playback_status["total_bars"] = int(max_beat / beats_per_bar) + 1 if beats_per_bar > 0 else 1
             current_playback_status["elapsed_seconds"] = 0.0
-            current_playback_status["total_seconds"] = round(max_time, 1)
+            current_playback_status["total_seconds"] = round(max_beat * seconds_per_beat, 1)
 
         current_physical_notes_1 = set()
         current_physical_notes_3 = set()
         
-        last_time_sec = 0.0
+        last_beat = 0.0
         event_idx = 0
         
         while event_idx < len(sorted_times):
@@ -1087,7 +1056,7 @@ def play_song_thread(file_content: str, thread_token: int):
                 
             global seek_bar_index
             if seek_bar_index >= 0:
-                seek_target_sec = seek_bar_index * steps_per_bar * sub_beat_duration
+                seek_target_beat = seek_bar_index * beats_per_bar
                 seek_bar_index = -1
                 
                 current_physical_notes_1.clear()
@@ -1098,43 +1067,45 @@ def play_song_thread(file_content: str, thread_token: int):
                 except:
                     pass
                 
-                while event_idx < len(sorted_times) and sorted_times[event_idx] < seek_target_sec:
+                while event_idx < len(sorted_times) and sorted_times[event_idx] < seek_target_beat:
                     event_idx += 1
                 
                 if event_idx < len(sorted_times):
-                    last_time_sec = sorted_times[event_idx]
+                    last_beat = sorted_times[event_idx]
                 continue
                 
-            time_sec = sorted_times[event_idx]
-            wait_seconds = time_sec - last_time_sec
+            beat_time = sorted_times[event_idx]
+            wait_seconds = (beat_time - last_beat) * seconds_per_beat
             if wait_seconds > 0:
                 time.sleep(wait_seconds)
                 
-            last_time_sec = time_sec
+            last_beat = beat_time
             
-            current_bar = int(time_sec / (steps_per_bar * sub_beat_duration))
+            current_bar = int(beat_time / beats_per_bar)
+            elapsed_seconds = beat_time * seconds_per_beat
+            
             active_sec = "UMUM"
-            for sec in sections:
+            for sec in parsed["sections"]:
                 if sec["start_bar"] <= current_bar <= sec["end_bar"]:
                     active_sec = sec["name"]
                     break
                     
             with current_playback_status_lock:
                 current_playback_status["current_bar"] = current_bar + 1
-                current_playback_status["elapsed_seconds"] = round(time_sec, 1)
+                current_playback_status["elapsed_seconds"] = round(elapsed_seconds, 1)
                 current_playback_status["current_section"] = active_sec
                 
             arduino1_on_notes = []
             arduino3_on_notes = []
             
-            for ev in events_by_time[time_sec]:
+            for ev in events_by_time[beat_time]:
                 action = ev["action"]
                 track = ev["track"]
-                data = ev["data"]
+                tok = ev["data"]
                 
                 pitches_to_play = []
-                if data["type"] == "note":
-                    midi_val = data["resolved_midi"]
+                if tok["type"] == "note":
+                    midi_val = tok["midi_value"]
                     if track == 'VB':
                         while midi_val < 52: midi_val += 12
                         while midi_val > 67: midi_val -= 12
@@ -1149,8 +1120,8 @@ def play_song_thread(file_content: str, thread_token: int):
                         elif pitch in ANGKLUNG2_PITCHES:
                             pitches_to_play.append((pitch, "mel2", False))
                             
-                elif data["type"] == "chord":
-                    chord_pitches = resolve_chord_pitches(data["symbol"], key_sig)
+                elif tok["type"] == "chord":
+                    chord_pitches = resolve_chord_pitches(tok["chord_sym"], key_sig)
                     for idx, pitch in enumerate(chord_pitches):
                         is_member = idx > 0
                         if pitch in ANGKLUNG1_PITCHES:
@@ -1158,8 +1129,8 @@ def play_song_thread(file_content: str, thread_token: int):
                         elif pitch in ANGKLUNG2_PITCHES:
                             pitches_to_play.append((pitch, "mel2", is_member))
                             
-                elif data["type"] == "drum":
-                    note_num = 34 if data["symbol"].lower() == 'x' else (35 if data["symbol"].lower() == 'y' else 36)
+                elif tok["type"] == "drum":
+                    note_num = 34 if tok["instrument"].lower() == 'x' else (35 if tok["instrument"].lower() == 'y' else 36)
                     if action == "ON":
                         play_local_sound(note_num, angklung_id=4, volume=0.10, instr_type="drum")
                     continue
@@ -1173,7 +1144,7 @@ def play_song_thread(file_content: str, thread_token: int):
                         note_num = ANGKLUNG1_PITCHES.index(pitch) + 1
                         physical_set = current_physical_notes_1
                         arduino_notes = arduino1_on_notes
-                    else: 
+                    else: # "mel2"
                         note_num = ANGKLUNG2_PITCHES.index(pitch) + 1 + 16
                         physical_set = current_physical_notes_1
                         arduino_notes = arduino1_on_notes
@@ -1219,6 +1190,12 @@ def play_song_thread(file_content: str, thread_token: int):
             send_to_arduino(0, 1)
             send_to_arduino(0, 3)
         except: pass
+
+def midi_to_note_name(midi_num: int) -> str:
+    names = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"]
+    octave = (midi_num // 12) - 1
+    note_name = names[midi_num % 12]
+    return f"{note_name}{octave}"
 
 def resolve_chord_pitches(chord_symbol: str, key_sig: str) -> list:
     key_roots = {

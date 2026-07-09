@@ -803,7 +803,7 @@ def parse_partitur_data(file_content: str) -> dict:
     # Specific override for Can't Help Falling in Love
     song_title = metadata.get("T", "").lower()
     if "can't help falling in love" in song_title or "cant help falling in love" in song_title:
-        metadata["Q"] = int(metadata.get("Q", 90) * 1.5)
+        metadata["Q"] = 204
         
     # 3. Tokenize & Parse
     parsed_tracks = {}
@@ -1138,8 +1138,8 @@ def play_song_thread(file_content: str, thread_token: int):
                 current_playback_status["elapsed_seconds"] = round(elapsed_seconds, 1)
                 current_playback_status["current_section"] = active_sec
                 
-            arduino1_on_notes = []
-            arduino3_on_notes = []
+            has_action_1 = False
+            has_action_3 = False
             
             for ev in events_by_time[beat_time]:
                 action = ev["action"]
@@ -1182,15 +1182,15 @@ def play_song_thread(file_content: str, thread_token: int):
                     if ptype == "bass":
                         note_num = BASS_PITCHES.index(pitch) + 1
                         physical_set = current_physical_notes_3
-                        arduino_notes = arduino3_on_notes
+                        has_action_3 = True
                     elif ptype == "mel1":
                         note_num = ANGKLUNG1_PITCHES.index(pitch) + 1
                         physical_set = current_physical_notes_1
-                        arduino_notes = arduino1_on_notes
+                        has_action_1 = True
                     else: # "mel2"
                         note_num = ANGKLUNG2_PITCHES.index(pitch) + 1 + 16
                         physical_set = current_physical_notes_1
-                        arduino_notes = arduino1_on_notes
+                        has_action_1 = True
                         
                     if action == "ON":
                         if track == 'VB': vol = global_vb_volume
@@ -1203,22 +1203,20 @@ def play_song_thread(file_content: str, thread_token: int):
                         
                         if not is_chord_member:
                             physical_set.add(note_num)
-                            arduino_notes.append(note_num)
                             
                     elif action == "ARDUINO_HIT":
-                        if note_num in physical_set:
-                            arduino_notes.append(note_num)
-                            
+                        # Hit events keep the note in the active sending list
+                        pass
+                        
                     elif action == "OFF":
                         physical_set.discard(note_num)
             
-            arduino1_on_notes = list(set(arduino1_on_notes))
-            arduino3_on_notes = list(set(arduino3_on_notes))
-            
-            if arduino1_on_notes:
-                send_to_arduino(arduino1_on_notes, 1, play_synth=False)
-            if arduino3_on_notes:
-                send_to_arduino(arduino3_on_notes, 3, play_synth=False)
+            if has_action_1:
+                notes_1 = list(current_physical_notes_1) if current_physical_notes_1 else [0]
+                send_to_arduino(notes_1, 1, play_synth=False)
+            if has_action_3:
+                notes_3 = list(current_physical_notes_3) if current_physical_notes_3 else [0]
+                send_to_arduino(notes_3, 3, play_synth=False)
                 
             event_idx += 1
             

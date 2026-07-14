@@ -98,8 +98,9 @@ def extract_notes_from_track(mid, track_idx):
                 start_tick, vel = active_notes.pop(msg.note)
                 duration = current_tick - start_tick
                 
-                q_start_tick = round(start_tick / 48.0) * 48.0
-                q_duration = max(48.0, round(duration / 48.0) * 48.0)
+                q_start_tick = round(start_tick / ticks_per_step) * ticks_per_step
+                q_duration = max(ticks_per_step, round(duration / ticks_per_step) * ticks_per_step)
+
                 
                 names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
                 pitch_octave = (msg.note // 12) - 1

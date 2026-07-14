@@ -616,8 +616,16 @@ def main():
             sorted_cands = sorted(melody_scores.keys(), key=lambda k: (-melody_scores[k][0], -melody_scores[k][1]))
             primary_mel = sorted_cands[0]
             melody_idxs = [primary_mel]
+            
+            # Merge non-overlapping secondary candidates that score well (keeps intro/bridge solos)
+            for t_idx in sorted_cands[1:]:
+                if melody_scores[t_idx][0] >= 3.0:
+                    ov = overlap_ratio(all_raw[primary_mel], all_raw[t_idx], tpb, total_bars)
+                    if ov < 0.15:
+                        melody_idxs.append(t_idx)
         else:
             melody_idxs = [max(remaining2, key=lambda t: t['avg_pitch'])['idx']]
+
 
 
 

@@ -742,7 +742,7 @@ def main():
         last_chord = chord
 
         # ── Ritem (V2) ────────────────────────────────────────────────────
-        if rhy_density > 16.0:
+        if len(rhy_notes_bar) >= 6:
             # Chord blok: beat 1 dan beat 3
             bars_rhy.append([f'@{chord}', '.', f'@{chord}', '.'])
         else:
@@ -750,7 +750,7 @@ def main():
             bars_rhy.append(toks if toks else ['0'])
 
         # ── Bass (VB) ─────────────────────────────────────────────────────
-        if bas_density > 10.0:
+        if len(bass_bar) >= 4:
             rs = chord_root_step(chord, key_sig)
             bars_bas.append([rs, '.', rs, '.'])
         else:
@@ -758,13 +758,17 @@ def main():
             bars_bas.append(toks if toks else ['0'])
 
         # ── Drum (VD) ─────────────────────────────────────────────────────
-        if drm_density > 14.0:
+        bstart = b * tpbar
+        bend   = bstart + tpbar
+        drum_hits_bar = [h for h in drum_hits if bstart <= h['tick'] < bend]
+        if len(drum_hits_bar) >= 6:
             # Pola drum rock standard 16-step
             bars_drm.append(['z=','0=','x=','0=','y=','0=','x=','0=',
                               'z=','0=','x=','0=','y=','0=','x=','y='])
         else:
             toks = drum_bar_to_tokens(grid_drm[b])
             bars_drm.append(toks if toks else ['0'])
+
 
     # ── Tulis output ──────────────────────────────────────────────────────
     out = args.output_file

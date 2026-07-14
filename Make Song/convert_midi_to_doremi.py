@@ -790,16 +790,52 @@ def main():
         is_busy_bar = (len(rhy_active) >= 6) or (len(drum_hits_bar) >= 6)
 
         # ── Ritem (V2) ────────────────────────────────────────────────────
-        toks_rhy = grid_bar_to_chord_tokens(grid_rhy[b], chord)
-        bars_rhy.append(toks_rhy if toks_rhy else ['0'])
+        if len(rhy_active) == 0:
+            # Preserves silence of accompaniment from the MIDI
+            bars_rhy.append(['0'])
+        else:
+            chord_lbl = f'@{chord}'
+            if is_busy_bar:
+                # CHORUS: Rhythmic pop/rock groove for block chords
+                if tempo_bpm >= 80:
+                    # Steady eighth-note pulsing
+                    bars_rhy.append([chord_lbl + '-'] * 8)
+                else:
+                    # Syncopated pop/ballad groove
+                    bars_rhy.append([chord_lbl, chord_lbl + '-', chord_lbl + '-', chord_lbl, chord_lbl + '-', chord_lbl + '-'])
+            else:
+                # VERSE: Simple, clean chords on beat 1 and 3 (lets melody shine!)
+                bars_rhy.append([chord_lbl, '.', chord_lbl, '.'])
 
         # ── Bass (VB) ─────────────────────────────────────────────────────
-        toks_bas = grid_bar_to_tokens(grid_bas[b], base_oct=4)
-        bars_bas.append(toks_bas if toks_bas else ['0'])
+        if len(bas_active) == 0:
+            # Preserves bass silence from the MIDI (e.g. intro/outro)
+            bars_bas.append(['0'])
+        else:
+            rs = chord_root_step(chord, key_sig)
+            if is_busy_bar:
+                # CHORUS: Rame, walking bass!
+                if tempo_bpm >= 80:
+                    bars_bas.append([rs, '.-', rs + '-', rs, '.-', rs + '-'])
+                else:
+                    bars_bas.append([rs, '.', rs + '-', '.-', rs, '.'])
+            else:
+                # VERSE: Sederhana, tenang, mengalun lembut
+                bars_bas.append([rs, '.', rs, '.'])
 
         # ── Drum (VD) ─────────────────────────────────────────────────────
-        toks_drm = drum_bar_to_tokens(grid_drm[b])
-        bars_drm.append(toks_drm if toks_drm else ['0'])
+        if len(drum_hits_bar) == 0:
+            # Preserves drum silence from the MIDI (e.g. intro/outro)
+            bars_drm.append(['0'])
+        else:
+            if is_busy_bar:
+                # CHORUS: Rock drum beat penuh!
+                bars_drm.append(['z=','0=','x=','0=','y=','0=','x=','0=',
+                                  'z=','0=','x=','0=','y=','0=','x=','y='])
+            else:
+                # VERSE: Sederhana (hanya kick & hihat ringan untuk menjaga tempo)
+                bars_drm.append(['z=', '0=', 'x=', '0=', 'z=', '0=', 'x=', '0='])
+
 
 
 

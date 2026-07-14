@@ -913,10 +913,11 @@ def play_song_thread(file_content: str, thread_token: int):
         
         auto_transpose = 0
         if min_midi < 999 and max_midi > 0:
-            while min_midi + auto_transpose < 67:
+            while min_midi + auto_transpose < 65:
                 auto_transpose += 12
-            while max_midi + auto_transpose > 88 and (min_midi + auto_transpose - 12) >= 67:
+            while max_midi + auto_transpose > 88 and (min_midi + auto_transpose - 12) >= 65:
                 auto_transpose -= 12
+
                 
         if auto_transpose != 0:
             print(f"[PARSER] Auto-Transpose dinamis diterapkan: {auto_transpose} semitone.")

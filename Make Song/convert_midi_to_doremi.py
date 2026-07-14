@@ -742,44 +742,57 @@ def main():
         chord = detect_chord(chord_src, key_sig, bass_midi=bass_midi_val) or last_chord
         last_chord = chord
 
-        # ── Ritem (V2) ────────────────────────────────────────────────────
-        if len(rhy_notes_bar) >= 6:
-            # Rhythmic pop/rock groove for block chords
-            chord_lbl = f'@{chord}'
-            if tempo_bpm >= 80:
-                # Steady eighth-note pulsing (perfect for Oasis piano and Wonderwall strumming)
-                bars_rhy.append([chord_lbl + '-'] * 8)
-            else:
-                # Syncopated pop/ballad groove (perfect for My Way slow tempo)
-                bars_rhy.append([chord_lbl, chord_lbl + '-', chord_lbl + '-', chord_lbl, chord_lbl + '-', chord_lbl + '-'])
-        else:
-            toks = grid_bar_to_tokens(grid_rhy[b], base_oct=4)
-            bars_rhy.append(toks if toks else ['0'])
+        # Check if the bar is completely silent in all musical tracks to preserve intro/outro silence
+        is_silent_bar = (len(rhy_notes_bar) == 0) and (len(mel_notes_bar) == 0) and (len(bass_bar) == 0)
 
-        # ── Bass (VB) ─────────────────────────────────────────────────────
-        if len(bass_bar) >= 4:
-            rs = chord_root_step(chord, key_sig)
-            if tempo_bpm >= 80:
-                # Active bass groove for faster tempos
-                bars_bas.append([rs, '.-', rs + '-', rs, '.-', rs + '-'])
-            else:
-                # Gentle syncopated bass groove for ballads
-                bars_bas.append([rs, '.', rs + '-', '.-', rs, '.'])
-        else:
-            toks = grid_bar_to_tokens(grid_bas[b], base_oct=4)
-            bars_bas.append(toks if toks else ['0'])
-
-        # ── Drum (VD) ─────────────────────────────────────────────────────
+        # Detect busy bar for chorus/climax vs verse/quiet
         bstart = b * tpbar
         bend   = bstart + tpbar
         drum_hits_bar = [h for h in drum_hits if bstart <= h['tick'] < bend]
-        if len(drum_hits_bar) >= 6:
-            # Pola drum rock standard 16-step
-            bars_drm.append(['z=','0=','x=','0=','y=','0=','x=','0=',
-                              'z=','0=','x=','0=','y=','0=','x=','y='])
+        is_busy_bar = (len(rhy_notes_bar) >= 6) or (len(drum_hits_bar) >= 6)
+
+        # ── Ritem (V2) ────────────────────────────────────────────────────
+        if is_silent_bar:
+            bars_rhy.append(['0'])
         else:
-            toks = drum_bar_to_tokens(grid_drm[b])
-            bars_drm.append(toks if toks else ['0'])
+            chord_lbl = f'@{chord}'
+            if is_busy_bar:
+                # CHORUS: Rame, berirama, genjrengan penuh!
+                if tempo_bpm >= 80:
+                    bars_rhy.append([chord_lbl + '-'] * 8)
+                else:
+                    bars_rhy.append([chord_lbl, chord_lbl + '-', chord_lbl + '-', chord_lbl, chord_lbl + '-', chord_lbl + '-'])
+            else:
+                # VERSE: Sederhana, tenang, tapi mengisi ketukan (tidak terpotong)
+                bars_rhy.append([chord_lbl, '.', chord_lbl, '.'])
+
+        # ── Bass (VB) ─────────────────────────────────────────────────────
+        if is_silent_bar:
+            bars_bas.append(['0'])
+        else:
+            rs = chord_root_step(chord, key_sig)
+            if is_busy_bar:
+                # CHORUS: Rame, walking bass!
+                if tempo_bpm >= 80:
+                    bars_bas.append([rs, '.-', rs + '-', rs, '.-', rs + '-'])
+                else:
+                    bars_bas.append([rs, '.', rs + '-', '.-', rs, '.'])
+            else:
+                # VERSE: Sederhana, tenang, mengalun lembut
+                bars_bas.append([rs, '.', rs, '.'])
+
+        # ── Drum (VD) ─────────────────────────────────────────────────────
+        if is_silent_bar:
+            bars_drm.append(['0'])
+        else:
+            if is_busy_bar:
+                # CHORUS: Rock drum beat penuh!
+                bars_drm.append(['z=','0=','x=','0=','y=','0=','x=','0=',
+                                  'z=','0=','x=','0=','y=','0=','x=','y='])
+            else:
+                # VERSE: Sederhana (hanya kick & hihat ringan untuk menjaga tempo)
+                bars_drm.append(['z=', '0=', 'x=', '0=', 'z=', '0=', 'x=', '0='])
+
 
 
 

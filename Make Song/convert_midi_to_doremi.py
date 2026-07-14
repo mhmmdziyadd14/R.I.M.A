@@ -87,7 +87,6 @@ def extract_notes_from_track(mid, track_idx):
     current_tick = 0
     active_notes = {}
     
-    # 16th note quantization
     ticks_per_step = mid.ticks_per_beat / 4.0
     
     for msg in track:
@@ -99,8 +98,8 @@ def extract_notes_from_track(mid, track_idx):
                 start_tick, vel = active_notes.pop(msg.note)
                 duration = current_tick - start_tick
                 
-                q_start_tick = round(start_tick / ticks_per_step) * ticks_per_step
-                q_duration = max(ticks_per_step, round(duration / ticks_per_step) * ticks_per_step)
+                q_start_tick = round(start_tick / 48.0) * 48.0
+                q_duration = max(48.0, round(duration / 48.0) * 48.0)
                 
                 names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
                 pitch_octave = (msg.note // 12) - 1
@@ -306,20 +305,28 @@ def get_track_overlap(notes_a, notes_b, total_bars, ticks_per_beat, grid_size=16
         return 0.0
     return overlap_steps / total_active_steps
 
-def detect_chord_for_bar(active_midi_notes, key_sig="C"):
+def detect_chord_for_bar(active_midi_notes, key_sig="C", bass_note=None):
     if not active_midi_notes:
         return None
     pcs = set(n % 12 for n in active_midi_notes)
     best_chord = "C"
     best_score = -1
+    
+    bass_pc = (bass_note % 12) if bass_note is not None else None
+    
     for chord_name, chord_pcs in CHORDS_DB.items():
         score = 0
         root_pc = chord_pcs[0]
+        
+        if bass_pc is not None and root_pc == bass_pc:
+            score += 5.0
+            
         if root_pc in pcs:
             score += 1.5
         for pc in chord_pcs[1:]:
             if pc in pcs:
                 score += 1.0
+                
         scale_chords = {
             "C": ["C", "Dm", "Em", "F", "G", "Am", "Bdim"],
             "G": ["G", "Am", "Bm", "C", "D", "Em", "F#dim"],
@@ -476,7 +483,17 @@ def main():
                 rhythm_track = rhythm_candidate['idx']
                 
         if not melody_tracks:
-            melody_candidates = [t for t in remaining if t['idx'] != rhythm_track and t['chord_ratio'] < 0.15 and 50 <= t['avg_pitch'] <= 82]
+            # Smart melody candidate check: monophonic OR low notes density (notes/bar < 5.0)
+            melody_candidates = []
+            for t in remaining:
+                if t['idx'] == rhythm_track:
+                    continue
+                if not (50 <= t['avg_pitch'] <= 82):
+                    continue
+                density = t['notes_count'] / total_bars if total_bars > 0 else 0
+                if t['chord_ratio'] < 0.15 or density < 5.0:
+                    melody_candidates.append(t)
+                    
             named_vocals = [t for t in melody_candidates if any(w in t['name'].lower() for w in ['vocal', 'melod', 'lead', 'sing', 'voice', 'sax', 'solo'])]
             if named_vocals:
                 melody_candidates = named_vocals
@@ -486,7 +503,7 @@ def main():
                 melody_tracks = [primary_mel['idx']]
                 for t in melody_candidates:
                     if t['idx'] != primary_mel['idx']:
-                        overlap = get_track_overlap(all_notes[primary_mel['idx']], all_notes[t['idx']], total_bars, ticks_per_beat)
+                        overlap = get_track_overlap(all_notes[primary_mel['idx']], all_notes[t['idx']], total_bars, ticks_per_beat, grid_size=16)
                         if overlap < 0.15:
                             melody_tracks.append(t['idx'])
             else:
@@ -581,51 +598,47 @@ def main():
     last_chord = "C"
     
     for bar_idx in range(total_bars):
-        # 1. Melody tokens (always precise 16-step)
         tokens_mel = grid_to_doremi_tokens(grid_melody[bar_idx], base_oct=4)
         bars_melody.append(tokens_mel if tokens_mel else ['0'])
         
-        # 2. Extract active notes in this bar for chord detection
         bar_start_tick = bar_idx * ticks_per_bar
         bar_end_tick = (bar_idx + 1) * ticks_per_bar
+        
+        # 1. Chord & Bass Detection
         active_notes_bar = [n['midi'] for n in notes_rhythm if bar_start_tick <= n['start_tick'] < bar_end_tick]
         if not active_notes_bar:
             active_notes_bar = [n['midi'] for n in notes_melody if bar_start_tick <= n['start_tick'] < bar_end_tick]
             
-        chord_name = detect_chord_for_bar(active_notes_bar, key_sig)
+        bar_bass_notes = [n['midi'] for n in notes_bass if bar_start_tick <= n['start_tick'] < bar_end_tick]
+        bass_note = bar_bass_notes[0] if bar_bass_notes else None
+        
+        chord_name = detect_chord_for_bar(active_notes_bar, key_sig, bass_note=bass_note)
         if chord_name:
             last_chord = chord_name
         else:
             chord_name = last_chord
             
-        # 3. Format Rhythm (V2)
+        # 2. Format Rhythm (V2)
         if rhy_density > 16.0:
-            # Strumming guitar/pad: simplify to block chords (beat 1 and beat 3)
-            # In 16-step grid, beat 1 is index 0 (sustains for 8 steps = 2 beats), beat 3 is index 8 (sustains for 8 steps = 2 beats)
             chord_token = f"@{chord_name}"
-            # '@Chord' + '.' (4 steps each = 8 steps / 2 beats)
+            # Beat 1 (chord) + Beat 2 (sustain) + Beat 3 (chord) + Beat 4 (sustain)
             bars_rhythm.append([chord_token, '.', chord_token, '.'])
         else:
-            # Clean arpeggio: write note-by-note
             tokens_rhy = grid_to_doremi_tokens(grid_rhythm[bar_idx], base_oct=4)
             bars_rhythm.append(tokens_rhy if tokens_rhy else ['0'])
             
-        # 4. Format Bass (VB)
+        # 3. Format Bass (VB)
         if bas_density > 8.0:
-            # Busy bass: simplify to root note on beat 1 and beat 3
             root_step = get_chord_root_step(chord_name, key_sig)
             bars_bass.append([root_step, '.', root_step, '.'])
         else:
-            # Clean bass: write note-by-note
             tokens_bas = grid_to_doremi_tokens(grid_bass[bar_idx], base_oct=4)
             bars_bass.append(tokens_bas if tokens_bas else ['0'])
             
-        # 5. Format Drums (VD)
+        # 4. Format Drums (VD)
         if drm_density > 12.0:
-            # Busy drums: simplify to clean sixteenth rock beat
             bars_drums.append(['z=', '0=', 'x=', '0=', 'y=', '0=', 'x=', '0=', 'z=', '0=', 'x=', '0=', 'y=', '0=', 'x=', 'y='])
         else:
-            # Clean drums: write note-by-note
             tokens_drm = drum_grid_to_tokens(grid_drums[bar_idx])
             bars_drums.append(tokens_drm if tokens_drm else ['0'])
             

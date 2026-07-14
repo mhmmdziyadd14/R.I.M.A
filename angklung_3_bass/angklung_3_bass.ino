@@ -23,7 +23,7 @@ const char* namaNada[16] = {
   "c4", "c#4", "d4", "d#4", "e4", "f4", "f#4", "g4"
 };
 
-const int durasiGetar = 85; 
+int durasiGetar = 85; 
 
 // Prototipe fungsi
 void updateShiftRegister(byte data);
@@ -62,8 +62,18 @@ void loop() {
     String input = Serial.readStringUntil('\n');
     input.trim();
     if (input.length() > 0) {
-      mainkanBanyakNada(input);
-      Serial.println(F("OK")); // Kirim respon balik ke laptop
+      if (input.startsWith("P")) {
+        int newDur = input.substring(1).toInt();
+        if (newDur >= 10 && newDur <= 200) {
+          durasiGetar = newDur;
+          Serial.println(F("DUR_OK"));
+        } else {
+          Serial.println(F("DUR_ERR"));
+        }
+      } else {
+        mainkanBanyakNada(input);
+        Serial.println(F("OK")); // Kirim respon balik ke laptop
+      }
     }
   }
 }
@@ -76,6 +86,7 @@ void mainkanBanyakNada(String input) {
   bool directPinsActive[8] = {false, false, false, false, false, false, false, false};
   bool hasAny = false;
 
+  int pulse_len[17] = {0};
   int startIndex = 0;
   while (true) {
     int commaIndex = input.indexOf(',', startIndex);
@@ -87,16 +98,13 @@ void mainkanBanyakNada(String input) {
     }
     noteStr.trim();
     if (noteStr.length() > 0) {
-      int note = noteStr.toInt();
+      int splitIndex = noteStr.indexOf(':');
+      int note = (splitIndex == -1) ? noteStr.toInt() : noteStr.substring(0, splitIndex).toInt();
+      int velocity = (splitIndex == -1) ? 127 : noteStr.substring(splitIndex + 1).toInt();
+      
       if (note >= 1 && note <= 16) {
         hasAny = true;
-        if (note >= 9 && note <= 16) {
-          int indexPin = note - 9;
-          directPinsActive[indexPin] = true;
-        } else if (note >= 1 && note <= 8) {
-          int bitPosition = 8 - note; // Peta nada 1-8 ke bit 7-0
-          data |= (1 << bitPosition);
-        }
+        pulse_len[note] = map(velocity, 1, 127, 20, durasiGetar);
       }
     }
     if (commaIndex == -1) {
@@ -106,23 +114,38 @@ void mainkanBanyakNada(String input) {
   }
 
   if (hasAny) {
-    // 1. Nyalakan direct pins yang aktif secara serentak
-    for (int i = 0; i < 8; i++) {
-      if (directPinsActive[i]) {
-        digitalWrite(directPins[i], HIGH);
+    unsigned long start_time = millis();
+    unsigned long elapsed = 0;
+    
+    while (elapsed <= durasiGetar) {
+      elapsed = millis() - start_time;
+      
+      byte d8 = 0;
+      
+      for (int i = 1; i <= 8; i++) {
+        if (pulse_len[i] > elapsed) d8 |= (1 << (8 - i));
       }
+      
+      // Update direct pins
+      for (int i = 9; i <= 16; i++) {
+        if (pulse_len[i] > elapsed) {
+          digitalWrite(directPins[i - 9], HIGH);
+        } else {
+          digitalWrite(directPins[i - 9], LOW);
+        }
+      }
+      
+      // Update shift register
+      updateShiftRegister(d8);
+      
+      // Beri jeda 1ms agar tidak nge-spam shift register yang bisa bikin glitch/noise
+      delay(1);
     }
-    // 2. Nyalakan register shift yang aktif secara serentak
-    updateShiftRegister(data);
 
-    // 3. Tahan selama durasi pemicu getar (hanya delay 1 kali saja)
-    delay(durasiGetar);
-
-    // 4. Matikan semua direct pins secara serentak
+    // Pastikan semua mati pada akhirnya
     for (int i = 0; i < 8; i++) {
       digitalWrite(directPins[i], LOW);
     }
-    // 5. Matikan semua register shift secara serentak
     updateShiftRegister(0b00000000);
   }
 }

@@ -100,6 +100,12 @@
           <span id="active-note-display">F G A B D D</span>
         </div>
 
+        <!-- Global Volume Slider -->
+        <div class="volume-control" style="width: 100%; max-width: 400px; margin: 10px auto; text-align: center;">
+          <label for="manual-volume" style="font-size: 1.2rem; font-weight: bold; color: #8D6E63;"><i class="fa-solid fa-volume-high"></i> Volume: <span id="vol-label">127</span></label>
+          <input type="range" id="manual-volume" min="1" max="127" value="127" style="width: 100%;" oninput="document.getElementById('vol-label').innerText = this.value">
+        </div>
+
         <!-- 3 Stacked Keyboards for Angklung 1, 2, and 3 -->
         <div class="stacked-keyboards">
           
@@ -377,6 +383,6 @@
 
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

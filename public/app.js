@@ -155,8 +155,10 @@ function startKeyTrigger(keyElement) {
       playClientSynthSound(freqMap[noteNum]);
     }
 
+    // Ambil nilai volume dari slider (jika ada), default 127
+    const volume = document.getElementById('manual-volume') ? document.getElementById('manual-volume').value : 127;
     // Send to python serial endpoint
-    fetch(`${settings.localApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}`).catch(() => {});
+    fetch(`${settings.localApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}&volume=${volume}`).catch(() => {});
   };
   
   // Initial trigger
@@ -418,7 +420,8 @@ function triggerKeyOn(keyElement) {
   }
 
   // Send request to python backend
-  fetch(`${settings.localApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}`).catch(() => {});
+  const volume = document.getElementById('manual-volume') ? document.getElementById('manual-volume').value : 127;
+  fetch(`${settings.localApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}&volume=${volume}`).catch(() => {});
 
   // Remove active visual after transient delay
   setTimeout(() => {
@@ -557,7 +560,8 @@ function playChord(chordName) {
 
   const a1Param = arduino1Notes.join(',');
   const a3Param = arduino3Notes.join(',');
-  fetch(`${settings.localApi}/api/arduino/play_multi?a1=${a1Param}&a3=${a3Param}`).catch(() => {});
+  const volume = document.getElementById('manual-volume') ? document.getElementById('manual-volume').value : 127;
+  fetch(`${settings.localApi}/api/arduino/play_multi?a1=${a1Param}&a3=${a3Param}&volume=${volume}`).catch(() => {});
 }
 
 function startChordTrigger(chordName, btnElement) {

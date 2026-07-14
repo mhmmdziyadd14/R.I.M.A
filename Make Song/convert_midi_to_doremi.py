@@ -9,7 +9,8 @@ MIDI_FILE   = 'oasis-dont_look_back_in_anger.mid'
 OUTPUT_FILE = 'Oasis.123'
 
 # Track mapping (0-indexed indices from inspect_midi.py)
-TRACKS_MELODY = [4, 10, 14] # Merge all vocal melody tracks!
+# Merge Track 4 (Verse 1 vocal), 7 (Chorus/Pre-chorus/Solo), 9 (Verse 2 vocal), 10, 14 (fills/outro)
+TRACKS_MELODY = [4, 7, 9, 10, 14] 
 TRACK_RHYTHM  = 2           # V2 (Rhythm - Piano)
 TRACK_BASS    = 3           # VB (Bass)
 TRACK_DRUMS   = 11          # VD (Drums)
@@ -320,7 +321,7 @@ def convert():
         f.write(f"T: Dont Look Back in Anger\n")
         f.write(f"C: Oasis\n")
         f.write(f"M: 4/4\n")
-        f.write(f"Q: 82\n") # Fixed tempo to 82 BPM!
+        f.write(f"Q: 82\n")
         f.write(f"K: C\n")
         f.write("\n")
         

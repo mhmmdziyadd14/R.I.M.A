@@ -211,92 +211,91 @@ def generate_angklung_sound(frequency: float, duration: float = 1.2, sr: int = 4
     
     if instr_type == "drum":
         note_id = int(frequency)
-        if note_id == 34: # 'x' -> Snare Drum
-            noise = (np.random.rand(len(t)) - 0.5) * np.exp(-18.0 * t)
-            body = np.sin(2.0 * np.pi * 180.0 * t) * np.exp(-40.0 * t) * 0.4
+        if note_id == 34: # 'x' -> Hi-Hat / Cymbal (noise burst)
+            signal = (np.random.rand(len(t)) - 0.5) * np.exp(-60.0 * t) * 0.6
+        elif note_id == 36: # 'z' -> Kick Drum (sine sweep)
+            sweep_freq = 45.0 + 115.0 * np.exp(-35.0 * t)
+            signal = np.sin(2.0 * np.pi * sweep_freq * t) * np.exp(-18.0 * t)
+        else: # 'y' (35) -> Snare (body + noise sweep)
+            noise = (np.random.rand(len(t)) - 0.5) * np.exp(-22.0 * t) * 0.8
+            body = np.sin(2.0 * np.pi * 175.0 * t) * np.exp(-45.0 * t) * 0.35
             signal = noise + body
-        elif note_id == 36: # 'z' -> Kick Drum
-            sweep_freq = 45.0 + 105.0 * np.exp(-30.0 * t)
-            signal = np.sin(2.0 * np.pi * sweep_freq * t) * np.exp(-15.0 * t)
-        else: # 'y' (35) or other -> Hi-Hat
-            signal = (np.random.rand(len(t)) - 0.5) * np.exp(-90.0 * t) * 0.7
             
     elif instr_type == "bass":
-        # Bass: Deep fundamental, no harsh high harmonics, slower envelope decay
+        # Bass: Warm, deep fundamental with minimal high-frequency harshness
         f1 = frequency
         f2 = frequency * 2.0
-        env1 = np.exp(-2.0 * t)
-        env2 = np.exp(-4.5 * t)
+        env1 = np.exp(-2.2 * t)
+        env2 = np.exp(-5.0 * t)
         
-        tone1 = np.sin(2.0 * np.pi * f1 * t) * env1 * 0.8
-        tone2 = np.sin(2.0 * np.pi * f2 * t) * env2 * 0.2
+        tone1 = np.sin(2.0 * np.pi * f1 * t) * env1 * 0.85
+        tone2 = np.sin(2.0 * np.pi * f2 * t) * env2 * 0.15
         signal = tone1 + tone2
         
-        # Soft click for bass
+        # Soft woody pluck for bass attack
         click_len = int(sr * 0.02)
-        click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 4.0, click_len)) * 0.1
-        signal[:click_len] += click
+        if len(signal) >= click_len:
+            click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 4.0, click_len)) * 0.08
+            signal[:click_len] += click
+            
+    else: # "melody" or "chord"
+        # Realistic Bamboo Angklung physical model:
+        # - Two primary tubes tuned an octave apart (f1 and f2 = 2.0 * f1)
+        # - Slight detuning between left/right tubes for natural acoustic chorus
+        # - Shaking tremolo rattle at ~14.0 Hz
+        # - Low frequency woody 'thunk' frame impact and friction noise
+        f1 = frequency
+        f2 = frequency * 2.0
+        f3 = frequency * 3.0
+        f4 = frequency * 4.0
         
-    elif instr_type == "chord":
-        # Chord/Rhythm: Detuned stereo chorus backing wash (left slightly higher, right slightly lower)
-        f1_L = frequency * 1.002
-        f1_R = frequency * 0.998
-        f2_L = frequency * 2.002
-        f2_R = frequency * 1.998
+        f1_detune = f1 * 1.003
+        f2_detune = f2 * 0.997
         
-        env1 = np.exp(-4.5 * t)  # Faster decay so it sits nicely in background
-        env2 = np.exp(-3.5 * t)
+        # Rattling shake (tremolo) at 14Hz
+        rattle_freq = 14.0
+        tremolo = 0.72 + 0.28 * np.sin(2.0 * np.pi * rattle_freq * t)
         
-        tone1_L = np.sin(2.0 * np.pi * f1_L * t) * env1 * 0.5
-        tone1_R = np.sin(2.0 * np.pi * f1_R * t) * env1 * 0.5
-        tone2_L = np.sin(2.0 * np.pi * f2_L * t) * env2 * 0.4
-        tone2_R = np.sin(2.0 * np.pi * f2_R * t) * env2 * 0.4
+        env1 = np.exp(-2.8 * t)
+        env2 = np.exp(-2.0 * t)
+        env3 = np.exp(-4.2 * t)
+        env4 = np.exp(-5.5 * t)
         
-        signal_L = tone1_L + tone2_L
-        signal_R = tone1_R + tone2_R
+        tone1 = (np.sin(2.0 * np.pi * f1 * t) + np.sin(2.0 * np.pi * f1_detune * t)) * env1 * 0.42
+        tone2 = (np.sin(2.0 * np.pi * f2 * t) + np.sin(2.0 * np.pi * f2_detune * t)) * env2 * 0.42
+        tone3 = np.sin(2.0 * np.pi * f3 * t) * env3 * 0.13
+        tone4 = np.sin(2.0 * np.pi * f4 * t) * env4 * 0.03
         
-        # Click (strike sound)
-        click_len = int(sr * 0.025)
-        click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 5.0, click_len)) * 0.15
-        signal_L[:click_len] += click
-        signal_R[:click_len] += click
+        signal = (tone1 + tone2 + tone3 + tone4) * tremolo
         
-        # Normalize and scale
+        # Woody impact sound (wood click + short noise friction)
+        click_len = int(sr * 0.035)
+        if len(signal) >= click_len:
+            noise = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 5.0, click_len)) * 0.12
+            thunk = np.sin(2.0 * np.pi * 125.0 * np.linspace(0, 0.035, click_len)) * np.exp(-120.0 * np.linspace(0, 0.035, click_len)) * 0.22
+            signal[:click_len] += noise + thunk
+            
+    # Normalize & Scale
+    if instr_type == "chord":
+        # Stereo spacing for chords
+        signal_L = signal * 1.001
+        signal_R = signal * 0.999
         max_L = np.max(np.abs(signal_L))
         max_R = np.max(np.abs(signal_R))
         if max_L > 0: signal_L = (signal_L / max_L) * volume
         if max_R > 0: signal_R = (signal_R / max_R) * volume
-        
         stereo_signal = np.column_stack((signal_L, signal_R))
         return (stereo_signal * 32767).astype(np.int16)
         
-    else: # "melody"
-        # Melody: Sharp, bright, clear centered lead with full harmonics
-        f1 = frequency
-        f2 = frequency * 2.0
-        f3 = frequency * 3.0
-        
-        env1 = np.exp(-3.5 * t)
-        env2 = np.exp(-2.2 * t)
-        env3 = np.exp(-5.5 * t)
-        
-        tone1 = np.sin(2.0 * np.pi * f1 * t) * env1 * 0.5
-        tone2 = np.sin(2.0 * np.pi * f2 * t) * env2 * 0.4
-        tone3 = np.sin(2.0 * np.pi * f3 * t) * env3 * 0.1
-        
-        signal = tone1 + tone2 + tone3
-        
-        # Bright strike click
-        click_len = int(sr * 0.02)
-        click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 4.0, click_len)) * 0.25
-        signal[:click_len] += click
-        
+    # Mono centered for melody, bass, drums
     max_val = np.max(np.abs(signal))
     if max_val > 0:
         signal = (signal / max_val) * volume
         
     stereo_signal = np.column_stack((signal, signal))
     return (stereo_signal * 32767).astype(np.int16)
+
+global_synth_volume = 1.0
 
 def play_synth_note_async(note_num: int, angklung_id: int, volume: float = 1.0, instr_type: str = "melody"):
     global global_synth_volume

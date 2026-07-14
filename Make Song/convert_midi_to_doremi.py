@@ -685,17 +685,28 @@ def main():
     grid_bas = notes_to_grid(notes_bas, tpb, total_bars, mode='lowest')
     grid_drm = drums_to_grid(drum_hits,  tpb, total_bars)
 
-    # ── Chord detection per bar (pakai info dari 2 bar sebelum juga) ──────
-    def bar_midi_notes(notes_list, bar_idx):
+    # ── Active note tracking per bar (tracks overlapping sustained notes) ──
+    def get_active_notes_in_bar(notes_list, bar_idx):
         bstart = bar_idx * tpbar
         bend   = bstart  + tpbar
-        return [n['midi'] for n in notes_list if bstart <= n['start_tick'] < bend]
+        active = []
+        for n in notes_list:
+            n_start = n['start_tick']
+            n_end   = n_start + n['dur_ticks']
+            if n_start < bend and n_end > bstart:
+                active.append(n)
+        return active
 
     # ── Section detection ─────────────────────────────────────────────────
     sections = {0: 'INTRO'}
     started  = False
     silent   = 0
     v1_pitch_ref = None
+
+    def bar_midi_notes(notes_list, bar_idx):
+        bstart = bar_idx * tpbar
+        bend   = bstart  + tpbar
+        return [n['midi'] for n in notes_list if bstart <= n['start_tick'] < bend]
 
     for b in range(total_bars):
         bar_mel = bar_midi_notes(notes_mel, b)
@@ -733,26 +744,28 @@ def main():
         # Melodi: ambil nada tertinggi per step (monophonic top voice)
         bars_mel.append(grid_bar_to_tokens(grid_mel[b], base_oct=4) or ['0'])
 
-        # Chord detection untuk bar ini
-        rhy_notes_bar = bar_midi_notes(notes_rhy, b)
-        mel_notes_bar = bar_midi_notes(notes_mel, b)
-        bass_bar      = bar_midi_notes(notes_bas, b)
-        chord_src     = rhy_notes_bar if rhy_notes_bar else mel_notes_bar
-        bass_midi_val = bass_bar[0] if bass_bar else None
-        chord = detect_chord(chord_src, key_sig, bass_midi=bass_midi_val) or last_chord
-        last_chord = chord
+        # Get active notes overlapping with this bar
+        rhy_active = get_active_notes_in_bar(notes_rhy, b)
+        mel_active = get_active_notes_in_bar(notes_mel, b)
+        bas_active = get_active_notes_in_bar(notes_bas, b)
 
-        # Check if the bar is completely silent in all musical tracks to preserve intro/outro silence
-        is_silent_bar = (len(rhy_notes_bar) == 0) and (len(mel_notes_bar) == 0) and (len(bass_bar) == 0)
-
-        # Detect busy bar for chorus/climax vs verse/quiet
+        # Get drum hits in this bar
         bstart = b * tpbar
         bend   = bstart + tpbar
         drum_hits_bar = [h for h in drum_hits if bstart <= h['tick'] < bend]
-        is_busy_bar = (len(rhy_notes_bar) >= 6) or (len(drum_hits_bar) >= 6)
+
+        # Chord & Bass Detection from active notes
+        chord_src = [n['midi'] for n in rhy_active] if rhy_active else [n['midi'] for n in mel_active]
+        bass_midi_val = bas_active[0]['midi'] if bas_active else None
+        chord = detect_chord(chord_src, key_sig, bass_midi=bass_midi_val) or last_chord
+        last_chord = chord
+
+        # Detect busy bar for chorus/climax vs verse/quiet
+        is_busy_bar = (len(rhy_active) >= 6) or (len(drum_hits_bar) >= 6)
 
         # ── Ritem (V2) ────────────────────────────────────────────────────
-        if is_silent_bar:
+        if len(rhy_active) == 0:
+            # Preserves silence of accompaniment from the MIDI
             bars_rhy.append(['0'])
         else:
             chord_lbl = f'@{chord}'
@@ -763,11 +776,12 @@ def main():
                 else:
                     bars_rhy.append([chord_lbl, chord_lbl + '-', chord_lbl + '-', chord_lbl, chord_lbl + '-', chord_lbl + '-'])
             else:
-                # VERSE: Sederhana, tenang, tapi mengisi ketukan (tidak terpotong)
+                # VERSE: Sederhana, tenang, tapi mengisi ketukan
                 bars_rhy.append([chord_lbl, '.', chord_lbl, '.'])
 
         # ── Bass (VB) ─────────────────────────────────────────────────────
-        if is_silent_bar:
+        if len(bas_active) == 0:
+            # Preserves bass silence from the MIDI (e.g. intro/outro)
             bars_bas.append(['0'])
         else:
             rs = chord_root_step(chord, key_sig)
@@ -782,7 +796,8 @@ def main():
                 bars_bas.append([rs, '.', rs, '.'])
 
         # ── Drum (VD) ─────────────────────────────────────────────────────
-        if is_silent_bar:
+        if len(drum_hits_bar) == 0:
+            # Preserves drum silence from the MIDI (e.g. intro/outro)
             bars_drm.append(['0'])
         else:
             if is_busy_bar:
@@ -792,6 +807,7 @@ def main():
             else:
                 # VERSE: Sederhana (hanya kick & hihat ringan untuk menjaga tempo)
                 bars_drm.append(['z=', '0=', 'x=', '0=', 'z=', '0=', 'x=', '0='])
+
 
 
 

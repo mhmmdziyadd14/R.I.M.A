@@ -114,26 +114,31 @@ def steps_to_tokens(note_str, steps):
 # ---------------------------------------------------------------------------
 # EKSTRAKSI NOTE DARI TRACK
 # ---------------------------------------------------------------------------
-def extract_notes(mid, track_idx):
+def extract_notes(mid, track_idx, channel_filter=None):
     """
     Kembalikan list dict {start_tick, dur_ticks, midi, letter, sharp, octave}
     dengan start_tick dan dur_ticks sudah di-quantize ke 1/16 beat.
+    channel_filter: int atau None (None = semua channel kecuali 9/drum)
     """
-    tps  = mid.ticks_per_beat / 4.0   # ticks per sixteenth note
-    track= mid.tracks[track_idx]
+    tps   = mid.ticks_per_beat / 4.0
+    track = mid.tracks[track_idx]
     active = {}
     notes  = []
     tick   = 0
 
     for msg in track:
         tick += msg.time
+        ch = getattr(msg, 'channel', None)
+        if channel_filter is not None and ch != channel_filter:
+            continue
         if msg.type == 'note_on' and msg.velocity > 0:
-            active[msg.note] = tick
+            if ch == 9: continue   # skip drum channel
+            active[(msg.note, ch)] = tick
         elif msg.type in ('note_off',) or (msg.type == 'note_on' and msg.velocity == 0):
-            if msg.note in active:
-                start_raw = active.pop(msg.note)
+            key = (msg.note, ch)
+            if key in active:
+                start_raw = active.pop(key)
                 dur_raw   = tick - start_raw
-                # quantize ke grid 1/16
                 qs  = round(start_raw / tps) * tps
                 qd  = max(tps, round(dur_raw / tps) * tps)
                 let, sharp, oct_ = midi_to_step(msg.note)
@@ -147,7 +152,7 @@ def extract_notes(mid, track_idx):
                 })
     return sorted(notes, key=lambda n: n['start_tick'])
 
-def extract_drums(mid, track_idx):
+def extract_drums(mid, track_idx, channel_filter=None):
     """Kembalikan list {tick, instr} di-quantize ke 1/16."""
     tps   = mid.ticks_per_beat / 4.0
     track = mid.tracks[track_idx]
@@ -155,11 +160,14 @@ def extract_drums(mid, track_idx):
     tick  = 0
     for msg in track:
         tick += msg.time
+        ch = getattr(msg, 'channel', None)
+        if channel_filter is not None and ch != channel_filter:
+            continue
         if msg.type == 'note_on' and msg.velocity > 0:
             n = msg.note
-            if   n in (35,36):           instr='z'   # kick
-            elif n in (38,39,40,37):     instr='y'   # snare
-            elif n in (42,44,46,49,51):  instr='x'   # hihat/cymbal
+            if   n in (35,36):           instr='z'
+            elif n in (38,39,40,37):     instr='y'
+            elif n in (42,44,46,49,51):  instr='x'
             else: continue
             hits.append({'tick': round(tick/tps)*tps, 'instrument': instr})
     return sorted(hits, key=lambda h: h['tick'])
@@ -324,11 +332,16 @@ def chord_root_step(chord_name, key_sig='C'):
     return note_token(let, sharp, oct_, base_oct=4)
 
 # ---------------------------------------------------------------------------
-# DETEKSI TRACK OTOMATIS
+# DETEKSI TRACK OTOMATIS (mendukung MIDI multi-channel single-track)
 # ---------------------------------------------------------------------------
 def analyse_tracks(mid):
-    results = []
-    all_raw_notes = {}
+    """
+    Analisis semua track.
+    Jika MIDI hanya 1 track non-kosong dengan banyak channel (Format 0 atau
+    Format 1 single-track), otomatis split per channel sebagai virtual track.
+    """
+    # Kumpulkan note per track dulu
+    real_tracks = []
     for idx, track in enumerate(mid.tracks):
         notes, channels = [], {}
         active = {}
@@ -337,32 +350,76 @@ def analyse_tracks(mid):
         for msg in track:
             tick += msg.time
             if msg.type == 'track_name': name = msg.name
-            if msg.type == 'note_on' and msg.velocity > 0:
-                active[msg.note] = tick
-                channels[msg.channel] = channels.get(msg.channel, 0) + 1
+            ch = getattr(msg, 'channel', None)
+            if msg.type == 'note_on' and msg.velocity > 0 and ch is not None:
+                active[(msg.note, ch)] = tick
+                channels[ch] = channels.get(ch, 0) + 1
             elif msg.type in ('note_off',) or (msg.type == 'note_on' and msg.velocity == 0):
-                if msg.note in active:
-                    st = active.pop(msg.note)
-                    notes.append({'start_tick': st, 'dur_ticks': tick - st, 'midi': msg.note})
-        if not notes: continue
-        all_raw_notes[idx] = notes
-        # Chord ratio
-        start_counts = {}
-        for n in notes:
-            start_counts[n['start_tick']] = start_counts.get(n['start_tick'],0)+1
-        poly_starts = sum(1 for v in start_counts.values() if v > 1)
-        chord_ratio = poly_starts / len(start_counts) if start_counts else 0
-        avg_pitch   = sum(n['midi'] for n in notes) / len(notes)
-        primary_ch  = max(channels, key=channels.get) if channels else 0
-        results.append({
-            'idx'        : idx,
-            'name'       : name,
-            'count'      : len(notes),
-            'chord_ratio': chord_ratio,
-            'avg_pitch'  : avg_pitch,
-            'channel'    : primary_ch,
-        })
-    return results, all_raw_notes
+                ch2 = getattr(msg, 'channel', None)
+                key = (msg.note, ch2)
+                if key in active:
+                    st = active.pop(key)
+                    notes.append({'start_tick': st, 'dur_ticks': tick - st,
+                                  'midi': msg.note, 'channel': ch2})
+        if notes:
+            real_tracks.append({'idx': idx, 'name': name,
+                                'notes': notes, 'channels': channels})
+
+    # ── Cek apakah ini MIDI single-track multi-channel ────────────────────
+    non_empty = [t for t in real_tracks]
+    multi_ch  = (len(non_empty) == 1 and
+                 len(non_empty[0]['channels']) > 2)
+
+    results      = []
+    all_raw_notes = {}
+
+    if multi_ch:
+        # Split satu track menjadi virtual track per channel
+        base = non_empty[0]
+        for ch, cnt in sorted(base['channels'].items(), key=lambda x: x[0]):
+            ch_notes = [n for n in base['notes'] if n['channel'] == ch]
+            if not ch_notes: continue
+            virt_idx = f"{base['idx']}_ch{ch}"  # virtual key
+            all_raw_notes[virt_idx] = ch_notes
+            start_counts = {}
+            for n in ch_notes:
+                start_counts[n['start_tick']] = start_counts.get(n['start_tick'],0)+1
+            poly_starts = sum(1 for v in start_counts.values() if v > 1)
+            chord_ratio = poly_starts / len(start_counts) if start_counts else 0
+            avg_pitch   = sum(n['midi'] for n in ch_notes) / len(ch_notes)
+            results.append({
+                'idx'        : virt_idx,
+                'name'       : f'Ch{ch}' + (' [DRUM]' if ch==9 else ''),
+                'count'      : len(ch_notes),
+                'chord_ratio': chord_ratio,
+                'avg_pitch'  : avg_pitch,
+                'channel'    : ch,
+                'track_idx'  : base['idx'],   # track MIDI asli
+            })
+    else:
+        # Format normal: satu track = satu instrumen
+        for t in real_tracks:
+            notes    = t['notes']
+            channels = t['channels']
+            idx      = t['idx']
+            all_raw_notes[idx] = notes
+            start_counts = {}
+            for n in notes:
+                start_counts[n['start_tick']] = start_counts.get(n['start_tick'],0)+1
+            poly_starts = sum(1 for v in start_counts.values() if v > 1)
+            chord_ratio = poly_starts / len(start_counts) if start_counts else 0
+            avg_pitch   = sum(n['midi'] for n in notes) / len(notes)
+            primary_ch  = max(channels, key=channels.get) if channels else 0
+            results.append({
+                'idx'        : idx,
+                'name'       : t['name'],
+                'count'      : len(notes),
+                'chord_ratio': chord_ratio,
+                'avg_pitch'  : avg_pitch,
+                'channel'    : primary_ch,
+                'track_idx'  : idx,
+            })
+    return results, all_raw_notes, multi_ch
 
 def overlap_ratio(notes_a, notes_b, ticks_per_beat, total_bars):
     """Hitung overlap antara dua track di grid 16-step."""
@@ -433,8 +490,21 @@ def main():
     if args.key: key_sig = args.key
 
     # Analisis track
-    track_infos, all_raw = analyse_tracks(mid)
-    tpb_val = tpb
+    track_infos, all_raw, multi_ch = analyse_tracks(mid)
+
+    def get_channel_for(idx):
+        """Kembalikan channel number jika virtual idx (multi_ch mode)."""
+        t = next((t for t in track_infos if t['idx']==idx), None)
+        if t and multi_ch:
+            return t['channel']
+        return None
+
+    def get_track_idx_for(idx):
+        """Kembalikan track MIDI asli untuk idx (bisa virtual)."""
+        t = next((t for t in track_infos if t['idx']==idx), None)
+        if t:
+            return t.get('track_idx', idx if isinstance(idx, int) else 0)
+        return 0
 
     # ── Deteksi Drum ──────────────────────────────────────────────────────
     drum_idx = args.drums
@@ -443,7 +513,7 @@ def main():
                       if t['channel']==9
                       or any(w in t['name'].lower() for w in ('drum','perc','kit'))]
         if not drum_cands:
-            drum_cands = [t for t in track_infos if t['avg_pitch'] < 45]
+            drum_cands = [t for t in track_infos if t['avg_pitch'] < 45 and t['channel'] != 9]
         if drum_cands:
             drum_idx = max(drum_cands, key=lambda t: t['count'])['idx']
 
@@ -451,12 +521,12 @@ def main():
     bass_idx = args.bass
     if bass_idx is None:
         bass_cands = [t for t in track_infos
-                      if t['idx'] != drum_idx
+                      if t['idx'] != drum_idx and t['channel'] != 9
                       and ('bass' in t['name'].lower() or t['avg_pitch'] < 50)]
         if bass_cands:
             bass_idx = min(bass_cands, key=lambda t: t['avg_pitch'])['idx']
 
-    remaining = [t for t in track_infos if t['idx'] not in (drum_idx, bass_idx)]
+    remaining = [t for t in track_infos if t['idx'] not in (drum_idx, bass_idx) and t['channel'] != 9]
 
     # ── Deteksi Rhythm ────────────────────────────────────────────────────
     rhythm_idx = args.rhythm
@@ -474,17 +544,17 @@ def main():
     # ── Deteksi Melody ────────────────────────────────────────────────────
     melody_idxs = []
     if args.melody:
-        melody_idxs = [int(x.strip()) for x in args.melody.split(',')]
+        melody_idxs = [x.strip() for x in args.melody.split(',')]
+        # Konversi ke int jika bisa (untuk non-virtual)
+        melody_idxs = [int(x) if x.isdigit() else x for x in melody_idxs]
     elif remaining2:
         mel_cands = []
         for t in remaining2:
             if not (48 <= t['avg_pitch'] <= 88): continue
             density = t['count'] / total_bars if total_bars > 0 else 0
-            # Terima track monofonik ATAU vokal dengan density rendah (< 6/bar)
             if t['chord_ratio'] < 0.20 or density < 6.0:
                 mel_cands.append(t)
 
-        # Prioritaskan track bernama vokal/lead
         named = [t for t in mel_cands
                  if any(w in t['name'].lower()
                         for w in ('vocal','lead','melody','voice','sax','solo','flute','violin'))]
@@ -493,7 +563,6 @@ def main():
         if mel_cands:
             primary = max(mel_cands, key=lambda t: t['count'])
             melody_idxs = [primary['idx']]
-            # Tambah track melodi lain yang tidak tumpang tindih
             for t in mel_cands:
                 if t['idx'] == primary['idx']: continue
                 ov = overlap_ratio(all_raw[primary['idx']], all_raw[t['idx']], tpb, total_bars)
@@ -503,16 +572,18 @@ def main():
             melody_idxs = [max(remaining2, key=lambda t: t['avg_pitch'])['idx']]
 
     # Default fallbacks
-    if drum_idx    is None: drum_idx    = 0
-    if bass_idx    is None: bass_idx    = 0
-    if rhythm_idx  is None: rhythm_idx  = 0
-    if not melody_idxs:     melody_idxs = [0]
+    first_non_drum = next((t['idx'] for t in track_infos if t['channel'] != 9), 0)
+    if drum_idx    is None: drum_idx    = first_non_drum
+    if bass_idx    is None: bass_idx    = first_non_drum
+    if rhythm_idx  is None: rhythm_idx  = first_non_drum
+    if not melody_idxs:     melody_idxs = [first_non_drum]
 
     # ── Laporan deteksi ───────────────────────────────────────────────────
     print("-" * 55)
     print(f"  Tempo      : {tempo_bpm} BPM")
     print(f"  Key        : {key_sig}")
     print(f"  Total bars : {total_bars}")
+    print(f"  Mode       : {'Multi-Channel' if multi_ch else 'Multi-Track'}")
     def tname(idx): return next((t['name'] for t in track_infos if t['idx']==idx), '?')
     print(f"  Melodi (V1): {melody_idxs}  {[tname(i) for i in melody_idxs]}")
     print(f"  Ritem  (V2): {rhythm_idx}   {tname(rhythm_idx)}")
@@ -520,15 +591,25 @@ def main():
     print(f"  Drum   (VD): {drum_idx}     {tname(drum_idx)}")
     print("-" * 55)
 
-    # ── Ekstraksi note ────────────────────────────────────────────────────
+    # ── Ekstraksi note (mendukung virtual channel index) ──────────────────
+    def do_extract_notes(virt_idx):
+        ch  = get_channel_for(virt_idx)
+        tid = get_track_idx_for(virt_idx)
+        return extract_notes(mid, tid, channel_filter=ch)
+
+    def do_extract_drums(virt_idx):
+        ch  = get_channel_for(virt_idx)
+        tid = get_track_idx_for(virt_idx)
+        return extract_drums(mid, tid, channel_filter=9 if ch == 9 else ch)
+
     notes_mel = []
     for idx in melody_idxs:
-        notes_mel += extract_notes(mid, idx)
+        notes_mel += do_extract_notes(idx)
     notes_mel.sort(key=lambda n: n['start_tick'])
 
-    notes_rhy = extract_notes(mid, rhythm_idx) if rhythm_idx in all_raw else []
-    notes_bas = extract_notes(mid, bass_idx)   if bass_idx   in all_raw else []
-    drum_hits = extract_drums(mid, drum_idx)   if drum_idx   in all_raw else []
+    notes_rhy = do_extract_notes(rhythm_idx) if rhythm_idx in all_raw else []
+    notes_bas = do_extract_notes(bass_idx)   if bass_idx   in all_raw else []
+    drum_hits = do_extract_drums(drum_idx)   if drum_idx   in all_raw else []
 
     # ── Kerapatan ritem untuk pilih mode ─────────────────────────────────
     rhy_density = len(notes_rhy) / total_bars if total_bars else 0
@@ -538,6 +619,7 @@ def main():
     print(f"  Mode Ritem: {'CHORD BLOK' if rhy_density > 16 else 'NOTE-BY-NOTE'}")
     print(f"  Mode Bass : {'ROOT BLOK' if bas_density > 10 else 'NOTE-BY-NOTE'}")
     print("-"*55)
+
 
     # ── Build grids ───────────────────────────────────────────────────────
     grid_mel = notes_to_grid(notes_mel, tpb, total_bars, mode='highest')

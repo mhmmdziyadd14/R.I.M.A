@@ -239,41 +239,33 @@ def generate_angklung_sound(frequency: float, duration: float = 1.2, sr: int = 4
             signal[:click_len] += click
             
     else: # "melody" or "chord"
-        # Realistic Bamboo Angklung physical model:
+        # Clean, warm resonant bamboo angklung chime:
         # - Two primary tubes tuned an octave apart (f1 and f2 = 2.0 * f1)
-        # - Slight detuning between left/right tubes for natural acoustic chorus
-        # - Shaking tremolo rattle at ~14.0 Hz
-        # - Low frequency woody 'thunk' frame impact and friction noise
+        # - Gentle detuning for a rich, organic chorus effect
+        # - Smooth exponential decay for a clean, singing tone
+        # - Very soft low-frequency frame thump for the wood hammer strike (no harsh white noise)
         f1 = frequency
         f2 = frequency * 2.0
         f3 = frequency * 3.0
-        f4 = frequency * 4.0
         
-        f1_detune = f1 * 1.003
-        f2_detune = f2 * 0.997
+        f1_detune = f1 * 1.0015
+        f2_detune = f2 * 0.9985
         
-        # Rattling shake (tremolo) at 14Hz
-        rattle_freq = 14.0
-        tremolo = 0.72 + 0.28 * np.sin(2.0 * np.pi * rattle_freq * t)
+        env1 = np.exp(-3.5 * t)
+        env2 = np.exp(-2.5 * t)
+        env3 = np.exp(-5.0 * t)
         
-        env1 = np.exp(-2.8 * t)
-        env2 = np.exp(-2.0 * t)
-        env3 = np.exp(-4.2 * t)
-        env4 = np.exp(-5.5 * t)
+        tone1 = (np.sin(2.0 * np.pi * f1 * t) + np.sin(2.0 * np.pi * f1_detune * t)) * env1 * 0.50
+        tone2 = (np.sin(2.0 * np.pi * f2 * t) + np.sin(2.0 * np.pi * f2_detune * t)) * env2 * 0.40
+        tone3 = np.sin(2.0 * np.pi * f3 * t) * env3 * 0.10
         
-        tone1 = (np.sin(2.0 * np.pi * f1 * t) + np.sin(2.0 * np.pi * f1_detune * t)) * env1 * 0.42
-        tone2 = (np.sin(2.0 * np.pi * f2 * t) + np.sin(2.0 * np.pi * f2_detune * t)) * env2 * 0.42
-        tone3 = np.sin(2.0 * np.pi * f3 * t) * env3 * 0.13
-        tone4 = np.sin(2.0 * np.pi * f4 * t) * env4 * 0.03
+        signal = tone1 + tone2 + tone3
         
-        signal = (tone1 + tone2 + tone3 + tone4) * tremolo
-        
-        # Woody impact sound (wood click + short noise friction)
-        click_len = int(sr * 0.035)
+        # Soft woody attack thump (no high-frequency noise rattle)
+        click_len = int(sr * 0.02)
         if len(signal) >= click_len:
-            noise = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 5.0, click_len)) * 0.12
-            thunk = np.sin(2.0 * np.pi * 125.0 * np.linspace(0, 0.035, click_len)) * np.exp(-120.0 * np.linspace(0, 0.035, click_len)) * 0.22
-            signal[:click_len] += noise + thunk
+            thunk = np.sin(2.0 * np.pi * 150.0 * np.linspace(0, 0.02, click_len)) * np.exp(-150.0 * np.linspace(0, 0.02, click_len)) * 0.15
+            signal[:click_len] += thunk
             
     # Normalize & Scale
     if instr_type == "chord":

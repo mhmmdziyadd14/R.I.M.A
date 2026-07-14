@@ -548,23 +548,45 @@ def main():
         # Konversi ke int jika bisa (untuk non-virtual)
         melody_idxs = [int(x) if x.isdigit() else x for x in melody_idxs]
     elif remaining2:
-        mel_cands = []
+        # Menghitung score melodi untuk masing-masing track kandidat
+        scored_cands = []
         for t in remaining2:
             if not (48 <= t['avg_pitch'] <= 88): continue
-            density = t['count'] / total_bars if total_bars > 0 else 0
-            if t['chord_ratio'] < 0.20 or density < 6.0:
-                mel_cands.append(t)
-
-        named = [t for t in mel_cands
-                 if any(w in t['name'].lower()
-                        for w in ('vocal','lead','melody','voice','sax','solo','flute','violin'))]
-        if named: mel_cands = named
-
+            
+            # Base score adalah jumlah not
+            score = t['count']
+            
+            # Bonus besar jika track strictly/mostly monophonic (vokal vokal)
+            if t['chord_ratio'] == 0.0:
+                score += 2000
+            elif t['chord_ratio'] < 0.05:
+                score += 1000
+            elif t['chord_ratio'] < 0.15:
+                score += 500
+                
+            # Penalti jika chord_ratio sangat tinggi (kemungkinan besar pad/rhythm)
+            if t['chord_ratio'] > 0.50:
+                score -= 1500
+                
+            # Bonus berdasarkan nama track
+            name_lower = t['name'].lower()
+            if any(w in name_lower for w in ('vocal','lead','melody','voice','sing','sax','solo','flute','violin')):
+                score += 1500
+            if any(w in name_lower for w in ('chord','pad','rhythm','strum','accompaniment','guitar','piano')):
+                score -= 1000
+                
+            scored_cands.append((score, t))
+            
+        # Urutkan berdasarkan score tertinggi
+        scored_cands.sort(key=lambda x: -x[0])
+        
+        # Saring kandidat melodi
+        mel_cands = [t for score, t in scored_cands if score > 0]
+        
         if mel_cands:
-            primary = max(mel_cands, key=lambda t: t['count'])
+            primary = mel_cands[0]
             melody_idxs = [primary['idx']]
-            for t in mel_cands:
-                if t['idx'] == primary['idx']: continue
+            for t in mel_cands[1:]:
                 ov = overlap_ratio(all_raw[primary['idx']], all_raw[t['idx']], tpb, total_bars)
                 if ov < 0.15:
                     melody_idxs.append(t['idx'])
@@ -685,20 +707,14 @@ def main():
         last_chord = chord
 
         # ── Ritem (V2) ────────────────────────────────────────────────────
-        if rhy_density > 16.0:
-            # Chord blok: beat 1 dan beat 3
-            bars_rhy.append([f'@{chord}', '.', f'@{chord}', '.'])
-        else:
-            toks = grid_bar_to_tokens(grid_rhy[b], base_oct=4)
-            bars_rhy.append(toks if toks else ['0'])
+        # Rhythm is always output as clean block chords on beat 1 and beat 3
+        bars_rhy.append([f'@{chord}', '.', f'@{chord}', '.'])
 
         # ── Bass (VB) ─────────────────────────────────────────────────────
-        if bas_density > 10.0:
-            rs = chord_root_step(chord, key_sig)
-            bars_bas.append([rs, '.', rs, '.'])
-        else:
-            toks = grid_bar_to_tokens(grid_bas[b], base_oct=4)
-            bars_bas.append(toks if toks else ['0'])
+        # Bass is always output as clean chord root steps on beat 1 and beat 3
+        rs = chord_root_step(chord, key_sig)
+        bars_bas.append([rs, '.', rs, '.'])
+
 
         # ── Drum (VD) ─────────────────────────────────────────────────────
         if drm_density > 14.0:

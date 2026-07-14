@@ -347,10 +347,13 @@ def analyse_tracks(mid):
         active = {}
         name = 'Unnamed'
         tick = 0
+        programs = {} # Keep track of program changes by channel
         for msg in track:
             tick += msg.time
             if msg.type == 'track_name': name = msg.name
             ch = getattr(msg, 'channel', None)
+            if msg.type == 'program_change' and ch is not None:
+                programs[ch] = msg.program
             if msg.type == 'note_on' and msg.velocity > 0 and ch is not None:
                 active[(msg.note, ch)] = tick
                 channels[ch] = channels.get(ch, 0) + 1
@@ -363,7 +366,7 @@ def analyse_tracks(mid):
                                   'midi': msg.note, 'channel': ch2})
         if notes:
             real_tracks.append({'idx': idx, 'name': name,
-                                'notes': notes, 'channels': channels})
+                                'notes': notes, 'channels': channels, 'programs': programs})
 
     # ── Cek apakah ini MIDI single-track multi-channel ────────────────────
     non_empty = [t for t in real_tracks]
@@ -387,6 +390,10 @@ def analyse_tracks(mid):
             poly_starts = sum(1 for v in start_counts.values() if v > 1)
             chord_ratio = poly_starts / len(start_counts) if start_counts else 0
             avg_pitch   = sum(n['midi'] for n in ch_notes) / len(ch_notes)
+            
+            # Get program for this channel
+            prog = base['programs'].get(ch, 0)
+            
             results.append({
                 'idx'        : virt_idx,
                 'name'       : f'Ch{ch}' + (' [DRUM]' if ch==9 else ''),
@@ -395,6 +402,7 @@ def analyse_tracks(mid):
                 'avg_pitch'  : avg_pitch,
                 'channel'    : ch,
                 'track_idx'  : base['idx'],   # track MIDI asli
+                'program'    : prog,          # General MIDI program number
             })
     else:
         # Format normal: satu track = satu instrumen
@@ -410,6 +418,12 @@ def analyse_tracks(mid):
             chord_ratio = poly_starts / len(start_counts) if start_counts else 0
             avg_pitch   = sum(n['midi'] for n in notes) / len(notes)
             primary_ch  = max(channels, key=channels.get) if channels else 0
+            
+            # Get program (take the first program change found, or default 0)
+            prog = 0
+            if t['programs']:
+                prog = next(iter(t['programs'].values()))
+                
             results.append({
                 'idx'        : idx,
                 'name'       : t['name'],
@@ -418,8 +432,10 @@ def analyse_tracks(mid):
                 'avg_pitch'  : avg_pitch,
                 'channel'    : primary_ch,
                 'track_idx'  : idx,
+                'program'    : prog,
             })
     return results, all_raw_notes, multi_ch
+
 
 def overlap_ratio(notes_a, notes_b, ticks_per_beat, total_bars):
     """Hitung overlap antara dua track di grid 16-step."""
@@ -531,9 +547,14 @@ def main():
     # ── Deteksi Rhythm ────────────────────────────────────────────────────
     rhythm_idx = args.rhythm
     if rhythm_idx is None and remaining:
+        # Prioritize GM Keyboards, Organs, Guitars: 0-31 or Orchestral Harp: 46
         rhy_cands = [t for t in remaining
-                     if t['chord_ratio'] >= 0.20
-                     or any(w in t['name'].lower() for w in ('guitar','piano','keys','organ','synth'))]
+                     if (0 <= t.get('program', 0) <= 31) or t.get('program', 0) == 46]
+        if not rhy_cands:
+            # Fallback to name or chord ratio
+            rhy_cands = [t for t in remaining
+                         if t['chord_ratio'] >= 0.20
+                         or any(w in t['name'].lower() for w in ('guitar','piano','keys','organ','synth'))]
         if rhy_cands:
             rhythm_idx = max(rhy_cands, key=lambda t: t['count'])['idx']
         else:
@@ -548,50 +569,64 @@ def main():
         # Konversi ke int jika bisa (untuk non-virtual)
         melody_idxs = [int(x) if x.isdigit() else x for x in melody_idxs]
     elif remaining2:
-        # Menghitung score melodi untuk masing-masing track kandidat
-        scored_cands = []
+        # Program-based scoring for melody selection
+        melody_scores = {}
         for t in remaining2:
-            if not (48 <= t['avg_pitch'] <= 88): continue
+            score = 0.0
+            prog = t.get('program', 0)
             
-            # Base score adalah jumlah not
-            score = t['count']
+            # Solo wind/reed/pipe instruments get high priority for melody (e.g. Sax, Trumpet, Flute)
+            if 56 <= prog <= 79:
+                score += 5.0
+            # Solo strings get high priority
+            elif 40 <= prog <= 42:
+                score += 4.0
+            # Synth lead gets high priority
+            elif 80 <= prog <= 87:
+                score += 3.0
+            # String ensembles get medium priority
+            elif 48 <= prog <= 51:
+                score += 2.0
+            # Guitar/Piano get lower priority for melody
+            elif 0 <= prog <= 31:
+                score += 1.0
+                
+            # If name has vocal/lead/melody, boost significantly
+            if any(w in t['name'].lower() for w in ('vocal','lead','melody','voice','sax','solo','flute','violin')):
+                score += 10.0
+                
+            # Density check: vocal melody shouldn't be too dense
+            density = t['count'] / total_bars if total_bars > 0 else 0
+            if density < 6.0:
+                score += 1.5
+            elif density > 15.0:
+                score -= 3.0  # Penalize extremely busy backing tracks
+                
+            # Monophonic boost
+            if t['chord_ratio'] < 0.10:
+                score += 2.0
+            elif t['chord_ratio'] > 0.40:
+                score -= 2.0  # Penalize chords
+                
+            melody_scores[t['idx']] = (score, t['count']) # tie-breaker: note count
+
+        # Pick melody candidates that score highest
+        if melody_scores:
+            # Sort candidates by score (descending) and note count (descending)
+            sorted_cands = sorted(melody_scores.keys(), key=lambda k: (-melody_scores[k][0], -melody_scores[k][1]))
+            primary_mel = sorted_cands[0]
+            melody_idxs = [primary_mel]
             
-            # Bonus besar jika track strictly/mostly monophonic (vokal vokal)
-            if t['chord_ratio'] == 0.0:
-                score += 2000
-            elif t['chord_ratio'] < 0.05:
-                score += 1000
-            elif t['chord_ratio'] < 0.15:
-                score += 500
-                
-            # Penalti jika chord_ratio sangat tinggi (kemungkinan besar pad/rhythm)
-            if t['chord_ratio'] > 0.50:
-                score -= 1500
-                
-            # Bonus berdasarkan nama track
-            name_lower = t['name'].lower()
-            if any(w in name_lower for w in ('vocal','lead','melody','voice','sing','sax','solo','flute','violin')):
-                score += 1500
-            if any(w in name_lower for w in ('chord','pad','rhythm','strum','accompaniment','guitar','piano')):
-                score -= 1000
-                
-            scored_cands.append((score, t))
-            
-        # Urutkan berdasarkan score tertinggi
-        scored_cands.sort(key=lambda x: -x[0])
-        
-        # Saring kandidat melodi
-        mel_cands = [t for score, t in scored_cands if score > 0]
-        
-        if mel_cands:
-            primary = mel_cands[0]
-            melody_idxs = [primary['idx']]
-            for t in mel_cands[1:]:
-                ov = overlap_ratio(all_raw[primary['idx']], all_raw[t['idx']], tpb, total_bars)
-                if ov < 0.15:
-                    melody_idxs.append(t['idx'])
-        elif remaining2:
+            # Merge non-overlapping secondary candidates that score well
+            for t_idx in sorted_cands[1:]:
+                # Only consider if score is reasonably high (e.g. >= 3.0)
+                if melody_scores[t_idx][0] >= 3.0:
+                    ov = overlap_ratio(all_raw[primary_mel], all_raw[t_idx], tpb, total_bars)
+                    if ov < 0.15:
+                        melody_idxs.append(t_idx)
+        else:
             melody_idxs = [max(remaining2, key=lambda t: t['avg_pitch'])['idx']]
+
 
     # Default fallbacks
     first_non_drum = next((t['idx'] for t in track_infos if t['channel'] != 9), 0)
@@ -707,14 +742,20 @@ def main():
         last_chord = chord
 
         # ── Ritem (V2) ────────────────────────────────────────────────────
-        # Rhythm is always output as clean block chords on beat 1 and beat 3
-        bars_rhy.append([f'@{chord}', '.', f'@{chord}', '.'])
+        if rhy_density > 16.0:
+            # Chord blok: beat 1 dan beat 3
+            bars_rhy.append([f'@{chord}', '.', f'@{chord}', '.'])
+        else:
+            toks = grid_bar_to_tokens(grid_rhy[b], base_oct=4)
+            bars_rhy.append(toks if toks else ['0'])
 
         # ── Bass (VB) ─────────────────────────────────────────────────────
-        # Bass is always output as clean chord root steps on beat 1 and beat 3
-        rs = chord_root_step(chord, key_sig)
-        bars_bas.append([rs, '.', rs, '.'])
-
+        if bas_density > 10.0:
+            rs = chord_root_step(chord, key_sig)
+            bars_bas.append([rs, '.', rs, '.'])
+        else:
+            toks = grid_bar_to_tokens(grid_bas[b], base_oct=4)
+            bars_bas.append(toks if toks else ['0'])
 
         # ── Drum (VD) ─────────────────────────────────────────────────────
         if drm_density > 14.0:

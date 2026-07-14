@@ -37,34 +37,48 @@ def steps_to_tokens(note_str, steps):
     if steps <= 0:
         return []
     if note_str == '0':
-        # Rest formatting for simplified 8-step (eighth-note) grid
         if steps == 1:
-            return ['0-']
+            return ['0=']
         elif steps == 2:
+            return ['0-']
+        elif steps == 3:
+            return ['0-', '0=']
+        elif steps == 4:
             return ['0']
+        elif steps == 5:
+            return ['0', '0=']
+        elif steps == 6:
+            return ['0', '0-']
+        elif steps == 7:
+            return ['0', '0-', '0=']
         else:
-            num_rests = steps // 2
-            rem = steps % 2
+            num_rests = steps // 4
+            rem_steps = steps % 4
             tokens = ['0'] * num_rests
-            if rem > 0:
-                tokens.append('0-')
+            if rem_steps > 0:
+                tokens.extend(steps_to_tokens('0', rem_steps))
             return tokens
             
-    # Note formatting for simplified 8-step (eighth-note) grid
     if steps == 1:
-        return [note_str + '-']
+        return [note_str + '=']
     elif steps == 2:
-        return [note_str]
+        return [note_str + '-']
     elif steps == 3:
-        return [note_str, '.-']
+        return [note_str + '-', '.=']
     elif steps == 4:
-        return [note_str, '.']
+        return [note_str]
+    elif steps == 5:
+        return [note_str, '.=']
+    elif steps == 6:
+        return [note_str, '.-']
+    elif steps == 7:
+        return [note_str, '.-', '.=']
     else:
-        num_sustains = (steps - 2) // 2
-        rem = (steps - 2) % 2
+        num_sustains = (steps - 4) // 4
+        rem_steps = (steps - 4) % 4
         tokens = [note_str] + ['.'] * num_sustains
-        if rem > 0:
-            tokens.append('.-')
+        if rem_steps > 0:
+            tokens.extend(steps_to_tokens('.', rem_steps))
         return tokens
 
 def extract_notes_from_track(mid, track_idx):
@@ -73,8 +87,8 @@ def extract_notes_from_track(mid, track_idx):
     current_tick = 0
     active_notes = {}
     
-    # Quantize to eighth notes (ticks_per_beat / 2)
-    ticks_per_step = mid.ticks_per_beat / 2.0
+    # 16th note quantization
+    ticks_per_step = mid.ticks_per_beat / 4.0
     
     for msg in track:
         current_tick += msg.time
@@ -85,7 +99,6 @@ def extract_notes_from_track(mid, track_idx):
                 start_tick, vel = active_notes.pop(msg.note)
                 duration = current_tick - start_tick
                 
-                # Apply eighth-note quantization
                 q_start_tick = round(start_tick / ticks_per_step) * ticks_per_step
                 q_duration = max(ticks_per_step, round(duration / ticks_per_step) * ticks_per_step)
                 
@@ -113,7 +126,7 @@ def extract_drums_from_track(mid, track_idx):
     track = mid.tracks[track_idx]
     drum_hits = []
     current_tick = 0
-    ticks_per_step = mid.ticks_per_beat / 2.0
+    ticks_per_step = mid.ticks_per_beat / 4.0
     
     for msg in track:
         current_tick += msg.time
@@ -137,7 +150,7 @@ def extract_drums_from_track(mid, track_idx):
 
 def track_to_grid(notes, ticks_per_beat, grid_size_per_bar, total_bars, mode='highest'):
     ticks_per_bar = ticks_per_beat * 4
-    ticks_per_step = ticks_per_beat / 2.0
+    ticks_per_step = ticks_per_beat / 4.0
     
     grid = [[None] * grid_size_per_bar for _ in range(total_bars)]
     
@@ -191,7 +204,7 @@ def track_to_grid(notes, ticks_per_beat, grid_size_per_bar, total_bars, mode='hi
 
 def drums_to_grid(drum_hits, ticks_per_beat, grid_size_per_bar, total_bars):
     ticks_per_bar = ticks_per_beat * 4
-    ticks_per_step = ticks_per_beat / 2.0
+    ticks_per_step = ticks_per_beat / 4.0
     
     grid = [[None] * grid_size_per_bar for _ in range(total_bars)]
     
@@ -221,11 +234,19 @@ def drums_to_grid(drum_hits, ticks_per_beat, grid_size_per_bar, total_bars):
 
 def drum_grid_to_tokens(grid_bar):
     tokens = []
-    for item in grid_bar:
+    grid_size = len(grid_bar)
+    i = 0
+    while i < grid_size:
+        item = grid_bar[i]
         if item is None:
-            tokens.append('0-')
+            rest_start = i
+            while i < grid_size and grid_bar[i] is None:
+                i += 1
+            rest_steps = i - rest_start
+            tokens.extend(steps_to_tokens('0', rest_steps))
         else:
-            tokens.append(item + '-')
+            tokens.append(item + '=')
+            i += 1
     return tokens
 
 def grid_to_doremi_tokens(grid_bar, base_oct):
@@ -259,8 +280,8 @@ def grid_to_doremi_tokens(grid_bar, base_oct):
             
     return tokens
 
-def get_track_overlap(notes_a, notes_b, total_bars, ticks_per_beat, grid_size=8):
-    ticks_per_step = ticks_per_beat / 2.0
+def get_track_overlap(notes_a, notes_b, total_bars, ticks_per_beat, grid_size=16):
+    ticks_per_step = ticks_per_beat / 4.0
     grid_a = [0] * (total_bars * grid_size)
     grid_b = [0] * (total_bars * grid_size)
     
@@ -496,7 +517,7 @@ def main():
     notes_bass   = extract_notes_from_track(mid, bass_track) if bass_track in all_notes else []
     drums        = extract_drums_from_track(mid, drum_track) if drum_track in all_notes else []
     
-    # 6. Section Detection (8-step grid)
+    # 6. Section Detection (16-step grid)
     sections = {}
     sections[0] = "INTRO"
     has_started = False
@@ -530,55 +551,81 @@ def main():
                 elif silent_count >= 6 and b > total_bars - 10:
                     sections[b] = "OUTRO"
                     
-    # 7. Simplified 8-Step Grid generation
+    # Determine Densities
+    rhy_notes_count = len(notes_rhythm)
+    rhy_density = rhy_notes_count / total_bars if total_bars > 0 else 0
+    
+    bas_notes_count = len(notes_bass)
+    bas_density = bas_notes_count / total_bars if total_bars > 0 else 0
+    
+    drm_notes_count = len(drums)
+    drm_density = drm_notes_count / total_bars if total_bars > 0 else 0
+    
+    print(f"Kerapatan Aransemen:")
+    print(f"  Ritem (V2) Density : {rhy_density:.1f} notes/bar (Threshold: 16.0)")
+    print(f"  Bass (VB) Density  : {bas_density:.1f} notes/bar (Threshold: 8.0)")
+    print(f"  Drum (VD) Density  : {drm_density:.1f} notes/bar (Threshold: 12.0)")
+    print("-" * 50)
+    
     bars_melody = []
     bars_rhythm = []
     bars_bass   = []
     bars_drums  = []
     
-    grid_size = 8
+    grid_size = 16
     grid_melody = track_to_grid(notes_melody, ticks_per_beat, grid_size, total_bars, mode='highest')
+    grid_rhythm = track_to_grid(notes_rhythm, ticks_per_beat, grid_size, total_bars, mode='highest')
+    grid_bass   = track_to_grid(notes_bass, ticks_per_beat, grid_size, total_bars, mode='lowest')
     grid_drums  = drums_to_grid(drums, ticks_per_beat, grid_size, total_bars)
     
     last_chord = "C"
     
     for bar_idx in range(total_bars):
+        # 1. Melody tokens (always precise 16-step)
         tokens_mel = grid_to_doremi_tokens(grid_melody[bar_idx], base_oct=4)
         bars_melody.append(tokens_mel if tokens_mel else ['0'])
         
+        # 2. Extract active notes in this bar for chord detection
         bar_start_tick = bar_idx * ticks_per_bar
         bar_end_tick = (bar_idx + 1) * ticks_per_bar
-        
-        active_notes = [n['midi'] for n in notes_rhythm if bar_start_tick <= n['start_tick'] < bar_end_tick]
-        if not active_notes:
-            active_notes = [n['midi'] for n in notes_melody if bar_start_tick <= n['start_tick'] < bar_end_tick]
+        active_notes_bar = [n['midi'] for n in notes_rhythm if bar_start_tick <= n['start_tick'] < bar_end_tick]
+        if not active_notes_bar:
+            active_notes_bar = [n['midi'] for n in notes_melody if bar_start_tick <= n['start_tick'] < bar_end_tick]
             
-        chord_name = detect_chord_for_bar(active_notes, key_sig)
+        chord_name = detect_chord_for_bar(active_notes_bar, key_sig)
         if chord_name:
             last_chord = chord_name
         else:
             chord_name = last_chord
             
-        mel_has_notes = any(x is not None for x in grid_melody[bar_idx])
-        if not mel_has_notes and bar_idx < 4:
-            bars_rhythm.append(['0'])
-            bars_bass.append(['0'])
-        else:
+        # 3. Format Rhythm (V2)
+        if rhy_density > 16.0:
+            # Strumming guitar/pad: simplify to block chords (beat 1 and beat 3)
+            # In 16-step grid, beat 1 is index 0 (sustains for 8 steps = 2 beats), beat 3 is index 8 (sustains for 8 steps = 2 beats)
             chord_token = f"@{chord_name}"
-            # Beat 1 (chord) + Beat 2 (sustain) + Beat 3 (chord) + Beat 4 (sustain)
+            # '@Chord' + '.' (4 steps each = 8 steps / 2 beats)
             bars_rhythm.append([chord_token, '.', chord_token, '.'])
+        else:
+            # Clean arpeggio: write note-by-note
+            tokens_rhy = grid_to_doremi_tokens(grid_rhythm[bar_idx], base_oct=4)
+            bars_rhythm.append(tokens_rhy if tokens_rhy else ['0'])
             
+        # 4. Format Bass (VB)
+        if bas_density > 8.0:
+            # Busy bass: simplify to root note on beat 1 and beat 3
             root_step = get_chord_root_step(chord_name, key_sig)
             bars_bass.append([root_step, '.', root_step, '.'])
-            
-        has_drums = any(x is not None for x in grid_drums[bar_idx])
-        if not has_drums:
-            if mel_has_notes or bar_idx >= 4:
-                # Simple rock beat in 8-step: bass(z) snare(y) bass(z) snare(y) with hihat(x)
-                bars_drums.append(['z-', 'x-', 'y-', 'x-', 'z-', 'x-', 'y-', 'x-'])
-            else:
-                bars_drums.append(['0'])
         else:
+            # Clean bass: write note-by-note
+            tokens_bas = grid_to_doremi_tokens(grid_bass[bar_idx], base_oct=4)
+            bars_bass.append(tokens_bas if tokens_bas else ['0'])
+            
+        # 5. Format Drums (VD)
+        if drm_density > 12.0:
+            # Busy drums: simplify to clean sixteenth rock beat
+            bars_drums.append(['z=', '0=', 'x=', '0=', 'y=', '0=', 'x=', '0=', 'z=', '0=', 'x=', '0=', 'y=', '0=', 'x=', 'y='])
+        else:
+            # Clean drums: write note-by-note
             tokens_drm = drum_grid_to_tokens(grid_drums[bar_idx])
             bars_drums.append(tokens_drm if tokens_drm else ['0'])
             

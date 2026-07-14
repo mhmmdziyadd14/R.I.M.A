@@ -743,8 +743,14 @@ def main():
 
         # ── Ritem (V2) ────────────────────────────────────────────────────
         if len(rhy_notes_bar) >= 6:
-            # Chord blok: beat 1 dan beat 3
-            bars_rhy.append([f'@{chord}', '.', f'@{chord}', '.'])
+            # Rhythmic pop/rock groove for block chords
+            chord_lbl = f'@{chord}'
+            if tempo_bpm >= 80:
+                # Steady eighth-note pulsing (perfect for Oasis piano and Wonderwall strumming)
+                bars_rhy.append([chord_lbl + '-'] * 8)
+            else:
+                # Syncopated pop/ballad groove (perfect for My Way slow tempo)
+                bars_rhy.append([chord_lbl, chord_lbl + '-', chord_lbl + '-', chord_lbl, chord_lbl + '-', chord_lbl + '-'])
         else:
             toks = grid_bar_to_tokens(grid_rhy[b], base_oct=4)
             bars_rhy.append(toks if toks else ['0'])
@@ -752,7 +758,12 @@ def main():
         # ── Bass (VB) ─────────────────────────────────────────────────────
         if len(bass_bar) >= 4:
             rs = chord_root_step(chord, key_sig)
-            bars_bas.append([rs, '.', rs, '.'])
+            if tempo_bpm >= 80:
+                # Active bass groove for faster tempos
+                bars_bas.append([rs, '.-', rs + '-', rs, '.-', rs + '-'])
+            else:
+                # Gentle syncopated bass groove for ballads
+                bars_bas.append([rs, '.', rs + '-', '.-', rs, '.'])
         else:
             toks = grid_bar_to_tokens(grid_bas[b], base_oct=4)
             bars_bas.append(toks if toks else ['0'])
@@ -768,6 +779,7 @@ def main():
         else:
             toks = drum_bar_to_tokens(grid_drm[b])
             bars_drm.append(toks if toks else ['0'])
+
 
 
     # ── Tulis output ──────────────────────────────────────────────────────

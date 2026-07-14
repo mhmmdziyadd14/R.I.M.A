@@ -9,10 +9,10 @@ MIDI_FILE   = 'oasis-dont_look_back_in_anger.mid'
 OUTPUT_FILE = 'Oasis.123'
 
 # Track mapping (0-indexed indices from inspect_midi.py)
-TRACK_MELODY = 4   # V1 (Melody - Vocal)
-TRACK_RHYTHM = 2   # V2 (Rhythm - Piano)
-TRACK_BASS   = 3   # VB (Bass)
-TRACK_DRUMS  = 11  # VD (Drums)
+TRACKS_MELODY = [4, 10, 14] # Merge all vocal melody tracks!
+TRACK_RHYTHM  = 2           # V2 (Rhythm - Piano)
+TRACK_BASS    = 3           # VB (Bass)
+TRACK_DRUMS   = 11          # VD (Drums)
 
 BARS_PER_LINE = 4
 
@@ -33,46 +33,60 @@ def steps_to_tokens(note_str, steps):
     if steps <= 0:
         return []
     if note_str == '0':
-        if steps == 1: return ['0=']
-        elif steps == 2: return ['0-']
-        elif steps == 3: return ['0-/']
-        elif steps == 4: return ['0']
-        elif steps == 6: return ['0/']
-        elif steps == 7: return ['0//']
-        elif steps >= 8:
+        # Rest formatting using only uvicorn-compliant durations (=, -, and none)
+        if steps == 1:
+            return ['0=']
+        elif steps == 2:
+            return ['0-']
+        elif steps == 3:
+            return ['0-', '0=']
+        elif steps == 4:
+            return ['0']
+        elif steps == 5:
+            return ['0', '0=']
+        elif steps == 6:
+            return ['0', '0-']
+        elif steps == 7:
+            return ['0', '0-', '0=']
+        else: # steps >= 8
             num_rests = steps // 4
             rem_steps = steps % 4
             tokens = ['0'] * num_rests
             if rem_steps > 0:
                 tokens.extend(steps_to_tokens('0', rem_steps))
             return tokens
-        elif steps == 5: return ['0', '0=']
-        else: return ['0']
-        
-    if steps == 1: return [note_str + '=']
-    elif steps == 2: return [note_str + '-']
-    elif steps == 3: return [note_str + '-/']
-    elif steps == 4: return [note_str]
-    elif steps == 6: return [note_str + '/']
-    elif steps == 7: return [note_str + '//']
-    elif steps >= 8:
+            
+    # Note formatting using only uvicorn-compliant durations (=, -, and none)
+    if steps == 1:
+        return [note_str + '=']
+    elif steps == 2:
+        return [note_str + '-']
+    elif steps == 3:
+        return [note_str + '-', '.=']
+    elif steps == 4:
+        return [note_str]
+    elif steps == 5:
+        return [note_str, '.=']
+    elif steps == 6:
+        return [note_str, '.-']
+    elif steps == 7:
+        return [note_str, '.-', '.=']
+    else: # steps >= 8
         num_sustains = (steps - 4) // 4
         rem_steps = (steps - 4) % 4
         tokens = [note_str] + ['.'] * num_sustains
         if rem_steps > 0:
             tokens.extend(steps_to_tokens('.', rem_steps))
         return tokens
-    elif steps == 5: return [note_str, '.=']
-    else: return [note_str]
 
 # ─────────────────────────────────────────────
-# EXTRACT NOTES FROM MIDI TRACK
+# EXTRACT NOTES FROM MIDI TRACK WITH QUANTIZATION
 # ─────────────────────────────────────────────
 def extract_notes_from_track(mid, track_idx):
     track = mid.tracks[track_idx]
     notes = []
     current_tick = 0
-    active_notes = {} # midi -> (start_tick, velocity)
+    active_notes = {}
     
     for msg in track:
         current_tick += msg.time
@@ -82,6 +96,10 @@ def extract_notes_from_track(mid, track_idx):
             if msg.note in active_notes:
                 start_tick, vel = active_notes.pop(msg.note)
                 duration = current_tick - start_tick
+                
+                # Apply 16th-note quantization (48 ticks)
+                q_start_tick = round(start_tick / 48.0) * 48.0
+                q_duration = max(48.0, round(duration / 48.0) * 48.0)
                 
                 names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
                 pitch_octave = (msg.note // 12) - 1
@@ -93,8 +111,8 @@ def extract_notes_from_track(mid, track_idx):
                     pitch_name = pitch_name.replace('#', '')
                     
                 notes.append({
-                    'start_tick': start_tick,
-                    'dur_ticks': duration,
+                    'start_tick': q_start_tick,
+                    'dur_ticks': q_duration,
                     'midi': msg.note,
                     'step': pitch_name,
                     'octave': pitch_octave,
@@ -104,7 +122,7 @@ def extract_notes_from_track(mid, track_idx):
     return sorted(notes, key=lambda x: x['start_tick'])
 
 # ─────────────────────────────────────────────
-# EXTRACT DRUMS FROM MIDI TRACK
+# EXTRACT DRUMS FROM MIDI TRACK WITH QUANTIZATION
 # ─────────────────────────────────────────────
 def extract_drums_from_track(mid, track_idx):
     track = mid.tracks[track_idx]
@@ -119,13 +137,14 @@ def extract_drums_from_track(mid, track_idx):
             if note in (35, 36):
                 instr = 'z' # Bass Drum
             elif note in (37, 38, 39, 40):
-                instr = 'y' # Snare / Clap / Stick
+                instr = 'y' # Snare
             elif note in (42, 44, 46, 49, 51):
-                instr = 'x' # Hi-hat / Cymbals / Ride
+                instr = 'x' # Hi-hat / Cymbal
                 
             if instr:
+                q_tick = round(current_tick / 48.0) * 48.0
                 drum_hits.append({
-                    'tick': current_tick,
+                    'tick': q_tick,
                     'instrument': instr
                 })
     return sorted(drum_hits, key=lambda x: x['tick'])
@@ -263,7 +282,12 @@ def convert():
     print(f"  Ticks Per Beat: {ticks_per_beat}")
     print(f"  Total Bar     : {total_bars}")
     
-    notes_melody = extract_notes_from_track(mid, TRACK_MELODY)
+    # Extract & Merge Melody notes
+    notes_melody = []
+    for t_idx in TRACKS_MELODY:
+        notes_melody.extend(extract_notes_from_track(mid, t_idx))
+    notes_melody = sorted(notes_melody, key=lambda x: x['start_tick'])
+    
     notes_rhythm = extract_notes_from_track(mid, TRACK_RHYTHM)
     notes_bass   = extract_notes_from_track(mid, TRACK_BASS)
     drums        = extract_drums_from_track(mid, TRACK_DRUMS)
@@ -296,7 +320,7 @@ def convert():
         f.write(f"T: Dont Look Back in Anger\n")
         f.write(f"C: Oasis\n")
         f.write(f"M: 4/4\n")
-        f.write(f"Q: 120\n")
+        f.write(f"Q: 82\n") # Fixed tempo to 82 BPM!
         f.write(f"K: C\n")
         f.write("\n")
         

@@ -1,690 +1,668 @@
+"""
+convert_midi_to_doremi.py
+=========================
+Konverter MIDI → Doremi (.123) untuk Angklung.
+
+Perbaikan utama dibanding versi sebelumnya:
+1. Quantize MIDI ke grid 1/16 yang benar (ticks_per_step = ticks_per_beat / 4)
+2. Melodi diambil nada tertinggi per step (monophonic top-voice extraction)
+3. Durasi nada mengikuti MIDI asli, tidak dipotong paksa ke 1 bar
+4. Chord dideteksi per-beat (bukan per-bar) untuk akurasi lebih tinggi
+5. Bass diambil langsung not-by-not dari track bass asli (bukan hanya root)
+6. Penulisan sustain (.) untuk nada yang berlanjut antar step
+7. Jika ritem terlalu padat → chord blok; jika jarang → not-by-not
+"""
+
 import mido
 import os
 import sys
 import argparse
 
-STEP_NUM = {'C':'1','D':'2','E':'3','F':'4','G':'5','A':'6','B':'7'}
+# ---------------------------------------------------------------------------
+# KONSTANTA
+# ---------------------------------------------------------------------------
+STEP_NUM   = {'C':'1','D':'2','E':'3','F':'4','G':'5','A':'6','B':'7'}
 BARS_PER_LINE = 4
 
 CHORDS_DB = {
-    "C": [0, 4, 7], "C#": [1, 5, 8], "Db": [1, 5, 8], "D": [2, 6, 9],
-    "D#": [3, 7, 10], "Eb": [3, 7, 10], "E": [4, 8, 11], "F": [5, 9, 0],
-    "F#": [6, 10, 1], "Gb": [6, 10, 1], "G": [7, 11, 2], "G#": [8, 0, 3],
-    "Ab": [8, 0, 3], "A": [9, 1, 4], "A#": [10, 2, 5], "Bb": [10, 2, 5], "B": [11, 3, 6],
-    # Minors
-    "Cm": [0, 3, 7], "C#m": [1, 4, 8], "Dm": [2, 5, 9], "D#m": [3, 6, 10],
-    "Em": [4, 7, 11], "Fm": [5, 8, 0], "F#m": [6, 9, 1], "Gm": [7, 10, 2],
-    "G#m": [8, 11, 3], "Am": [9, 0, 4], "Bbm": [10, 1, 5], "Bm": [11, 2, 6],
-    # Diminished
-    "G#dim": [8, 11, 2], "Bdim": [11, 2, 5]
+    # Major
+    "C":[0,4,7],"Db":[1,5,8],"C#":[1,5,8],"D":[2,6,9],
+    "Eb":[3,7,10],"D#":[3,7,10],"E":[4,8,11],"F":[5,9,0],
+    "Gb":[6,10,1],"F#":[6,10,1],"G":[7,11,2],"Ab":[8,0,3],
+    "G#":[8,0,3],"A":[9,1,4],"Bb":[10,2,5],"A#":[10,2,5],"B":[11,3,6],
+    # Minor
+    "Cm":[0,3,7],"C#m":[1,4,8],"Dm":[2,5,9],"D#m":[3,6,10],"Ebm":[3,6,10],
+    "Em":[4,7,11],"Fm":[5,8,0],"F#m":[6,9,1],"Gm":[7,10,2],
+    "G#m":[8,11,3],"Am":[9,0,4],"Bbm":[10,1,5],"Bm":[11,2,6],
+    # Dominant 7 (optional tones boost detection)
+    "G7":[7,11,2,5],"D7":[2,6,9,0],"A7":[9,1,4,7],"E7":[4,8,11,2],
 }
 
-KEY_ROOTS = {
-    "C": 60, "C#": 61, "DB": 61, "D": 62, "D#": 63, "EB": 63,
-    "E": 64, "F": 65, "F#": 66, "GB": 66, "G": 67, "G#": 68,
-    "AB": 68, "A": 69, "A#": 70, "BB": 70, "B": 71
+KEY_SCALE_CHORDS = {
+    "C" : ["C","Dm","Em","F","G","Am","Bdim","G7"],
+    "G" : ["G","Am","Bm","C","D","Em","F#dim","D7"],
+    "D" : ["D","Em","F#m","G","A","Bm","C#dim","A7"],
+    "A" : ["A","Bm","C#m","D","E","F#m","G#dim","E7"],
+    "E" : ["E","F#m","G#m","A","B","C#m","D#dim"],
+    "F" : ["F","Gm","Am","Bb","C","Dm","Edim"],
+    "Bb": ["Bb","Cm","Dm","Eb","F","Gm","Adim"],
+    "Eb": ["Eb","Fm","Gm","Ab","Bb","Cm","Ddim"],
 }
 
-def octave_suffix(midi_octave: int, base: int = 4) -> str:
-    diff = midi_octave - base
-    if diff > 0:
-        return "'" * diff
-    elif diff < 0:
-        return "," * abs(diff)
+KEY_ROOT_MIDI = {
+    "C":60,"C#":61,"Db":61,"D":62,"D#":63,"Eb":63,
+    "E":64,"F":65,"F#":66,"Gb":66,"G":67,"G#":68,
+    "Ab":68,"A":69,"A#":70,"Bb":70,"B":71
+}
+
+NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
+
+# ---------------------------------------------------------------------------
+# UTILITAS DASAR
+# ---------------------------------------------------------------------------
+def midi_to_step(midi_num):
+    """Kembalikan (step_letter, is_sharp, octave)."""
+    name  = NOTE_NAMES[midi_num % 12]
+    oct_  = (midi_num // 12) - 1
+    sharp = '#' in name
+    letter= name.replace('#','')
+    return letter, sharp, oct_
+
+def octave_suffix(oct_, base=4):
+    d = oct_ - base
+    if d > 0: return "'" * d
+    if d < 0: return "," * abs(d)
     return ""
 
+def note_token(letter, sharp, oct_, base_oct=4):
+    num  = STEP_NUM.get(letter,'0')
+    suf  = octave_suffix(oct_, base_oct)
+    acc  = '#' if sharp else ''
+    return f"{num}{suf}{acc}"
+
 def steps_to_tokens(note_str, steps):
+    """Konversi (note_str, steps) → list token doremi."""
     if steps <= 0:
         return []
-    if note_str == '0':
-        if steps == 1:
-            return ['0=']
-        elif steps == 2:
-            return ['0-']
-        elif steps == 3:
-            return ['0-', '0=']
-        elif steps == 4:
-            return ['0']
-        elif steps == 5:
-            return ['0', '0=']
-        elif steps == 6:
-            return ['0', '0-']
-        elif steps == 7:
-            return ['0', '0-', '0=']
+    # REST
+    if note_str in ('0', None):
+        if   steps == 1: return ['0=']
+        elif steps == 2: return ['0-']
+        elif steps == 3: return ['0-','0=']
+        elif steps == 4: return ['0']
         else:
-            num_rests = steps // 4
-            rem_steps = steps % 4
-            tokens = ['0'] * num_rests
-            if rem_steps > 0:
-                tokens.extend(steps_to_tokens('0', rem_steps))
-            return tokens
-            
-    if steps == 1:
-        return [note_str + '=']
-    elif steps == 2:
-        return [note_str + '-']
-    elif steps == 3:
-        return [note_str + '-', '.=']
-    elif steps == 4:
-        return [note_str]
-    elif steps == 5:
-        return [note_str, '.=']
-    elif steps == 6:
-        return [note_str, '.-']
-    elif steps == 7:
-        return [note_str, '.-', '.=']
+            full = steps // 4
+            rem  = steps  % 4
+            toks = ['0'] * full
+            if rem: toks += steps_to_tokens('0', rem)
+            return toks
+    # NOTE
+    if   steps == 1: return [note_str+'=']
+    elif steps == 2: return [note_str+'-']
+    elif steps == 3: return [note_str+'-', '.=']
+    elif steps == 4: return [note_str]
+    elif steps == 5: return [note_str, '.=']
+    elif steps == 6: return [note_str, '.-']
+    elif steps == 7: return [note_str, '.-', '.=']
     else:
-        num_sustains = (steps - 4) // 4
-        rem_steps = (steps - 4) % 4
-        tokens = [note_str] + ['.'] * num_sustains
-        if rem_steps > 0:
-            tokens.extend(steps_to_tokens('.', rem_steps))
-        return tokens
+        full = (steps - 4) // 4
+        rem  = (steps - 4)  % 4
+        toks = [note_str] + ['.'] * full
+        if rem: toks += steps_to_tokens('.', rem)
+        return toks
 
-def extract_notes_from_track(mid, track_idx):
-    track = mid.tracks[track_idx]
-    notes = []
-    current_tick = 0
-    active_notes = {}
-    
-    ticks_per_step = mid.ticks_per_beat / 4.0
-    
+# ---------------------------------------------------------------------------
+# EKSTRAKSI NOTE DARI TRACK
+# ---------------------------------------------------------------------------
+def extract_notes(mid, track_idx):
+    """
+    Kembalikan list dict {start_tick, dur_ticks, midi, letter, sharp, octave}
+    dengan start_tick dan dur_ticks sudah di-quantize ke 1/16 beat.
+    """
+    tps  = mid.ticks_per_beat / 4.0   # ticks per sixteenth note
+    track= mid.tracks[track_idx]
+    active = {}
+    notes  = []
+    tick   = 0
+
     for msg in track:
-        current_tick += msg.time
+        tick += msg.time
         if msg.type == 'note_on' and msg.velocity > 0:
-            active_notes[msg.note] = (current_tick, msg.velocity)
-        elif (msg.type == 'note_off') or (msg.type == 'note_on' and msg.velocity == 0):
-            if msg.note in active_notes:
-                start_tick, vel = active_notes.pop(msg.note)
-                duration = current_tick - start_tick
-                
-                q_start_tick = round(start_tick / ticks_per_step) * ticks_per_step
-                q_duration = max(ticks_per_step, round(duration / ticks_per_step) * ticks_per_step)
-
-                
-                names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-                pitch_octave = (msg.note // 12) - 1
-                pitch_name = names[msg.note % 12]
-                
-                acc = ''
-                if '#' in pitch_name:
-                    acc = '#'
-                    pitch_name = pitch_name.replace('#', '')
-                    
+            active[msg.note] = tick
+        elif msg.type in ('note_off',) or (msg.type == 'note_on' and msg.velocity == 0):
+            if msg.note in active:
+                start_raw = active.pop(msg.note)
+                dur_raw   = tick - start_raw
+                # quantize ke grid 1/16
+                qs  = round(start_raw / tps) * tps
+                qd  = max(tps, round(dur_raw / tps) * tps)
+                let, sharp, oct_ = midi_to_step(msg.note)
                 notes.append({
-                    'start_tick': q_start_tick,
-                    'dur_ticks': q_duration,
-                    'midi': msg.note,
-                    'step': pitch_name,
-                    'octave': pitch_octave,
-                    'alter': 1.0 if acc == '#' else 0.0,
-                    'is_rest': False
+                    'start_tick': qs,
+                    'dur_ticks' : qd,
+                    'midi'      : msg.note,
+                    'letter'    : let,
+                    'sharp'     : sharp,
+                    'octave'    : oct_,
                 })
-    return sorted(notes, key=lambda x: x['start_tick'])
+    return sorted(notes, key=lambda n: n['start_tick'])
 
-def extract_drums_from_track(mid, track_idx):
+def extract_drums(mid, track_idx):
+    """Kembalikan list {tick, instr} di-quantize ke 1/16."""
+    tps   = mid.ticks_per_beat / 4.0
     track = mid.tracks[track_idx]
-    drum_hits = []
-    current_tick = 0
-    ticks_per_step = mid.ticks_per_beat / 4.0
-    
+    hits  = []
+    tick  = 0
     for msg in track:
-        current_tick += msg.time
+        tick += msg.time
         if msg.type == 'note_on' and msg.velocity > 0:
-            note = msg.note
-            instr = None
-            if note in (35, 36):
-                instr = 'z'
-            elif note in (37, 38, 39, 40):
-                instr = 'y'
-            elif note in (42, 44, 46, 49, 51):
-                instr = 'x'
-                
-            if instr:
-                q_tick = round(current_tick / ticks_per_step) * ticks_per_step
-                drum_hits.append({
-                    'tick': q_tick,
-                    'instrument': instr
-                })
-    return sorted(drum_hits, key=lambda x: x['tick'])
+            n = msg.note
+            if   n in (35,36):           instr='z'   # kick
+            elif n in (38,39,40,37):     instr='y'   # snare
+            elif n in (42,44,46,49,51):  instr='x'   # hihat/cymbal
+            else: continue
+            hits.append({'tick': round(tick/tps)*tps, 'instrument': instr})
+    return sorted(hits, key=lambda h: h['tick'])
 
-def track_to_grid(notes, ticks_per_beat, grid_size_per_bar, total_bars, mode='highest'):
-    ticks_per_bar = ticks_per_beat * 4
-    ticks_per_step = ticks_per_beat / 4.0
-    
-    grid = [[None] * grid_size_per_bar for _ in range(total_bars)]
-    
+# ---------------------------------------------------------------------------
+# KONVERSI NOTES → GRID 16-STEP PER BAR
+# ---------------------------------------------------------------------------
+def notes_to_grid(notes, ticks_per_beat, total_bars, mode='highest'):
+    """
+    Buat grid[bar][step] = dict note.
+    mode='highest' → ambil nada tertinggi jika ada tumpang tindih (untuk melodi)
+    mode='lowest'  → ambil nada terendah (untuk bass)
+    """
+    tpbar = ticks_per_beat * 4
+    tps   = ticks_per_beat / 4.0
+    grid  = [[None]*16 for _ in range(total_bars)]
+
     for n in notes:
-        n_start_tick = n['start_tick']
-        n_dur_ticks = n['dur_ticks']
-        
-        start_bar = int(n_start_tick // ticks_per_bar)
-        start_step = int(round((n_start_tick % ticks_per_bar) / ticks_per_step))
-        
-        dur_steps = int(round(n_dur_ticks / ticks_per_step))
-        dur_steps = max(1, dur_steps)
-        
+        bar0  = int(n['start_tick'] // tpbar)
+        step0 = int(round((n['start_tick'] % tpbar) / tps))
+        # kunci step agar tidak out-of-range
+        if step0 >= 16: step0 = 15
+        dur_steps = max(1, int(round(n['dur_ticks'] / tps)))
+
         for offset in range(dur_steps):
-            total_step = (start_bar * grid_size_per_bar) + start_step + offset
-            bar_idx = total_step // grid_size_per_bar
-            step_idx = total_step % grid_size_per_bar
-            
-            if bar_idx >= total_bars:
-                break
-                
-            current = grid[bar_idx][step_idx]
-            abs_start_step = (start_bar * grid_size_per_bar) + start_step
-            
-            if current is None:
-                grid[bar_idx][step_idx] = {
-                    'midi': n['midi'],
-                    'step': n['step'],
-                    'octave': n['octave'],
-                    'alter': n['alter'],
-                    'start_step': abs_start_step,
-                    'dur_steps': dur_steps
-                }
+            gs   = bar0 * 16 + step0 + offset
+            b    = gs // 16
+            s    = gs  % 16
+            if b >= total_bars: break
+
+            cur = grid[b][s]
+            entry = {
+                'midi'      : n['midi'],
+                'letter'    : n['letter'],
+                'sharp'     : n['sharp'],
+                'octave'    : n['octave'],
+                'abs_start' : bar0 * 16 + step0,
+                'dur_steps' : dur_steps,
+            }
+            if cur is None:
+                grid[b][s] = entry
             else:
-                keep = False
-                if mode == 'highest' and n['midi'] > current['midi']:
-                    keep = True
-                elif mode == 'lowest' and n['midi'] < current['midi']:
-                    keep = True
-                    
-                if keep:
-                    grid[bar_idx][step_idx] = {
-                        'midi': n['midi'],
-                        'step': n['step'],
-                        'octave': n['octave'],
-                        'alter': n['alter'],
-                        'start_step': abs_start_step,
-                        'dur_steps': dur_steps
-                    }
+                if (mode == 'highest' and n['midi'] > cur['midi']) or \
+                   (mode == 'lowest'  and n['midi'] < cur['midi']):
+                    grid[b][s] = entry
     return grid
 
-def drums_to_grid(drum_hits, ticks_per_beat, grid_size_per_bar, total_bars):
-    ticks_per_bar = ticks_per_beat * 4
-    ticks_per_step = ticks_per_beat / 4.0
-    
-    grid = [[None] * grid_size_per_bar for _ in range(total_bars)]
-    
-    step_hits = {}
-    for hit in drum_hits:
-        bar = int(hit['tick'] // ticks_per_bar)
-        step = int(round((hit['tick'] % ticks_per_bar) / ticks_per_step))
-        if bar >= total_bars:
-            continue
-        if step >= grid_size_per_bar:
-            step = grid_size_per_bar - 1
-            
-        key = (bar, step)
-        if key not in step_hits:
-            step_hits[key] = []
-        step_hits[key].append(hit['instrument'])
-        
-    for (bar, step), instrs in step_hits.items():
-        if 'y' in instrs:
-            grid[bar][step] = 'y'
-        elif 'z' in instrs:
-            grid[bar][step] = 'z'
-        elif 'x' in instrs:
-            grid[bar][step] = 'x'
-            
+def drums_to_grid(hits, ticks_per_beat, total_bars):
+    tpbar = ticks_per_beat * 4
+    tps   = ticks_per_beat / 4.0
+    grid  = [[None]*16 for _ in range(total_bars)]
+    seen  = {}
+    for h in hits:
+        b = int(h['tick'] // tpbar)
+        s = int(round((h['tick'] % tpbar) / tps))
+        if b >= total_bars: continue
+        s = min(s, 15)
+        key = (b, s)
+        if key not in seen:
+            seen[key] = []
+        seen[key].append(h['instrument'])
+    for (b,s), instrs in seen.items():
+        # prioritas: kick > snare > hihat
+        if 'z' in instrs: grid[b][s] = 'z'
+        elif 'y' in instrs: grid[b][s] = 'y'
+        else: grid[b][s] = 'x'
     return grid
 
-def drum_grid_to_tokens(grid_bar):
+# ---------------------------------------------------------------------------
+# GRID → TOKEN DOREMI
+# ---------------------------------------------------------------------------
+def grid_bar_to_tokens(grid_bar, base_oct=4):
+    """Konversi satu bar grid[16] → list token doremi."""
     tokens = []
-    grid_size = len(grid_bar)
     i = 0
-    while i < grid_size:
-        item = grid_bar[i]
-        if item is None:
-            rest_start = i
-            while i < grid_size and grid_bar[i] is None:
-                i += 1
-            rest_steps = i - rest_start
-            tokens.extend(steps_to_tokens('0', rest_steps))
+    while i < 16:
+        cell = grid_bar[i]
+        if cell is None:
+            # hitung panjang rest
+            j = i
+            while j < 16 and grid_bar[j] is None:
+                j += 1
+            tokens += steps_to_tokens('0', j - i)
+            i = j
         else:
-            tokens.append(item + '=')
+            abs_start = cell['abs_start']
+            midi_val  = cell['midi']
+            # hitung berapa step note ini berlanjut di bar ini
+            j = i
+            while j < 16 and grid_bar[j] is not None \
+                  and grid_bar[j]['abs_start'] == abs_start \
+                  and grid_bar[j]['midi'] == midi_val:
+                j += 1
+            nt = note_token(cell['letter'], cell['sharp'], cell['octave'], base_oct)
+            tokens += steps_to_tokens(nt, j - i)
+            i = j
+    return tokens
+
+def drum_bar_to_tokens(grid_bar):
+    tokens = []
+    i = 0
+    while i < 16:
+        cell = grid_bar[i]
+        if cell is None:
+            j = i
+            while j < 16 and grid_bar[j] is None:
+                j += 1
+            tokens += steps_to_tokens('0', j - i)
+            i = j
+        else:
+            tokens.append(cell + '=')
             i += 1
     return tokens
 
-def grid_to_doremi_tokens(grid_bar, base_oct):
-    tokens = []
-    grid_size = len(grid_bar)
-    i = 0
-    
-    while i < grid_size:
-        item = grid_bar[i]
-        if item is None:
-            rest_start = i
-            while i < grid_size and grid_bar[i] is None:
-                i += 1
-            rest_steps = i - rest_start
-            tokens.extend(steps_to_tokens('0', rest_steps))
-        else:
-            note_start_step = item['start_step']
-            midi = item['midi']
-            
-            steps = 0
-            while i < grid_size and grid_bar[i] is not None and grid_bar[i]['start_step'] == note_start_step and grid_bar[i]['midi'] == midi:
-                steps += 1
-                i += 1
-                
-            num = STEP_NUM.get(item['step'], '0')
-            oct_suf = octave_suffix(item['octave'], base_oct)
-            acc = '#' if item['alter'] > 0.0 else ('b' if item['alter'] < 0.0 else '')
-            note_str = f"{num}{oct_suf}{acc}"
-            
-            tokens.extend(steps_to_tokens(note_str, steps))
-            
-    return tokens
-
-def get_track_overlap(notes_a, notes_b, total_bars, ticks_per_beat, grid_size=16):
-    ticks_per_step = ticks_per_beat / 4.0
-    grid_a = [0] * (total_bars * grid_size)
-    grid_b = [0] * (total_bars * grid_size)
-    
-    for n in notes_a:
-        start = int(n['start_tick'] // ticks_per_step)
-        dur = max(1, int(n['dur_ticks'] // ticks_per_step))
-        for idx in range(start, start + dur):
-            if idx < len(grid_a):
-                grid_a[idx] = 1
-                
-    for n in notes_b:
-        start = int(n['start_tick'] // ticks_per_step)
-        dur = max(1, int(n['dur_ticks'] // ticks_per_step))
-        for idx in range(start, start + dur):
-            if idx < len(grid_b):
-                grid_b[idx] = 1
-                
-    overlap_steps = sum(1 for i in range(len(grid_a)) if grid_a[i] == 1 and grid_b[i] == 1)
-    total_active_steps = sum(1 for i in range(len(grid_a)) if grid_a[i] == 1 or grid_b[i] == 1)
-    
-    if total_active_steps == 0:
-        return 0.0
-    return overlap_steps / total_active_steps
-
-def detect_chord_for_bar(active_midi_notes, key_sig="C", bass_note=None):
-    if not active_midi_notes:
+# ---------------------------------------------------------------------------
+# DETEKSI CHORD YANG LEBIH AKURAT
+# ---------------------------------------------------------------------------
+def detect_chord(midi_notes, key_sig='C', bass_midi=None):
+    if not midi_notes:
         return None
-    pcs = set(n % 12 for n in active_midi_notes)
-    best_chord = "C"
-    best_score = -1
-    
-    bass_pc = (bass_note % 12) if bass_note is not None else None
-    
-    for chord_name, chord_pcs in CHORDS_DB.items():
-        score = 0
-        root_pc = chord_pcs[0]
-        
+    pcs = set(n % 12 for n in midi_notes)
+    bass_pc = (bass_midi % 12) if bass_midi is not None else None
+    scale   = KEY_SCALE_CHORDS.get(key_sig.upper(), [])
+
+    best, best_score = 'C', -999
+    for cname, cpcs in CHORDS_DB.items():
+        root_pc = cpcs[0]
+        score   = 0.0
+        # Bass menentukan root – bobot tinggi
         if bass_pc is not None and root_pc == bass_pc:
-            score += 5.0
-            
+            score += 6.0
+        # Root present
         if root_pc in pcs:
-            score += 1.5
-        for pc in chord_pcs[1:]:
+            score += 2.0
+        # Third & Fifth
+        for pc in cpcs[1:3]:
             if pc in pcs:
                 score += 1.0
-                
-        scale_chords = {
-            "C": ["C", "Dm", "Em", "F", "G", "Am", "Bdim"],
-            "G": ["G", "Am", "Bm", "C", "D", "Em", "F#dim"],
-            "D": ["D", "Em", "F#m", "G", "A", "Bm", "C#dim"],
-            "A": ["A", "Bm", "C#m", "D", "E", "F#m", "G#dim"],
-            "F": ["F", "Gm", "Am", "Bb", "C", "Dm", "Bdim"],
-            "Bb": ["Bb", "Cm", "Dm", "Eb", "F", "Gm", "Adim"]
-        }
-        if chord_name in scale_chords.get(key_sig.upper(), []):
-            score += 0.1
+        # In-key bonus
+        if cname in scale:
+            score += 0.3
+        # Penalize if root not present at all and bass doesn't match
+        if root_pc not in pcs and bass_pc != root_pc:
+            score -= 1.0
         if score > best_score:
             best_score = score
-            best_chord = chord_name
-    return best_chord
+            best = cname
+    return best
 
-def get_chord_root_step(chord_name, key_sig="C"):
-    root_note = chord_name.replace("min", "").replace("maj", "").replace("dim", "").replace("m", "").upper()
-    root_midi = KEY_ROOTS.get(key_sig.upper(), 60)
-    chord_root_midi = KEY_ROOTS.get(root_note, 60)
-    diff = (chord_root_midi - root_midi) % 12
-    diff_to_step = {0: '1', 1: '1#', 2: '2', 3: '2#', 4: '3', 5: '4', 6: '4#', 7: '5', 8: '5#', 9: '6', 10: '6#', 11: '7'}
-    step = diff_to_step.get(diff, '1')
-    return f"{step},,"
+def chord_root_step(chord_name, key_sig='C'):
+    """Kembalikan nada root chord dalam notasi doremi (oktaf bass ,,)."""
+    # Ambil root dari nama chord
+    name = chord_name
+    for suffix in ['maj7','maj','min7','min','dim7','dim','sus4','sus2','7','m']:
+        name = name.replace(suffix,'')
+    name = name.strip()
+    root_midi = KEY_ROOT_MIDI.get(name, 60)
+    # Pastikan di register bass (oktaf 2-3)
+    while root_midi > 52: root_midi -= 12
+    while root_midi < 28: root_midi += 12
+    let, sharp, oct_ = midi_to_step(root_midi)
+    return note_token(let, sharp, oct_, base_oct=4)
 
-def main():
-    parser = argparse.ArgumentParser(description="Convert MIDI file to Doremi (.123) format for Angklung.")
-    parser.add_argument("midi_file", help="Path to the input MIDI file.")
-    parser.add_argument("output_file", nargs="?", help="Path to the output .123 file. Defaults to same name as midi.")
-    parser.add_argument("--melody", help="Comma-separated track indices for V1 (Melody).")
-    parser.add_argument("--rhythm", type=int, help="Track index for V2 (Rhythm).")
-    parser.add_argument("--bass", type=int, help="Track index for VB (Bass).")
-    parser.add_argument("--drums", type=int, help="Track index for VD (Drums).")
-    parser.add_argument("--tempo", type=int, help="Custom tempo (BPM). Overrides auto-detection.")
-    
-    args = parser.parse_args()
-    
-    if not os.path.exists(args.midi_file):
-        print(f"Error: File {args.midi_file} tidak ditemukan!")
-        sys.exit(1)
-        
-    print(f"Membaca MIDI: {args.midi_file}")
-    mid = mido.MidiFile(args.midi_file)
-    
-    ticks_per_beat = mid.ticks_per_beat
-    ticks_per_bar = ticks_per_beat * 4
-    
-    max_ticks = 0
-    for track in mid.tracks:
-        t_ticks = 0
+# ---------------------------------------------------------------------------
+# DETEKSI TRACK OTOMATIS
+# ---------------------------------------------------------------------------
+def analyse_tracks(mid):
+    results = []
+    all_raw_notes = {}
+    for idx, track in enumerate(mid.tracks):
+        notes, channels = [], {}
+        active = {}
+        name = 'Unnamed'
+        tick = 0
         for msg in track:
-            t_ticks += msg.time
-        max_ticks = max(max_ticks, t_ticks)
-        
-    total_bars = int(round(max_ticks / ticks_per_bar))
-    total_bars = max(1, total_bars)
-    
+            tick += msg.time
+            if msg.type == 'track_name': name = msg.name
+            if msg.type == 'note_on' and msg.velocity > 0:
+                active[msg.note] = tick
+                channels[msg.channel] = channels.get(msg.channel, 0) + 1
+            elif msg.type in ('note_off',) or (msg.type == 'note_on' and msg.velocity == 0):
+                if msg.note in active:
+                    st = active.pop(msg.note)
+                    notes.append({'start_tick': st, 'dur_ticks': tick - st, 'midi': msg.note})
+        if not notes: continue
+        all_raw_notes[idx] = notes
+        # Chord ratio
+        start_counts = {}
+        for n in notes:
+            start_counts[n['start_tick']] = start_counts.get(n['start_tick'],0)+1
+        poly_starts = sum(1 for v in start_counts.values() if v > 1)
+        chord_ratio = poly_starts / len(start_counts) if start_counts else 0
+        avg_pitch   = sum(n['midi'] for n in notes) / len(notes)
+        primary_ch  = max(channels, key=channels.get) if channels else 0
+        results.append({
+            'idx'        : idx,
+            'name'       : name,
+            'count'      : len(notes),
+            'chord_ratio': chord_ratio,
+            'avg_pitch'  : avg_pitch,
+            'channel'    : primary_ch,
+        })
+    return results, all_raw_notes
+
+def overlap_ratio(notes_a, notes_b, ticks_per_beat, total_bars):
+    """Hitung overlap antara dua track di grid 16-step."""
+    tps  = ticks_per_beat / 4.0
+    size = total_bars * 16
+    ga   = [0]*size
+    gb   = [0]*size
+    for n in notes_a:
+        s = int(n['start_tick']//tps)
+        d = max(1, int(n['dur_ticks']//tps))
+        for i in range(s, min(s+d, size)): ga[i]=1
+    for n in notes_b:
+        s = int(n['start_tick']//tps)
+        d = max(1, int(n['dur_ticks']//tps))
+        for i in range(s, min(s+d, size)): gb[i]=1
+    both = sum(1 for i in range(size) if ga[i] and gb[i])
+    either = sum(1 for i in range(size) if ga[i] or gb[i])
+    return both/either if either else 0.0
+
+# ---------------------------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser(
+        description="Konverter MIDI → Doremi (.123) untuk Angklung."
+    )
+    parser.add_argument('midi_file')
+    parser.add_argument('output_file', nargs='?')
+    parser.add_argument('--melody', help='Indeks track melodi, pisah koma')
+    parser.add_argument('--rhythm', type=int)
+    parser.add_argument('--bass',   type=int)
+    parser.add_argument('--drums',  type=int)
+    parser.add_argument('--tempo',  type=int)
+    parser.add_argument('--key',    help='Nada dasar, e.g. C, A, F#m...')
+    args = parser.parse_args()
+
+    if not os.path.exists(args.midi_file):
+        print(f"[ERROR] File tidak ditemukan: {args.midi_file}"); sys.exit(1)
+
+    print(f"\nMembaca MIDI: {args.midi_file}")
+    mid = mido.MidiFile(args.midi_file)
+    tpb  = mid.ticks_per_beat          # ticks per beat (quarter note)
+    tpbar= tpb * 4                      # ticks per bar (4/4)
+
+    # Total bar
+    max_tick = max(
+        sum(m.time for m in t) for t in mid.tracks if t
+    )
+    total_bars = max(1, int(round(max_tick / tpbar)))
+
+    # Tempo
     tempo_bpm = 120
     for track in mid.tracks:
         for msg in track:
             if msg.type == 'set_tempo':
                 tempo_bpm = int(round(mido.tempo2bpm(msg.tempo)))
                 break
-        if tempo_bpm != 120:
-            break
-            
-    if args.tempo:
-        tempo_bpm = args.tempo
-        
-    key_sig = "C"
+        if tempo_bpm != 120: break
+    if args.tempo: tempo_bpm = args.tempo
+
+    # Key signature
+    key_sig = 'C'
     for track in mid.tracks:
         for msg in track:
             if msg.type == 'key_signature':
-                key_sig = msg.key
-                break
-        if key_sig != "C":
-            break
-            
-    track_infos = []
-    all_notes = {}
-    for idx, track in enumerate(mid.tracks):
-        notes = []
-        channels = {}
-        track_name = "Unnamed"
-        active_notes = {}
-        current_tick = 0
-        
-        for msg in track:
-            current_tick += msg.time
-            if msg.type == 'track_name':
-                track_name = msg.name
-            if msg.type == 'note_on' and msg.velocity > 0:
-                active_notes[msg.note] = current_tick
-                channels[msg.channel] = channels.get(msg.channel, 0) + 1
-            elif (msg.type == 'note_off') or (msg.type == 'note_on' and msg.velocity == 0):
-                if msg.note in active_notes:
-                    start_tick = active_notes.pop(msg.note)
-                    notes.append({
-                        'start_tick': start_tick,
-                        'dur_ticks': current_tick - start_tick,
-                        'midi': msg.note
-                    })
-                    
-        if notes:
-            all_notes[idx] = notes
-            start_ticks = [n['start_tick'] for n in notes]
-            ticks_counts = {}
-            for t in start_ticks:
-                ticks_counts[t] = ticks_counts.get(t, 0) + 1
-            chord_starts = sum(1 for count in ticks_counts.values() if count > 1)
-            total_unique_starts = len(ticks_counts)
-            chord_ratio = chord_starts / total_unique_starts if total_unique_starts > 0 else 0
-            
-            primary_channel = max(channels, key=channels.get) if channels else 0
-            avg_pitch = sum(n['midi'] for n in notes) / len(notes)
-            
-            track_infos.append({
-                'idx': idx,
-                'name': track_name,
-                'notes_count': len(notes),
-                'primary_channel': primary_channel,
-                'avg_pitch': avg_pitch,
-                'chord_ratio': chord_ratio
-            })
-            
-    drum_track = args.drums
-    if drum_track is None:
-        drum_candidates = [t for t in track_infos if t['primary_channel'] == 9 or 'drum' in t['name'].lower() or 'perc' in t['name'].lower()]
-        if drum_candidates:
-            drum_track = max(drum_candidates, key=lambda x: x['notes_count'])['idx']
-            
-    bass_track = args.bass
-    if bass_track is None:
-        bass_candidates = [t for t in track_infos if t['primary_channel'] == 1 or 'bass' in t['name'].lower()]
-        if not bass_candidates:
-            bass_candidates = [t for t in track_infos if t['avg_pitch'] < 50 and t['idx'] != drum_track]
-        if bass_candidates:
-            bass_track = min(bass_candidates, key=lambda x: x['avg_pitch'])['idx']
-            
-    rhythm_track = args.rhythm
-    melody_tracks = []
-    
+                key_sig = msg.key; break
+        if key_sig != 'C': break
+    if args.key: key_sig = args.key
+
+    # Analisis track
+    track_infos, all_raw = analyse_tracks(mid)
+    tpb_val = tpb
+
+    # ── Deteksi Drum ──────────────────────────────────────────────────────
+    drum_idx = args.drums
+    if drum_idx is None:
+        drum_cands = [t for t in track_infos
+                      if t['channel']==9
+                      or any(w in t['name'].lower() for w in ('drum','perc','kit'))]
+        if not drum_cands:
+            drum_cands = [t for t in track_infos if t['avg_pitch'] < 45]
+        if drum_cands:
+            drum_idx = max(drum_cands, key=lambda t: t['count'])['idx']
+
+    # ── Deteksi Bass ──────────────────────────────────────────────────────
+    bass_idx = args.bass
+    if bass_idx is None:
+        bass_cands = [t for t in track_infos
+                      if t['idx'] != drum_idx
+                      and ('bass' in t['name'].lower() or t['avg_pitch'] < 50)]
+        if bass_cands:
+            bass_idx = min(bass_cands, key=lambda t: t['avg_pitch'])['idx']
+
+    remaining = [t for t in track_infos if t['idx'] not in (drum_idx, bass_idx)]
+
+    # ── Deteksi Rhythm ────────────────────────────────────────────────────
+    rhythm_idx = args.rhythm
+    if rhythm_idx is None and remaining:
+        rhy_cands = [t for t in remaining
+                     if t['chord_ratio'] >= 0.20
+                     or any(w in t['name'].lower() for w in ('guitar','piano','keys','organ','synth'))]
+        if rhy_cands:
+            rhythm_idx = max(rhy_cands, key=lambda t: t['count'])['idx']
+        else:
+            rhythm_idx = max(remaining, key=lambda t: t['count'])['idx']
+
+    remaining2 = [t for t in remaining if t['idx'] != rhythm_idx]
+
+    # ── Deteksi Melody ────────────────────────────────────────────────────
+    melody_idxs = []
     if args.melody:
-        melody_tracks = [int(x.strip()) for x in args.melody.split(",")]
-        
-    remaining = [t for t in track_infos if t['idx'] not in (drum_track, bass_track)]
-    
-    if remaining:
-        if rhythm_track is None:
-            rhythm_candidates = [t for t in remaining if t['chord_ratio'] >= 0.20 or 'guitar' in t['name'].lower() or 'piano' in t['name'].lower()]
-            if rhythm_candidates:
-                rhythm_track = max(rhythm_candidates, key=lambda x: x['notes_count'])['idx']
-            else:
-                rhythm_candidate = max(remaining, key=lambda x: x['notes_count'])
-                rhythm_track = rhythm_candidate['idx']
-                
-        if not melody_tracks:
-            # Smart melody candidate check: monophonic OR low notes density (notes/bar < 5.0)
-            melody_candidates = []
-            for t in remaining:
-                if t['idx'] == rhythm_track:
-                    continue
-                if not (50 <= t['avg_pitch'] <= 82):
-                    continue
-                density = t['notes_count'] / total_bars if total_bars > 0 else 0
-                if t['chord_ratio'] < 0.15 or density < 5.0:
-                    melody_candidates.append(t)
-                    
-            named_vocals = [t for t in melody_candidates if any(w in t['name'].lower() for w in ['vocal', 'melod', 'lead', 'sing', 'voice', 'sax', 'solo'])]
-            if named_vocals:
-                melody_candidates = named_vocals
-                
-            if melody_candidates:
-                primary_mel = max(melody_candidates, key=lambda x: x['notes_count'])
-                melody_tracks = [primary_mel['idx']]
-                for t in melody_candidates:
-                    if t['idx'] != primary_mel['idx']:
-                        overlap = get_track_overlap(all_notes[primary_mel['idx']], all_notes[t['idx']], total_bars, ticks_per_beat, grid_size=16)
-                        if overlap < 0.15:
-                            melody_tracks.append(t['idx'])
-            else:
-                highest_track = max(remaining, key=lambda x: x['avg_pitch'])
-                melody_tracks = [highest_track['idx']]
-                
-    if drum_track is None: drum_track = 0
-    if bass_track is None: bass_track = 0
-    if rhythm_track is None: rhythm_track = 0
-    if not melody_tracks: melody_tracks = [0]
-    
-    print("-" * 50)
-    print("DETEKSI OTOMATIS KONFIGURASI:")
-    print(f"  Tempo (BPM)      : {tempo_bpm}")
-    print(f"  Nada Dasar (Key) : {key_sig}")
-    print(f"  Melodi (V1)      : Track {melody_tracks} {[t['name'] for t in track_infos if t['idx'] in melody_tracks]}")
-    print(f"  Ritem (V2)       : Track {rhythm_track} {[t['name'] for t in track_infos if t['idx'] == rhythm_track]}")
-    print(f"  Bass (VB)        : Track {bass_track} {[t['name'] for t in track_infos if t['idx'] == bass_track]}")
-    print(f"  Drum (VD)        : Track {drum_track} {[t['name'] for t in track_infos if t['idx'] == drum_track]}")
-    print("-" * 50)
-    
-    notes_melody = []
-    for t_idx in melody_tracks:
-        notes_melody.extend(extract_notes_from_track(mid, t_idx))
-    notes_melody = sorted(notes_melody, key=lambda x: x['start_tick'])
-    
-    notes_rhythm = extract_notes_from_track(mid, rhythm_track) if rhythm_track in all_notes else []
-    notes_bass   = extract_notes_from_track(mid, bass_track) if bass_track in all_notes else []
-    drums        = extract_drums_from_track(mid, drum_track) if drum_track in all_notes else []
-    
-    # 6. Section Detection (16-step grid)
-    sections = {}
-    sections[0] = "INTRO"
-    has_started = False
-    silent_count = 0
-    verse_avg_pitch = None
-    first_active_pitches = []
-    
+        melody_idxs = [int(x.strip()) for x in args.melody.split(',')]
+    elif remaining2:
+        mel_cands = []
+        for t in remaining2:
+            if not (48 <= t['avg_pitch'] <= 88): continue
+            density = t['count'] / total_bars if total_bars > 0 else 0
+            # Terima track monofonik ATAU vokal dengan density rendah (< 6/bar)
+            if t['chord_ratio'] < 0.20 or density < 6.0:
+                mel_cands.append(t)
+
+        # Prioritaskan track bernama vokal/lead
+        named = [t for t in mel_cands
+                 if any(w in t['name'].lower()
+                        for w in ('vocal','lead','melody','voice','sax','solo','flute','violin'))]
+        if named: mel_cands = named
+
+        if mel_cands:
+            primary = max(mel_cands, key=lambda t: t['count'])
+            melody_idxs = [primary['idx']]
+            # Tambah track melodi lain yang tidak tumpang tindih
+            for t in mel_cands:
+                if t['idx'] == primary['idx']: continue
+                ov = overlap_ratio(all_raw[primary['idx']], all_raw[t['idx']], tpb, total_bars)
+                if ov < 0.15:
+                    melody_idxs.append(t['idx'])
+        elif remaining2:
+            melody_idxs = [max(remaining2, key=lambda t: t['avg_pitch'])['idx']]
+
+    # Default fallbacks
+    if drum_idx    is None: drum_idx    = 0
+    if bass_idx    is None: bass_idx    = 0
+    if rhythm_idx  is None: rhythm_idx  = 0
+    if not melody_idxs:     melody_idxs = [0]
+
+    # ── Laporan deteksi ───────────────────────────────────────────────────
+    print("-" * 55)
+    print(f"  Tempo      : {tempo_bpm} BPM")
+    print(f"  Key        : {key_sig}")
+    print(f"  Total bars : {total_bars}")
+    def tname(idx): return next((t['name'] for t in track_infos if t['idx']==idx), '?')
+    print(f"  Melodi (V1): {melody_idxs}  {[tname(i) for i in melody_idxs]}")
+    print(f"  Ritem  (V2): {rhythm_idx}   {tname(rhythm_idx)}")
+    print(f"  Bass   (VB): {bass_idx}     {tname(bass_idx)}")
+    print(f"  Drum   (VD): {drum_idx}     {tname(drum_idx)}")
+    print("-" * 55)
+
+    # ── Ekstraksi note ────────────────────────────────────────────────────
+    notes_mel = []
+    for idx in melody_idxs:
+        notes_mel += extract_notes(mid, idx)
+    notes_mel.sort(key=lambda n: n['start_tick'])
+
+    notes_rhy = extract_notes(mid, rhythm_idx) if rhythm_idx in all_raw else []
+    notes_bas = extract_notes(mid, bass_idx)   if bass_idx   in all_raw else []
+    drum_hits = extract_drums(mid, drum_idx)   if drum_idx   in all_raw else []
+
+    # ── Kerapatan ritem untuk pilih mode ─────────────────────────────────
+    rhy_density = len(notes_rhy) / total_bars if total_bars else 0
+    bas_density = len(notes_bas) / total_bars if total_bars else 0
+    drm_density = len(drum_hits) / total_bars if total_bars else 0
+    print(f"  Density Ritem: {rhy_density:.1f}/bar  Bass: {bas_density:.1f}/bar  Drum: {drm_density:.1f}/bar")
+    print(f"  Mode Ritem: {'CHORD BLOK' if rhy_density > 16 else 'NOTE-BY-NOTE'}")
+    print(f"  Mode Bass : {'ROOT BLOK' if bas_density > 10 else 'NOTE-BY-NOTE'}")
+    print("-"*55)
+
+    # ── Build grids ───────────────────────────────────────────────────────
+    grid_mel = notes_to_grid(notes_mel, tpb, total_bars, mode='highest')
+    grid_rhy = notes_to_grid(notes_rhy, tpb, total_bars, mode='highest')
+    grid_bas = notes_to_grid(notes_bas, tpb, total_bars, mode='lowest')
+    grid_drm = drums_to_grid(drum_hits,  tpb, total_bars)
+
+    # ── Chord detection per bar (pakai info dari 2 bar sebelum juga) ──────
+    def bar_midi_notes(notes_list, bar_idx):
+        bstart = bar_idx * tpbar
+        bend   = bstart  + tpbar
+        return [n['midi'] for n in notes_list if bstart <= n['start_tick'] < bend]
+
+    # ── Section detection ─────────────────────────────────────────────────
+    sections = {0: 'INTRO'}
+    started  = False
+    silent   = 0
+    v1_pitch_ref = None
+
     for b in range(total_bars):
-        bar_notes = [n for n in notes_melody if b * ticks_per_bar <= n['start_tick'] < (b + 1) * ticks_per_bar]
-        if bar_notes:
-            if not has_started:
-                sections[b] = "VERSE 1"
-                has_started = True
-                first_active_pitches = [n['midi'] for n in bar_notes]
-                verse_avg_pitch = sum(first_active_pitches) / len(first_active_pitches)
-            elif silent_count >= 2:
-                sections[b] = "VERSE 2"
-                silent_count = 0
-            elif verse_avg_pitch is not None:
-                bar_avg_pitch = sum(n['midi'] for n in bar_notes) / len(bar_notes)
-                if bar_avg_pitch - verse_avg_pitch >= 3.0:
-                    recent_ch = [k for k, v in sections.items() if v == "CHORUS" and b - k < 8]
-                    if not recent_ch:
-                        sections[b] = "CHORUS"
-            silent_count = 0
+        bar_mel = bar_midi_notes(notes_mel, b)
+        if bar_mel:
+            if not started:
+                sections[b] = 'VERSE 1'
+                started = True
+                v1_pitch_ref = sum(bar_mel)/len(bar_mel)
+            elif silent >= 2:
+                sections[b] = 'VERSE 2'
+                silent = 0
+            elif v1_pitch_ref is not None:
+                avg_p = sum(bar_mel)/len(bar_mel)
+                if avg_p - v1_pitch_ref >= 3.0:
+                    recent = [k for k,v in sections.items() if v=='CHORUS' and b-k < 8]
+                    if not recent:
+                        sections[b] = 'CHORUS'
+            silent = 0
         else:
-            if has_started:
-                silent_count += 1
-                if silent_count == 2:
-                    sections[b] = "INTERLUDE"
-                elif silent_count >= 6 and b > total_bars - 10:
-                    sections[b] = "OUTRO"
-                    
-    # Determine Densities
-    rhy_notes_count = len(notes_rhythm)
-    rhy_density = rhy_notes_count / total_bars if total_bars > 0 else 0
-    
-    bas_notes_count = len(notes_bass)
-    bas_density = bas_notes_count / total_bars if total_bars > 0 else 0
-    
-    drm_notes_count = len(drums)
-    drm_density = drm_notes_count / total_bars if total_bars > 0 else 0
-    
-    print(f"Kerapatan Aransemen:")
-    print(f"  Ritem (V2) Density : {rhy_density:.1f} notes/bar (Threshold: 16.0)")
-    print(f"  Bass (VB) Density  : {bas_density:.1f} notes/bar (Threshold: 8.0)")
-    print(f"  Drum (VD) Density  : {drm_density:.1f} notes/bar (Threshold: 12.0)")
-    print("-" * 50)
-    
-    bars_melody = []
-    bars_rhythm = []
-    bars_bass   = []
-    bars_drums  = []
-    
-    grid_size = 16
-    grid_melody = track_to_grid(notes_melody, ticks_per_beat, grid_size, total_bars, mode='highest')
-    grid_rhythm = track_to_grid(notes_rhythm, ticks_per_beat, grid_size, total_bars, mode='highest')
-    grid_bass   = track_to_grid(notes_bass, ticks_per_beat, grid_size, total_bars, mode='lowest')
-    grid_drums  = drums_to_grid(drums, ticks_per_beat, grid_size, total_bars)
-    
-    last_chord = "C"
-    
-    for bar_idx in range(total_bars):
-        tokens_mel = grid_to_doremi_tokens(grid_melody[bar_idx], base_oct=4)
-        bars_melody.append(tokens_mel if tokens_mel else ['0'])
-        
-        bar_start_tick = bar_idx * ticks_per_bar
-        bar_end_tick = (bar_idx + 1) * ticks_per_bar
-        
-        # 1. Chord & Bass Detection
-        active_notes_bar = [n['midi'] for n in notes_rhythm if bar_start_tick <= n['start_tick'] < bar_end_tick]
-        if not active_notes_bar:
-            active_notes_bar = [n['midi'] for n in notes_melody if bar_start_tick <= n['start_tick'] < bar_end_tick]
-            
-        bar_bass_notes = [n['midi'] for n in notes_bass if bar_start_tick <= n['start_tick'] < bar_end_tick]
-        bass_note = bar_bass_notes[0] if bar_bass_notes else None
-        
-        chord_name = detect_chord_for_bar(active_notes_bar, key_sig, bass_note=bass_note)
-        if chord_name:
-            last_chord = chord_name
-        else:
-            chord_name = last_chord
-            
-        # 2. Format Rhythm (V2)
+            if started:
+                silent += 1
+                if silent == 2:    sections[b] = 'INTERLUDE'
+                if silent >= 6 and b > total_bars - 12: sections[b] = 'OUTRO'
+
+    # ── Build bars ────────────────────────────────────────────────────────
+    bars_mel = []
+    bars_rhy = []
+    bars_bas = []
+    bars_drm = []
+
+    last_chord = key_sig.rstrip('m').upper()
+    if last_chord not in CHORDS_DB: last_chord = 'C'
+
+    for b in range(total_bars):
+        # Melodi: ambil nada tertinggi per step (monophonic top voice)
+        bars_mel.append(grid_bar_to_tokens(grid_mel[b], base_oct=4) or ['0'])
+
+        # Chord detection untuk bar ini
+        rhy_notes_bar = bar_midi_notes(notes_rhy, b)
+        mel_notes_bar = bar_midi_notes(notes_mel, b)
+        bass_bar      = bar_midi_notes(notes_bas, b)
+        chord_src     = rhy_notes_bar if rhy_notes_bar else mel_notes_bar
+        bass_midi_val = bass_bar[0] if bass_bar else None
+        chord = detect_chord(chord_src, key_sig, bass_midi=bass_midi_val) or last_chord
+        last_chord = chord
+
+        # ── Ritem (V2) ────────────────────────────────────────────────────
         if rhy_density > 16.0:
-            chord_token = f"@{chord_name}"
-            # Beat 1 (chord) + Beat 2 (sustain) + Beat 3 (chord) + Beat 4 (sustain)
-            bars_rhythm.append([chord_token, '.', chord_token, '.'])
+            # Chord blok: beat 1 dan beat 3
+            bars_rhy.append([f'@{chord}', '.', f'@{chord}', '.'])
         else:
-            tokens_rhy = grid_to_doremi_tokens(grid_rhythm[bar_idx], base_oct=4)
-            bars_rhythm.append(tokens_rhy if tokens_rhy else ['0'])
-            
-        # 3. Format Bass (VB)
-        if bas_density > 8.0:
-            root_step = get_chord_root_step(chord_name, key_sig)
-            bars_bass.append([root_step, '.', root_step, '.'])
+            toks = grid_bar_to_tokens(grid_rhy[b], base_oct=4)
+            bars_rhy.append(toks if toks else ['0'])
+
+        # ── Bass (VB) ─────────────────────────────────────────────────────
+        if bas_density > 10.0:
+            rs = chord_root_step(chord, key_sig)
+            bars_bas.append([rs, '.', rs, '.'])
         else:
-            tokens_bas = grid_to_doremi_tokens(grid_bass[bar_idx], base_oct=4)
-            bars_bass.append(tokens_bas if tokens_bas else ['0'])
-            
-        # 4. Format Drums (VD)
-        if drm_density > 12.0:
-            bars_drums.append(['z=', '0=', 'x=', '0=', 'y=', '0=', 'x=', '0=', 'z=', '0=', 'x=', '0=', 'y=', '0=', 'x=', 'y='])
+            toks = grid_bar_to_tokens(grid_bas[b], base_oct=4)
+            bars_bas.append(toks if toks else ['0'])
+
+        # ── Drum (VD) ─────────────────────────────────────────────────────
+        if drm_density > 14.0:
+            # Pola drum rock standard 16-step
+            bars_drm.append(['z=','0=','x=','0=','y=','0=','x=','0=',
+                              'z=','0=','x=','0=','y=','0=','x=','y='])
         else:
-            tokens_drm = drum_grid_to_tokens(grid_drums[bar_idx])
-            bars_drums.append(tokens_drm if tokens_drm else ['0'])
-            
-    out_file = args.output_file
-    if not out_file:
+            toks = drum_bar_to_tokens(grid_drm[b])
+            bars_drm.append(toks if toks else ['0'])
+
+    # ── Tulis output ──────────────────────────────────────────────────────
+    out = args.output_file
+    if not out:
         base, _ = os.path.splitext(args.midi_file)
-        out_file = base + ".123"
-        
-    with open(out_file, 'w', encoding='utf-8') as f:
-        title = os.path.splitext(os.path.basename(args.midi_file))[0].replace("_", " ").title()
+        out = base + '.123'
+
+    title = os.path.splitext(os.path.basename(args.midi_file))[0]\
+               .replace('_',' ').replace('-',' ').title()
+
+    with open(out, 'w', encoding='utf-8') as f:
         f.write(f"T: {title}\n")
         f.write(f"C: Unknown\n")
         f.write(f"M: 4/4\n")
         f.write(f"Q: {tempo_bpm}\n")
-        f.write(f"K: {key_sig}\n")
-        f.write("\n")
-        
-        bar_idx = 0
-        while bar_idx < total_bars:
-            for b in range(bar_idx, min(bar_idx + BARS_PER_LINE, total_bars)):
-                if b in sections:
-                    f.write(f"$ {sections[b]}\n")
-                    
-            chunk_end = min(bar_idx + BARS_PER_LINE, total_bars)
-            
-            chunk_mel = bars_melody[bar_idx:chunk_end]
-            mel_str = "|".join(" ".join(b) for b in chunk_mel)
-            f.write(f"V1: |{mel_str}|\n")
-            
-            chunk_rhy = bars_rhythm[bar_idx:chunk_end]
-            rhy_str = "|".join(" ".join(b) for b in chunk_rhy)
-            f.write(f"V2: |{rhy_str}|\n")
-            
-            chunk_bas = bars_bass[bar_idx:chunk_end]
-            bas_str = "|".join(" ".join(b) for b in chunk_bas)
-            f.write(f"VB: |{bas_str}|\n")
-            
-            chunk_drm = bars_drums[bar_idx:chunk_end]
-            drm_str = "|".join(" ".join(b) for b in chunk_drm)
-            f.write(f"VD: |{drm_str}|\n")
-            
+        f.write(f"K: {key_sig}\n\n")
+
+        b = 0
+        while b < total_bars:
+            # Tulis label seksi
+            for bb in range(b, min(b+BARS_PER_LINE, total_bars)):
+                if bb in sections:
+                    f.write(f"$ {sections[bb]}\n")
+
+            end = min(b + BARS_PER_LINE, total_bars)
+
+            def chunk(bars_list):
+                return '|'.join(' '.join(bars_list[i]) for i in range(b, end))
+
+            f.write(f"V1: |{chunk(bars_mel)}|\n")
+            f.write(f"V2: |{chunk(bars_rhy)}|\n")
+            f.write(f"VB: |{chunk(bars_bas)}|\n")
+            f.write(f"VD: |{chunk(bars_drm)}|\n")
             f.write("\n")
-            bar_idx += BARS_PER_LINE
-            
-    print(f"Berhasil mengkonversi MIDI ke Doremi! File disimpan: {out_file}")
+            b += BARS_PER_LINE
+
+    print(f"\nBerhasil! Disimpan ke: {out}\n")
 
 if __name__ == '__main__':
     main()

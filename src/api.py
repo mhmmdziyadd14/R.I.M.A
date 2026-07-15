@@ -1147,9 +1147,9 @@ def play_song_thread(file_content: str, thread_token: int):
                         ang_id = 3 if ptype == "bass" else 1
                         play_local_sound(note_num, ang_id, vol, ptype)
                         
-                        if not is_chord_member:
-                            physical_set.add(note_num)
-                            arduino_notes.append(note_num)
+                        physical_set.add(note_num)
+                        arduino_notes.append(note_num)
+
                             
                     elif action == "ARDUINO_HIT":
                         if note_num in physical_set:

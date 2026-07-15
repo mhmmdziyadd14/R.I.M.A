@@ -719,7 +719,7 @@ def parse_partitur_data(file_content: str) -> dict:
                     metadata["beats_per_bar"] = float(m_val)
                 except: pass
         
-        is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
+        is_track = (line.upper().startswith('V') or line.upper().startswith('VA')) and ':' in line
         if is_track:
             parts = line.split(':', 1)
             tcontent = parts[1].strip()
@@ -728,7 +728,7 @@ def parse_partitur_data(file_content: str) -> dict:
             if not sections:
                 sections.append({"name": current_section_name, "start_bar": 0, "end_bar": 0})
             sections[-1]["end_bar"] = max(sections[-1]["end_bar"], current_bar_count + num_bars - 1)
-            if parts[0].strip() == 'V1':
+            if parts[0].strip().upper() == 'V1':
                 current_bar_count += num_bars
                 
     # 2. Extract Tracks
@@ -739,7 +739,7 @@ def parse_partitur_data(file_content: str) -> dict:
         if line.startswith('$'): continue
         if ':' in line:
             parts = line.split(':', 1)
-            prefix = parts[0].strip()
+            prefix = parts[0].strip().upper()
             content = parts[1].strip()
             
             if prefix.startswith('V') or prefix.startswith('VA'):

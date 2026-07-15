@@ -670,10 +670,11 @@ def main():
     print(f"  Mode       : {'Multi-Channel' if multi_ch else 'Multi-Track'}")
     def tname(idx): return next((t['name'] for t in track_infos if t['idx']==idx), '?')
     print(f"  Melodi (V1): {melody_idxs}  {[tname(i) for i in melody_idxs]}")
-    print(f"  Ritem  (VC): {rhythm_idx}   {tname(rhythm_idx)}")
+    print(f"  Ritem  (V2): {rhythm_idx}   {tname(rhythm_idx)}")
     print(f"  Bass   (VB): {bass_idx}     {tname(bass_idx)}")
     print(f"  Drum   (VD): {drum_idx}     {tname(drum_idx)}")
     print("-" * 55)
+
 
 
     # ── Ekstraksi note (mendukung virtual channel index) ──────────────────
@@ -872,11 +873,12 @@ def main():
                 return '|'.join(' '.join(bars_list[i]) for i in range(b, end))
 
             f.write(f"V1: |{chunk(bars_mel)}|\n")
-            f.write(f"VC: |{chunk(bars_rhy)}|\n")
+            f.write(f"V2: |{chunk(bars_rhy)}|\n")
             f.write(f"VB: |{chunk(bars_bas)}|\n")
             f.write(f"VD: |{chunk(bars_drm)}|\n")
             f.write("\n")
             b += BARS_PER_LINE
+
 
 
     print(f"\nBerhasil! Disimpan ke: {out}\n")

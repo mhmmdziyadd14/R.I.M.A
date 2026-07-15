@@ -719,7 +719,7 @@ def parse_partitur_data(file_content: str) -> dict:
                     metadata["beats_per_bar"] = float(m_val)
                 except: pass
         
-        is_track = (line.upper().startswith('V') or line.upper().startswith('VA')) and ':' in line
+        is_track = (line.startswith('V') or line.startswith('VB') or line.startswith('VA')) and ':' in line
         if is_track:
             parts = line.split(':', 1)
             tcontent = parts[1].strip()
@@ -728,7 +728,7 @@ def parse_partitur_data(file_content: str) -> dict:
             if not sections:
                 sections.append({"name": current_section_name, "start_bar": 0, "end_bar": 0})
             sections[-1]["end_bar"] = max(sections[-1]["end_bar"], current_bar_count + num_bars - 1)
-            if parts[0].strip().upper() == 'V1':
+            if parts[0].strip() == 'V1':
                 current_bar_count += num_bars
                 
     # 2. Extract Tracks
@@ -739,7 +739,7 @@ def parse_partitur_data(file_content: str) -> dict:
         if line.startswith('$'): continue
         if ':' in line:
             parts = line.split(':', 1)
-            prefix = parts[0].strip().upper()
+            prefix = parts[0].strip()
             content = parts[1].strip()
             
             if prefix.startswith('V') or prefix.startswith('VA'):
@@ -913,11 +913,10 @@ def play_song_thread(file_content: str, thread_token: int):
         
         auto_transpose = 0
         if min_midi < 999 and max_midi > 0:
-            while min_midi + auto_transpose < 65:
+            while min_midi + auto_transpose < 67:
                 auto_transpose += 12
-            while max_midi + auto_transpose > 88 and (min_midi + auto_transpose - 12) >= 65:
+            while max_midi + auto_transpose > 88 and (min_midi + auto_transpose - 12) >= 67:
                 auto_transpose -= 12
-
                 
         if auto_transpose != 0:
             print(f"[PARSER] Auto-Transpose dinamis diterapkan: {auto_transpose} semitone.")
@@ -1147,9 +1146,9 @@ def play_song_thread(file_content: str, thread_token: int):
                         ang_id = 3 if ptype == "bass" else 1
                         play_local_sound(note_num, ang_id, vol, ptype)
                         
-                        physical_set.add(note_num)
-                        arduino_notes.append(note_num)
-
+                        if not is_chord_member:
+                            physical_set.add(note_num)
+                            arduino_notes.append(note_num)
                             
                     elif action == "ARDUINO_HIT":
                         if note_num in physical_set:

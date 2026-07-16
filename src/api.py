@@ -1220,6 +1220,7 @@ def list_songs():
         else:
             region = "Umum"
             
+        duration_formatted = "0:00"
         try:
             content = read_file_safely(file_path)
             lines = content.split('\n')
@@ -1229,8 +1230,32 @@ def list_songs():
                     title = line.split(':', 1)[1].strip()
                 elif line.startswith('C:') or line.startswith('O:'):
                     region = line.split(':', 1)[1].strip()
+            
+            # Calculate duration using existing parser
+            parsed = parse_partitur_data(content)
+            if parsed["tracks"]:
+                bpm = parsed["metadata"]["Q"]
+                beats_per_bar = parsed["metadata"]["beats_per_bar"]
+                denominator = parsed["metadata"]["denominator"]
+                seconds_per_beat = 60.0 / bpm
+                if denominator == 8:
+                    seconds_per_beat /= 3.0
+                
+                max_beat = 0.0
+                for track_name, bars in parsed["tracks"].items():
+                    for bar_idx, bar in enumerate(bars):
+                        bar_start = bar_idx * beats_per_bar
+                        current_beat = bar_start
+                        for tok in bar["tokens"]:
+                            current_beat += tok["duration"]
+                        max_beat = max(max_beat, current_beat)
+                
+                total_sec = int(round(max_beat * seconds_per_beat, 0))
+                mins = total_sec // 60
+                secs = total_sec % 60
+                duration_formatted = f"{mins}:{secs:02d}"
         except Exception as e:
-            print(f"Error reading metadata from {file_basename}: {e}")
+            print(f"Error reading metadata/duration from {file_basename}: {e}")
             
         # Get relative path relative to SONGS_DIR and make it web-safe
         rel_path = os.path.relpath(file_path, SONGS_DIR).replace(os.sep, '/')
@@ -1240,7 +1265,8 @@ def list_songs():
             "title": title,
             "region": region,
             "file_name": rel_path,
-            "folder": folder_name
+            "folder": folder_name,
+            "duration": duration_formatted
         })
     return results
 

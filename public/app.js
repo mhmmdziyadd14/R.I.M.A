@@ -236,6 +236,13 @@ function connectMidiWebSocket() {
 
 // 3. Application Startup
 document.addEventListener('DOMContentLoaded', () => {
+  // Auto-hide Splash Screen after 2.5 seconds
+  setTimeout(() => {
+    if (document.getElementById('page-landing').classList.contains('active')) {
+      navigateTo('page-beranda');
+    }
+  }, 2500);
+
   // Set initial settings values to modal inputs
   document.getElementById('input-com-port-1').value = settings.port1;
   document.getElementById('input-com-port-2').value = "Terintegrasi dengan Angklung 1";
@@ -504,6 +511,17 @@ async function scanMidiDevices() {
   } catch (err) {
     console.error("Gagal melakukan scan perangkat MIDI:", err);
   }
+}
+
+function switchSettingTab(tabId) {
+  // Update buttons
+  document.getElementById('tab-btn-koneksi').classList.remove('active');
+  document.getElementById('tab-btn-volume').classList.remove('active');
+  document.getElementById(`tab-btn-${tabId}`).classList.add('active');
+
+  // Update content visibility
+  document.getElementById('tab-koneksi').style.display = (tabId === 'koneksi') ? 'block' : 'none';
+  document.getElementById('tab-volume').style.display = (tabId === 'volume') ? 'block' : 'none';
 }
 
 async function toggleSettingsModal() {
@@ -852,28 +870,66 @@ function getSongBtnId(songId) {
 }
 
 // 8. Pustaka Lagu Section
-function loadSongsList(filter = 'all') {
+let currentSongFilter = 'all';
+let currentPlaylist = [];
+let currentPlayingIndex = -1;
+let isShuffle = false;
+let isRepeat = false;
+let isManualStop = false;
+
+function searchSongs(query) {
   const container = document.getElementById('songs-container');
   if (!container) return;
+  const lowerQuery = query.toLowerCase();
+  
+  const filtered = songs.filter(s => {
+    const matchesFilter = currentSongFilter === 'all' || s.folder === currentSongFilter;
+    const matchesSearch = s.title.toLowerCase().includes(lowerQuery) || (s.region && s.region.toLowerCase().includes(lowerQuery));
+    return matchesFilter && matchesSearch;
+  });
+  
+  currentPlaylist = filtered;
+  renderSongCards(filtered, container);
+}
+
+function loadSongsList(filter = 'all') {
+  currentSongFilter = filter;
+  const container = document.getElementById('songs-container');
+  if (!container) return;
+  
+  const searchInput = document.getElementById('cn-pustaka-search-input');
+  const query = searchInput ? searchInput.value.toLowerCase() : '';
+
+  const filtered = songs.filter(s => {
+    const matchesFilter = filter === 'all' || s.folder === filter;
+    const matchesSearch = !query || s.title.toLowerCase().includes(query) || (s.region && s.region.toLowerCase().includes(query));
+    return matchesFilter && matchesSearch;
+  });
+
+  currentPlaylist = filtered;
+  renderSongCards(filtered, container);
+}
+
+function renderSongCards(songArray, container) {
   container.innerHTML = '';
-
-  const filtered = filter === 'all' ? songs : songs.filter(s => s.folder === filter);
-
-  filtered.forEach(song => {
-    // Escape single quotes for HTML onClick
+  
+  songArray.forEach((song, index) => {
     const cleanId = song.id.replace(/'/g, "\\'");
     const btnDomId = getSongBtnId(song.id);
     const item = document.createElement('div');
     item.className = 'song-item';
+    item.id = `row-${btnDomId}`;
+    item.onclick = () => playSong(cleanId); // Klik baris memutar lagu
     item.innerHTML = `
       <div class="song-info">
-        <div class="song-icon"><i class="fa-solid fa-music"></i></div>
+        <span class="song-index">${index + 1}</span>
         <div class="song-details">
           <h4>${song.title}</h4>
           <p>${song.region} (${song.folder})</p>
         </div>
       </div>
-      <button class="song-play-btn" id="${btnDomId}" onclick="playSong('${cleanId}')">
+      <span class="song-duration">${song.duration}</span>
+      <button class="song-play-btn" id="${btnDomId}">
         <i class="fa-solid fa-play"></i>
       </button>
     `;
@@ -881,39 +937,27 @@ function loadSongsList(filter = 'all') {
   });
 }
 
-// Render dynamic filter tags based on actual folders in the song library
+// Render dynamic filter options based on actual folders in the song library
 function renderFilterTags() {
-  const tagContainer = document.querySelector('.filter-tags');
-  if (!tagContainer) return;
-  tagContainer.innerHTML = '';
+  const selectElement = document.getElementById('song-category-filter');
+  if (!selectElement) return;
+  selectElement.innerHTML = '';
 
-  // 1. Add "SEMUA" tag
-  const allBtn = document.createElement('button');
-  allBtn.className = 'tag-btn active';
-  allBtn.innerText = 'SEMUA';
-  allBtn.onclick = (e) => {
-    const buttons = document.querySelectorAll('.tag-btn');
-    buttons.forEach(btn => btn.classList.remove('active'));
-    allBtn.classList.add('active');
-    loadSongsList('all');
-  };
-  tagContainer.appendChild(allBtn);
+  // 1. Add "SEMUA" option
+  const allOpt = document.createElement('option');
+  allOpt.value = 'all';
+  allOpt.innerText = 'Semua Kategori';
+  selectElement.appendChild(allOpt);
 
   // 2. Extract unique folder names and sort them
   const uniqueFolders = [...new Set(songs.map(s => s.folder))].filter(Boolean).sort();
 
-  // 3. Render folder tags
+  // 3. Render folder options
   uniqueFolders.forEach(folder => {
-    const btn = document.createElement('button');
-    btn.className = 'tag-btn';
-    btn.innerText = folder.toUpperCase();
-    btn.onclick = (e) => {
-      const buttons = document.querySelectorAll('.tag-btn');
-      buttons.forEach(btn => btn.classList.remove('active'));
-      btn.classList.add('active');
-      loadSongsList(folder);
-    };
-    tagContainer.appendChild(btn);
+    const opt = document.createElement('option');
+    opt.value = folder;
+    opt.innerText = folder.toUpperCase();
+    selectElement.appendChild(opt);
   });
 }
 
@@ -928,7 +972,8 @@ async function loadSongsFromBackend() {
         title: s.title,
         region: s.region,
         file_name: s.file_name,
-        folder: s.folder || 'Umum'
+        folder: s.folder || 'Umum',
+        duration: s.duration || '0:00'
       }));
       renderFilterTags();
       loadSongsList('all');
@@ -963,12 +1008,23 @@ function startPlaybackStatusPolling() {
           stopPlaybackStatusPolling();
           hidePlayerPanel();
           
-          // Clear active playing state icons on buttons
           const playButtons = document.querySelectorAll('.song-play-btn');
           playButtons.forEach(btn => {
             btn.classList.remove('playing');
             btn.innerHTML = '<i class="fa-solid fa-play"></i>';
           });
+          
+          const globalPlayPauseIcon = document.getElementById('icon-playpause');
+          if (globalPlayPauseIcon) {
+            globalPlayPauseIcon.classList.remove('fa-pause');
+            globalPlayPauseIcon.classList.add('fa-play');
+          }
+          
+          if (!isManualStop) {
+            setTimeout(() => {
+              playNextSong(true);
+            }, 500);
+          }
         }
       }
     } catch (e) {
@@ -1058,16 +1114,40 @@ async function seekSong(event) {
 
 async function playSong(songId) {
   const playBtn = document.getElementById(getSongBtnId(songId));
+  const songRow = document.getElementById(`row-${getSongBtnId(songId)}`);
   
-  if (playBtn && playBtn.classList.contains('playing')) {
+  if (songRow && songRow.classList.contains('playing')) {
+    isManualStop = true;
     stopAllPlaybacks();
     return;
   }
 
+  isManualStop = false;
+  currentPlayingIndex = currentPlaylist.findIndex(s => s.id === songId);
+  
   stopAllPlaybacks();
   if (playBtn) {
-    playBtn.classList.add('playing');
     playBtn.innerHTML = '<i class="fa-solid fa-stop"></i>';
+  }
+  
+  const globalPlayPauseIcon = document.getElementById('icon-playpause');
+  if (globalPlayPauseIcon) {
+    globalPlayPauseIcon.classList.remove('fa-play');
+    globalPlayPauseIcon.classList.add('fa-pause');
+  }
+
+  if (songRow) {
+    songRow.classList.add('playing');
+    
+    // Update Album Art placeholder info
+    const titleEl = document.getElementById('current-album-title');
+    const descEl = document.getElementById('current-album-desc');
+    if (titleEl && descEl) {
+      const title = songRow.querySelector('h4').innerText;
+      const desc = songRow.querySelector('p').innerText;
+      titleEl.innerText = title;
+      descEl.innerText = desc;
+    }
   }
 
   try {
@@ -1085,6 +1165,97 @@ async function playSong(songId) {
   } catch (e) {
     alert("Gagal menghubungi server.");
     stopAllPlaybacks();
+  }
+}
+
+// 8.2 Album Controls Functions
+function playNextSong(autoPlay = false) {
+  if (currentPlaylist.length === 0) return;
+  
+  let nextIndex = currentPlayingIndex;
+  
+  if (isRepeat && autoPlay) {
+    nextIndex = currentPlayingIndex;
+  } else if (isShuffle) {
+    if (currentPlaylist.length > 1) {
+      do {
+        nextIndex = Math.floor(Math.random() * currentPlaylist.length);
+      } while (nextIndex === currentPlayingIndex);
+    } else {
+      nextIndex = 0;
+    }
+  } else {
+    nextIndex = currentPlayingIndex + 1;
+    if (nextIndex >= currentPlaylist.length) {
+      nextIndex = 0;
+    }
+  }
+  
+  const nextSong = currentPlaylist[nextIndex];
+  if (nextSong) {
+    playSong(nextSong.id);
+  }
+}
+
+function playPrevSong() {
+  if (currentPlaylist.length === 0) return;
+  
+  let prevIndex = currentPlayingIndex;
+  
+  if (isShuffle) {
+    if (currentPlaylist.length > 1) {
+      do {
+        prevIndex = Math.floor(Math.random() * currentPlaylist.length);
+      } while (prevIndex === currentPlayingIndex);
+    } else {
+      prevIndex = 0;
+    }
+  } else {
+    prevIndex = currentPlayingIndex - 1;
+    if (prevIndex < 0) {
+      prevIndex = currentPlaylist.length - 1;
+    }
+  }
+  
+  const prevSong = currentPlaylist[prevIndex];
+  if (prevSong) {
+    playSong(prevSong.id);
+  }
+}
+
+function togglePlayPause() {
+  if (currentPlayingIndex === -1 && currentPlaylist.length > 0) {
+    playSong(currentPlaylist[0].id);
+    return;
+  }
+  
+  const songRow = document.querySelector('.song-item.playing');
+  if (songRow) {
+    isManualStop = true;
+    stopAllPlaybacks();
+  } else {
+    let idx = currentPlayingIndex !== -1 ? currentPlayingIndex : 0;
+    if (currentPlaylist[idx]) {
+      playSong(currentPlaylist[idx].id);
+    }
+  }
+}
+
+function toggleShuffle() {
+  isShuffle = !isShuffle;
+  const btn = document.getElementById('ctrl-shuffle');
+  if (btn) {
+    if (isShuffle) btn.style.color = 'var(--color-amber)';
+    else btn.style.color = '';
+  }
+}
+
+function toggleRepeat() {
+  isRepeat = !isRepeat;
+  const btn = document.getElementById('ctrl-repeat');
+  if (btn) {
+    if (isRepeat) btn.style.color = 'var(--color-amber)';
+    else btn.style.color = '';
   }
 }
 
@@ -1237,18 +1408,29 @@ function stopAllPlaybacks() {
     activeSongInterval = null;
   }
 
-  // Stop Play buttons class
+  // Stop Play buttons class & remove playing from rows
   const playButtons = document.querySelectorAll('.song-play-btn');
   playButtons.forEach(btn => {
-    btn.classList.remove('playing');
     btn.innerHTML = '<i class="fa-solid fa-play"></i>';
   });
+  
+  const songRows = document.querySelectorAll('.song-item');
+  songRows.forEach(row => {
+    row.classList.remove('playing');
+  });
+
+  const globalPlayPauseIcon = document.getElementById('icon-playpause');
+  if (globalPlayPauseIcon) {
+    globalPlayPauseIcon.classList.remove('fa-pause');
+    globalPlayPauseIcon.classList.add('fa-play');
+  }
 
   // Stop Repeater WebSocket
   if (repeaterSocket) {
     try { repeaterSocket.close(); } catch (_) {}
     repeaterSocket = null;
   }
+  
   isRepeaterListening = false;
   
   const micBtn = document.getElementById('mic-repeater-btn');

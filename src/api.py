@@ -100,19 +100,27 @@ NOTE_FREQS = {
 }
 
 def frequency_to_note(freq):
-    if freq < 200 or freq > 600:
+    if freq < 65 or freq > 1200:
         return None
-    closest_note = None
-    min_diff = float("inf")
-    for note, note_freq in NOTE_FREQS.items():
-        diff = abs(freq - note_freq)
-        if diff < min_diff:
-            min_diff = diff
-            closest_note = note
-    # Return note only if the diff is within reasonable semitone bounds (~15Hz-30Hz)
-    if min_diff < 15.0:
-        return closest_note
-    return None
+    import math
+    
+    # 1. Hitung MIDI note terdekat (Auto-tune snapping ke nada paling dekat)
+    midi_note = round(69 + 12 * math.log2(freq / 440.0))
+    
+    # 2. Transpose +1 Oktaf secara keseluruhan (+12 semitones)
+    # Ini mencegah melodi rusak (karena folding dinamis) dan menyesuaikan vokal manusia (E2-C6) ke Angklung (E3-C7)
+    transposed_midi = midi_note + 12
+        
+    # Validasi apakah hasil transpose masuk ke rentang Angklung (E3=52 hingga C7=96)
+    if transposed_midi > 96 or transposed_midi < 52:
+        return None
+        
+    # 3. Kembalikan nama nada sesuai format app.js (misal: "C4", "A#3")
+    pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    pitch_name = pitch_names[transposed_midi % 12]
+    octave = (transposed_midi // 12) - 1
+    
+    return f"{pitch_name}{octave}"
 
 def detect_pitch(signal, sr):
     """Simple Autocorrelation Pitch Detector for real-time monophonic pitch tracking."""
@@ -120,15 +128,22 @@ def detect_pitch(signal, sr):
         return 0.0
     signal = signal - np.mean(signal)
     
-    # Avoid zero signal
-    if np.max(np.abs(signal)) < 0.01:
+    # Hitung volume (Root Mean Square)
+    rms = np.sqrt(np.mean(signal**2))
+    # Threshold volume minimum untuk dianggap suara valid
+    # Pengunjung harus bernyanyi cukup dekat ke mic agar terdeteksi.
+    if rms < 0.03:
         return 0.0
+        
+    # Low-Pass Filter sederhana (Moving Average) untuk menghapus suara statis/noise frekuensi tinggi (desisan angin, kipas, dll)
+    # Filter ukuran 3 cukup untuk melembutkan noise kasar tanpa merusak frekuensi vokal manusia
+    signal = np.convolve(signal, np.ones(3)/3.0, mode='same')
         
     corr = np.correlate(signal, signal, mode='full')
     corr = corr[len(corr)//2:]
     
-    # Range of interest (80 Hz to 1000 Hz)
-    min_lag = int(sr / 1000)
+    # Range of interest (80 Hz to 1200 Hz)
+    min_lag = int(sr / 1200)
     max_lag = int(sr / 80)
     
     if max_lag >= len(corr) or min_lag >= len(corr):
@@ -140,8 +155,9 @@ def detect_pitch(signal, sr):
         
     peak = np.argmax(search_segment) + min_lag
     
-    # Thresholding to reject noisy frames
-    if corr[peak] < 0.15 * corr[0]:
+    # Thresholding to reject noisy frames (diperketat ke 0.35)
+    # Semakin tinggi nilainya, semakin sistem menolak suara 'bising' yang tidak memiliki nada pasti (seperti suara "S" atau "Sy")
+    if corr[peak] < 0.30 * corr[0]:
         return 0.0
         
     freq = sr / peak

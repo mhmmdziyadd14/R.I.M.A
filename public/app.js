@@ -133,7 +133,11 @@ function playClientSynthSound(frequency) {
 
 let activeSongInterval = null;
 let repeaterSocket = null;
-let isRepeaterListening = false;
+let repeaterState = 'idle'; // 'idle', 'recording', 'playing'
+let repeaterPlaybackInterval = null;
+let recordedSequence = [];
+let currentRecNote = null;
+let currentRecStart = 0;
 let keyIntervals = new Map();
 let chordIntervals = new Map();
 
@@ -704,15 +708,17 @@ function triggerKeyOn(keyElement) {
 }
 
 // Programmatic key highlight (for repeater incoming feedback & song playbacks)
-function highlightKeyProgrammatic(noteNum, angklungId = 3) {
+function highlightKeyProgrammatic(noteNum, angklungId = 3, playSound = true) {
   const key = document.querySelector(`.key[data-note="${noteNum}"][data-angklung="${angklungId}"]`);
   if (key) {
     key.classList.add('active');
     document.getElementById('active-note-display').textContent = key.getAttribute('data-label').toUpperCase();
     
-    const freqMap = NOTE_FREQUENCIES[angklungId];
-    if (freqMap && freqMap[noteNum]) {
-      playClientSynthSound(freqMap[noteNum]);
+    if (playSound) {
+      const freqMap = NOTE_FREQUENCIES[angklungId];
+      if (freqMap && freqMap[noteNum]) {
+        playClientSynthSound(freqMap[noteNum]);
+      }
     }
     
     setTimeout(() => {
@@ -1302,20 +1308,50 @@ function stopSongFile() {
 }
 
 // 9. Repeater Section (Pitch Tuning via Websocket)
-function toggleRepeaterListening() {
+async function toggleRepeaterListening() {
   const micBtn = document.getElementById('mic-repeater-btn');
   const sonar = document.querySelector('.sonar-wave.wave-green');
   const statusText = document.getElementById('repeater-status');
 
-  if (isRepeaterListening) {
+  if (repeaterState === 'playing') {
+    // Stop playback if playing
     stopAllPlaybacks();
     return;
   }
 
-  isRepeaterListening = true;
+  if (repeaterState === 'recording') {
+    // Stop recording and start playback
+    repeaterState = 'idle';
+    if (repeaterSocket) {
+      repeaterSocket.close();
+      repeaterSocket = null;
+    }
+    
+    micBtn.classList.remove('active');
+    sonar.classList.remove('active');
+    statusText.textContent = 'Memainkan urutan nada...';
+    
+    // Finalize the last note if exists (bahkan jika itu hening)
+    const dur = Date.now() - currentRecStart;
+    if (dur >= 100 && (currentRecNote !== null || recordedSequence.length > 0)) {
+      recordedSequence.push({ note: currentRecNote, duration: dur });
+    }
+    currentRecNote = null;
+    
+    playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+    return;
+  }
+
+  // Start recording
+  repeaterState = 'recording';
+  recordedSequence = [];
+  currentRecNote = null;
+  currentRecStart = Date.now();
+  let noteHistory = []; // Buffer untuk menghaluskan perpindahan nada (glissando)
+  
   micBtn.classList.add('active');
   sonar.classList.add('active');
-  statusText.textContent = 'Mendengarkan nada... Dekatkan angklung ke mikrofon!';
+  statusText.textContent = 'Merekam nada... Tekan lagi untuk putar ulang!';
 
   // Connect to FastAPI WebSocket endpoint
   const wsHost = settings.hostApi.replace('http://', 'ws://');
@@ -1324,20 +1360,64 @@ function toggleRepeaterListening() {
     
     repeaterSocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.frequency > 0) {
-        document.getElementById('repeater-note').textContent = data.note;
-        document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
+      if (repeaterState !== 'recording') return;
+      
+      const now = Date.now();
+      let rawNote = (data.frequency > 0 && data.note) ? data.note : null;
+      
+      // Mode Filter (Mencari nada yang dominan dari 3 frame terakhir agar respons lebih cepat)
+      noteHistory.push(rawNote);
+      if (noteHistory.length > 3) noteHistory.shift();
+      
+      let detectedNote = rawNote;
+      if (noteHistory.length === 3) {
+        let noteCounts = {};
+        let maxCount = 0;
+        for (let n of noteHistory) {
+          noteCounts[n] = (noteCounts[n] || 0) + 1;
+          if (noteCounts[n] > maxCount) {
+            maxCount = noteCounts[n];
+            detectedNote = n;
+          }
+        }
+      }
+      
+      // State change in recorded note
+      if (detectedNote !== currentRecNote) {
+        const dur = now - currentRecStart;
         
-        // Match frequency to closest note number and trigger flash
-        if (data.note) {
-          const matchedNote = mapPitchNameToNoteNumber(data.note);
-          if (matchedNote) highlightKeyProgrammatic(matchedNote);
+        if (dur >= 100) {
+          // Nada atau hening yang cukup panjang, simpan sebagai blok baru
+          if (currentRecNote !== null || recordedSequence.length > 0) {
+            recordedSequence.push({ note: currentRecNote, duration: dur });
+          }
+        } else {
+          // Nada transisi/glitch yang sangat pendek (< 80ms) seperti suara "meluncur"
+          if (recordedSequence.length > 0) {
+            recordedSequence[recordedSequence.length - 1].duration += dur;
+          }
+        }
+        
+        currentRecNote = detectedNote;
+        currentRecStart = now;
+      }
+
+      // UI Update
+      if (data.frequency > 0) {
+        document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
+        document.getElementById('repeater-note').textContent = detectedNote || '---';
+        if (detectedNote) {
+          const hw = mapPitchNameToNoteNumber(detectedNote);
+          if (hw) {
+            // false: tidak memutar suara synth (hanya animasi visual) saat merekam
+            highlightKeyProgrammatic(hw.note, hw.angklung, false);
+          }
         }
       }
     };
 
     repeaterSocket.onclose = () => {
-      if (isRepeaterListening) stopAllPlaybacks();
+      if (repeaterState === 'recording') stopAllPlaybacks();
     };
   } catch (e) {
     console.error(e);
@@ -1345,13 +1425,71 @@ function toggleRepeaterListening() {
   }
 }
 
+async function playRepeaterSequence(sequence, statusText, micBtn, sonar) {
+  repeaterState = 'playing';
+  micBtn.classList.add('active');
+  micBtn.classList.add('mic-playing');
+  sonar.classList.add('active');
+  
+  for (let item of sequence) {
+    if (repeaterState !== 'playing') break;
+    
+    let hw = mapPitchNameToNoteNumber(item.note);
+    if (hw) {
+      document.getElementById('repeater-note').textContent = item.note;
+      highlightKeyProgrammatic(hw.note, hw.angklung);
+      
+      // Tremolo hit loop (simulate shaking angklung)
+      const hitInterval = setInterval(() => {
+        playChordForNoteNum(hw.note, hw.angklung);
+      }, 160);
+      playChordForNoteNum(hw.note, hw.angklung); // First hit immediately
+      
+      await new Promise(r => setTimeout(r, item.duration));
+      clearInterval(hitInterval);
+    } else {
+      // Unrecognized note or silence
+      document.getElementById('repeater-note').textContent = '---';
+      await new Promise(r => setTimeout(r, item.duration));
+    }
+  }
+  
+  if (repeaterState === 'playing') {
+    repeaterState = 'idle';
+    micBtn.classList.remove('active');
+    micBtn.classList.remove('mic-playing');
+    sonar.classList.remove('active');
+    statusText.textContent = 'Ketuk mikrofon untuk merekam nada';
+  }
+}
+
+// Helper to trigger a single note (used by repeater tremolo)
+function playChordForNoteNum(note, angklung) {
+  if (angklung === 1) {
+    fetch(`${settings.hostApi}/api/arduino/play_multi?a1=${note}&a3=`).catch(() => {});
+  } else if (angklung === 2) {
+    fetch(`${settings.hostApi}/api/arduino/play_multi?a1=${note + 16}&a3=`).catch(() => {});
+  } else if (angklung === 3) {
+    fetch(`${settings.hostApi}/api/arduino/play_multi?a1=&a3=${note}`).catch(() => {});
+  }
+}
+
 // Maps incoming WebSocket pitch names back to 1-16 note keys
 function mapPitchNameToNoteNumber(pitchName) {
-  const map = {
-    'C3': 1, 'C#3': 2, 'D3': 3, 'D#3': 4, 'E3': 5, 'F3': 6, 'F#3': 7, 'G3': 8,
-    'E2': 9, 'F2': 10, 'F#2': 11, 'G2': 12, 'G#2': 13, 'A2': 14, 'A#2': 15, 'B2': 16
-  };
-  return map[pitchName.toUpperCase()] || null;
+  if (!pitchName) return null;
+  const normalized = pitchName.toLowerCase();
+  
+  // Try direct match first
+  if (PITCH_TO_HARDWARE[normalized]) {
+    return PITCH_TO_HARDWARE[normalized];
+  }
+  
+  // Try bass fallback for Angklung 3 upper notes
+  if (PITCH_TO_HARDWARE[normalized + "_bass"]) {
+    return PITCH_TO_HARDWARE[normalized + "_bass"];
+  }
+  
+  return null;
 }
 
 // 10. Language Classification (AI Perekam)
@@ -1430,17 +1568,19 @@ function stopAllPlaybacks() {
     try { repeaterSocket.close(); } catch (_) {}
     repeaterSocket = null;
   }
-  
-  isRepeaterListening = false;
+  repeaterState = 'idle';
   
   const micBtn = document.getElementById('mic-repeater-btn');
-  if (micBtn) micBtn.classList.remove('active');
+  if (micBtn) {
+    micBtn.classList.remove('active');
+    micBtn.classList.remove('mic-playing');
+  }
   
   const sonar = document.querySelector('.sonar-wave.wave-green');
   if (sonar) sonar.classList.remove('active');
   
   const repStatus = document.getElementById('repeater-status');
-  if (repStatus) repStatus.textContent = 'Ketuk mikrofon untuk mendengarkan nada';
+  if (repStatus) repStatus.textContent = 'Ketuk mikrofon untuk merekam nada';
 
   // Stop any custom song playing on Python backend
   fetch(`${settings.hostApi}/api/arduino/stop_song`).catch(() => {});

@@ -11,3 +11,10 @@ uvicorn
 websockets
 pyserial
 python-multipart
+scikit-learn
+matplotlib
+seaborn
+pydub
+jupyter
+ipykernel
+tensorflow

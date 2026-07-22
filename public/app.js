@@ -55,50 +55,50 @@ function playClientSynthSound(frequency) {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
-
+    
     // Create master gain envelope
     const masterGain = ctx.createGain();
     masterGain.gain.setValueAtTime(0, now);
     masterGain.gain.linearRampToValueAtTime(0.7, now + 0.015);
     masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
     masterGain.connect(ctx.destination);
-
+    
     // fundamental (f1)
     const osc1 = ctx.createOscillator();
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(frequency, now);
-
+    
     const gain1 = ctx.createGain();
     gain1.gain.setValueAtTime(0.5, now);
     gain1.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
-
+    
     osc1.connect(gain1);
     gain1.connect(masterGain);
-
+    
     // octave (2f)
     const osc2 = ctx.createOscillator();
     osc2.type = 'sine';
     osc2.frequency.setValueAtTime(frequency * 2.0, now);
-
+    
     const gain2 = ctx.createGain();
     gain2.gain.setValueAtTime(0.4, now);
     gain2.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
-
+    
     osc2.connect(gain2);
     gain2.connect(masterGain);
-
+    
     // 3rd harmonic (3f)
     const osc3 = ctx.createOscillator();
     osc3.type = 'sine';
     osc3.frequency.setValueAtTime(frequency * 3.0, now);
-
+    
     const gain3 = ctx.createGain();
     gain3.gain.setValueAtTime(0.1, now);
     gain3.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
-
+    
     osc3.connect(gain3);
     gain3.connect(masterGain);
-
+    
     // Wooden strike (noise click)
     const bufferSize = ctx.sampleRate * 0.02;
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -106,22 +106,22 @@ function playClientSynthSound(frequency) {
     for (let i = 0; i < bufferSize; i++) {
       data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.2));
     }
-
+    
     const noise = ctx.createBufferSource();
     noise.buffer = buffer;
-
+    
     const noiseGain = ctx.createGain();
     noiseGain.gain.setValueAtTime(0.25, now);
     noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.02);
-
+    
     noise.connect(noiseGain);
     noiseGain.connect(masterGain);
-
+    
     osc1.start(now);
     osc2.start(now);
     osc3.start(now);
     noise.start(now);
-
+    
     osc1.stop(now + 1.3);
     osc2.stop(now + 1.3);
     osc3.stop(now + 1.3);
@@ -139,20 +139,21 @@ let chordIntervals = new Map();
 
 function startKeyTrigger(keyElement) {
   const noteId = `${keyElement.getAttribute('data-angklung')}-${keyElement.getAttribute('data-note')}`;
-
+  
   // Prevent duplicate triggers if already held
   if (keyIntervals.has(noteId)) return;
-
+  
   // Add active visual immediately
   keyElement.classList.add('active');
-
+  
   // Function to perform a single strike/shake trigger
   const triggerStrike = () => {
     const noteNum = parseInt(keyElement.getAttribute('data-note'), 10);
     const label = keyElement.getAttribute('data-label');
     const angklungId = parseInt(keyElement.getAttribute('data-angklung') || '3', 10);
-
+    
     document.getElementById('active-note-display').textContent = label.toUpperCase();
+    document.getElementById('notes-indicator-container').style.opacity = '1';
 
     // Play local synthesizer sound
     const freqMap = NOTE_FREQUENCIES[angklungId];
@@ -161,12 +162,12 @@ function startKeyTrigger(keyElement) {
     }
 
     // Send to python serial endpoint
-    fetch(`${settings.hostApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}`).catch(() => { });
+    fetch(`${settings.hostApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}`).catch(() => {});
   };
-
+  
   // Initial trigger
   triggerStrike();
-
+  
   // Set interval for continuous shaking/tremolo (every 160ms)
   const intervalId = setInterval(triggerStrike, 160);
   keyIntervals.set(noteId, intervalId);
@@ -189,7 +190,8 @@ function setKeyProgrammaticState(noteNum, angklungId, isDown) {
     if (isDown) {
       key.classList.add('active');
       document.getElementById('active-note-display').textContent = key.getAttribute('data-label').toUpperCase();
-
+      document.getElementById('notes-indicator-container').style.opacity = '1';
+      
       const freqMap = NOTE_FREQUENCIES[angklungId];
       if (freqMap && freqMap[noteNum]) {
         playClientSynthSound(freqMap[noteNum]);
@@ -202,9 +204,9 @@ function setKeyProgrammaticState(noteNum, angklungId, isDown) {
 
 function connectMidiWebSocket() {
   const wsHost = settings.hostApi.replace('http://', 'ws://').replace('https://', 'wss://');
-
+  
   if (midiSocket) {
-    try { midiSocket.close(); } catch (_) { }
+    try { midiSocket.close(); } catch (_) {}
   }
 
   midiSocket = new WebSocket(`${wsHost}/ws/midi`);
@@ -263,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ device_id: parsedId })
-      }).catch(() => { });
+      }).catch(() => {});
     }
   }
 
@@ -286,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
       vb_staccato: settings.vbStaccato,
       va_staccato: settings.vaStaccato
     })
-  }).catch(() => { });
+  }).catch(() => {});
 
 
 
@@ -304,7 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       startKeyTrigger(key);
     });
-
+    
     key.addEventListener('mouseenter', () => {
       if (isMouseDown) {
         startKeyTrigger(key);
@@ -313,13 +315,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     key.addEventListener('mouseup', () => stopKeyTrigger(key));
     key.addEventListener('mouseleave', () => stopKeyTrigger(key));
-
+    
     // Touch interaction (Slide/drag on touch screen)
     key.addEventListener('touchstart', (e) => {
       e.preventDefault();
       startKeyTrigger(key);
     });
-
+    
     key.addEventListener('touchmove', (e) => {
       e.preventDefault();
       const touch = e.touches[0];
@@ -341,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const chordBtns = document.querySelectorAll('.chord-btn');
   chordBtns.forEach(btn => {
     const chordName = btn.getAttribute('data-chord');
-
+    
     // Mouse interaction
     btn.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -354,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     btn.addEventListener('mouseup', () => stopChordTrigger(chordName, btn));
     btn.addEventListener('mouseleave', () => stopChordTrigger(chordName, btn));
-
+    
     // Touch interaction
     btn.addEventListener('touchstart', (e) => {
       e.preventDefault();
@@ -384,7 +386,7 @@ function navigateTo(pageId) {
   // Hide all screens and activate selected
   const pages = document.querySelectorAll('.app-page');
   pages.forEach(page => page.classList.remove('active'));
-
+  
   const targetPage = document.getElementById(pageId);
   if (targetPage) {
     targetPage.classList.add('active');
@@ -405,7 +407,7 @@ async function checkConnections() {
   try {
     const response = await fetch(`${host}/api/health`, { method: 'GET' });
     if (response.ok) isApiOnline = true;
-  } catch (_) { }
+  } catch (_) {}
 
   // Check serial com status on python for all 3 devices
   let statuses = { angklung1: 'offline', angklung2: 'offline', angklung3: 'offline' };
@@ -433,7 +435,7 @@ async function checkConnections() {
         statuses.angklung2 = data.angklung2.status;
         statuses.angklung3 = data.angklung3.status;
       }
-    } catch (_) { }
+    } catch (_) {}
 
     try {
       const response = await fetch(`${host}/api/midi/status`);
@@ -442,7 +444,7 @@ async function checkConnections() {
         isMidiActive = data.active;
         midiDeviceName = data.device_name;
       }
-    } catch (_) { }
+    } catch (_) {}
   }
 
   // Update Status UI badges in Modal
@@ -494,16 +496,16 @@ async function scanMidiDevices() {
     if (response.ok) {
       const devices = await response.json();
       const currentVal = select.value;
-
+      
       select.innerHTML = '<option value="">-- Scan/Pilih Keyboard MIDI --</option>';
-
+      
       devices.forEach(device => {
         const option = document.createElement('option');
         option.value = device.id;
         option.textContent = `${device.name} (${device.interface})`;
         select.appendChild(option);
       });
-
+      
       if (devices.some(d => d.id.toString() === currentVal)) {
         select.value = currentVal;
       }
@@ -537,16 +539,16 @@ async function toggleSettingsModal() {
     document.getElementById('input-volume-v2').value = Math.round(settings.v2Volume * 100);
     document.getElementById('input-volume-vb').value = Math.round(settings.vbVolume * 100);
     document.getElementById('input-volume-va').value = Math.round(settings.vaVolume * 100);
-
+    
     document.getElementById('input-staccato-v1').checked = settings.v1Staccato;
     document.getElementById('input-staccato-v2').checked = settings.v2Staccato;
     document.getElementById('input-staccato-vb').checked = settings.vbStaccato;
     document.getElementById('input-staccato-va').checked = settings.vaStaccato;
-
+    
     updateVolumeLabels();
-
+    
     await scanMidiDevices();
-
+    
     // Check connected midi status
     const host = settings.hostApi;
     try {
@@ -558,7 +560,7 @@ async function toggleSettingsModal() {
           selectMidi.value = data.device_id;
         }
       }
-    } catch (_) { }
+    } catch (_) {}
   }
   modal.classList.toggle('active');
 }
@@ -586,17 +588,17 @@ async function saveConnectionSettings() {
   const simMode = document.getElementById('input-simulation-mode').checked;
   const synthVolVal = parseFloat(document.getElementById('input-synth-volume').value) / 100;
   const physVolVal = parseInt(document.getElementById('input-physical-volume').value);
-
+  
   const v1VolVal = parseFloat(document.getElementById('input-volume-v1').value) / 100;
   const v2VolVal = parseFloat(document.getElementById('input-volume-v2').value) / 100;
   const vbVolVal = parseFloat(document.getElementById('input-volume-vb').value) / 100;
   const vaVolVal = parseFloat(document.getElementById('input-volume-va').value) / 100;
-
+  
   const v1StacVal = document.getElementById('input-staccato-v1').checked;
   const v2StacVal = document.getElementById('input-staccato-v2').checked;
   const vbStacVal = document.getElementById('input-staccato-vb').checked;
   const vaStacVal = document.getElementById('input-staccato-va').checked;
-
+  
   const selectMidi = document.getElementById('select-midi-device');
 
   settings.port1 = p1;
@@ -670,7 +672,7 @@ async function saveConnectionSettings() {
     try {
       await fetch(`${hostVal}/api/midi/disconnect`, { method: 'POST' });
       localStorage.removeItem('rima_midi_device_id');
-    } catch (_) { }
+    } catch (_) {}
   }
 
   toggleSettingsModal();
@@ -683,10 +685,11 @@ function triggerKeyOn(keyElement) {
   const noteNum = parseInt(keyElement.getAttribute('data-note'), 10);
   const label = keyElement.getAttribute('data-label');
   const angklungId = parseInt(keyElement.getAttribute('data-angklung') || '3', 10);
-
+  
   // Show active visual trigger
   keyElement.classList.add('active');
   document.getElementById('active-note-display').textContent = label.toUpperCase();
+  document.getElementById('notes-indicator-container').style.opacity = '1';
 
   // Play client-side audio synth instantly
   const freqMap = NOTE_FREQUENCIES[angklungId];
@@ -695,7 +698,7 @@ function triggerKeyOn(keyElement) {
   }
 
   // Send request to python backend
-  fetch(`${settings.hostApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}`).catch(() => { });
+  fetch(`${settings.hostApi}/api/arduino/play?note=${noteNum}&angklung_id=${angklungId}`).catch(() => {});
 
   // Remove active visual after transient delay
   setTimeout(() => {
@@ -709,12 +712,13 @@ function highlightKeyProgrammatic(noteNum, angklungId = 3) {
   if (key) {
     key.classList.add('active');
     document.getElementById('active-note-display').textContent = key.getAttribute('data-label').toUpperCase();
-
+    document.getElementById('notes-indicator-container').style.opacity = '1';
+    
     const freqMap = NOTE_FREQUENCIES[angklungId];
     if (freqMap && freqMap[noteNum]) {
       playClientSynthSound(freqMap[noteNum]);
     }
-
+    
     setTimeout(() => {
       key.classList.remove('active');
     }, 200);
@@ -759,45 +763,53 @@ function midiToPitchName(midi, preferBass) {
   return pitch;
 }
 
-// 7. Chord Triggering (C, Cm, C#, C#m, ... B, Bm)
+// 7. Chord Triggering
 function playChord(chordName) {
   let rootName = chordName;
-  let isMinor = false;
-
-  if (chordName.endsWith('m')) {
-    rootName = chordName.slice(0, -1);
-    isMinor = true;
-  }
-
+  let suffix = '';
+  
+  // Extract root and suffix
+  const regex = /^([A-G][#b]?)(.*)$/;
+  const match = chordName.match(regex);
+  if (!match) return;
+  rootName = match[1];
+  suffix = match[2];
+  
   const rootMap = {
     'C': 60, 'C#': 61, 'Db': 61, 'D': 62, 'D#': 63, 'Eb': 63,
     'E': 64, 'F': 65, 'F#': 66, 'Gb': 66, 'G': 67, 'G#': 68,
     'Ab': 68, 'A': 69, 'A#': 70, 'Bb': 70, 'B': 71
   };
-
+  
   const rootMidi = rootMap[rootName];
   if (!rootMidi) return;
-
-  const thirdOffset = isMinor ? 3 : 4;
-  const fifthOffset = 7;
-
-  const melodyNotes = [rootMidi, rootMidi + thirdOffset, rootMidi + fifthOffset];
-
+  
+  let offsets = [];
+  if (suffix === '') offsets = [0, 4, 7]; // Major
+  else if (suffix === 'm') offsets = [0, 3, 7]; // Minor
+  else if (suffix === '7') offsets = [0, 4, 7, 10]; // Dominant 7th
+  else if (suffix === 'maj7') offsets = [0, 4, 7, 11]; // Major 7th
+  else if (suffix === 'm7') offsets = [0, 3, 7, 10]; // Minor 7th
+  else if (suffix === 'dim') offsets = [0, 3, 6]; // Diminished
+  else return; // Unsupported
+  
+  const melodyNotes = offsets.map(o => rootMidi + o);
+  
   let bassMidi = rootMidi;
   while (bassMidi < 52) bassMidi += 12;
   while (bassMidi > 67) bassMidi -= 12;
-
+  
   const resolvedKeys = [];
-
+  
   const bassPitch = midiToPitchName(bassMidi, true);
   const bassHw = PITCH_TO_HARDWARE[bassPitch];
   if (bassHw) resolvedKeys.push(bassHw);
-
+  
   melodyNotes.forEach(m => {
     let melMidi = m;
     while (melMidi < 65) melMidi += 12;
     while (melMidi > 92) melMidi -= 12;
-
+    
     const melPitch = midiToPitchName(melMidi, false);
     const melHw = PITCH_TO_HARDWARE[melPitch];
     if (melHw) {
@@ -808,6 +820,7 @@ function playChord(chordName) {
   });
 
   document.getElementById('active-note-display').textContent = chordName;
+  document.getElementById('notes-indicator-container').style.opacity = '1';
 
   const arduino1Notes = [];
   const arduino3Notes = [];
@@ -818,12 +831,12 @@ function playChord(chordName) {
       keyEl.classList.add('active');
       setTimeout(() => keyEl.classList.remove('active'), 350);
     }
-
+    
     const freqMap = NOTE_FREQUENCIES[k.angklung];
     if (freqMap && freqMap[k.note]) {
       playClientSynthSound(freqMap[k.note]);
     }
-
+    
     if (k.angklung === 1) {
       arduino1Notes.push(k.note);
     } else if (k.angklung === 2) {
@@ -835,7 +848,7 @@ function playChord(chordName) {
 
   const a1Param = arduino1Notes.join(',');
   const a3Param = arduino3Notes.join(',');
-  fetch(`${settings.hostApi}/api/arduino/play_multi?a1=${a1Param}&a3=${a3Param}`).catch(() => { });
+  fetch(`${settings.hostApi}/api/arduino/play_multi?a1=${a1Param}&a3=${a3Param}`).catch(() => {});
 }
 
 function startChordTrigger(chordName, btnElement) {
@@ -852,7 +865,7 @@ function startChordTrigger(chordName, btnElement) {
   const intervalId = setInterval(() => {
     playChord(chordName);
   }, 160);
-
+  
   chordIntervals.set(chordName, intervalId);
 }
 
@@ -881,13 +894,13 @@ function searchSongs(query) {
   const container = document.getElementById('songs-container');
   if (!container) return;
   const lowerQuery = query.toLowerCase();
-
+  
   const filtered = songs.filter(s => {
     const matchesFilter = currentSongFilter === 'all' || s.folder === currentSongFilter;
     const matchesSearch = s.title.toLowerCase().includes(lowerQuery) || (s.region && s.region.toLowerCase().includes(lowerQuery));
     return matchesFilter && matchesSearch;
   });
-
+  
   currentPlaylist = filtered;
   renderSongCards(filtered, container);
 }
@@ -896,7 +909,7 @@ function loadSongsList(filter = 'all') {
   currentSongFilter = filter;
   const container = document.getElementById('songs-container');
   if (!container) return;
-
+  
   const searchInput = document.getElementById('cn-pustaka-search-input');
   const query = searchInput ? searchInput.value.toLowerCase() : '';
 
@@ -912,7 +925,7 @@ function loadSongsList(filter = 'all') {
 
 function renderSongCards(songArray, container) {
   container.innerHTML = '';
-
+  
   songArray.forEach((song, index) => {
     const cleanId = song.id.replace(/'/g, "\\'");
     const btnDomId = getSongBtnId(song.id);
@@ -996,7 +1009,7 @@ let playbackStatusInterval = null;
 
 function startPlaybackStatusPolling() {
   if (playbackStatusInterval) clearInterval(playbackStatusInterval);
-
+  
   playbackStatusInterval = setInterval(async () => {
     try {
       const response = await fetch(`${settings.hostApi}/api/arduino/playback_status`);
@@ -1007,19 +1020,19 @@ function startPlaybackStatusPolling() {
         } else {
           stopPlaybackStatusPolling();
           hidePlayerPanel();
-
+          
           const playButtons = document.querySelectorAll('.song-play-btn');
           playButtons.forEach(btn => {
             btn.classList.remove('playing');
             btn.innerHTML = '<i class="fa-solid fa-play"></i>';
           });
-
+          
           const globalPlayPauseIcon = document.getElementById('icon-playpause');
           if (globalPlayPauseIcon) {
             globalPlayPauseIcon.classList.remove('fa-pause');
             globalPlayPauseIcon.classList.add('fa-play');
           }
-
+          
           if (!isManualStop) {
             setTimeout(() => {
               playNextSong(true);
@@ -1050,16 +1063,16 @@ function formatTime(seconds) {
 function showPlayerPanel(status) {
   const panel = document.getElementById('global-player-panel');
   if (!panel) return;
-
+  
   panel.classList.remove('hide');
-
+  
   // Update UI texts
   const titleEl = document.getElementById('player-song-title');
   const sectionEl = document.getElementById('player-song-section');
   const elapsedEl = document.getElementById('player-time-elapsed');
   const totalEl = document.getElementById('player-time-total');
   const progressFill = document.getElementById('player-progress-fill');
-
+  
   if (titleEl) titleEl.innerText = status.song_title || 'Unknown Song';
   if (sectionEl) {
     sectionEl.innerText = status.current_section || 'UMUM';
@@ -1072,7 +1085,7 @@ function showPlayerPanel(status) {
   }
   if (elapsedEl) elapsedEl.innerText = formatTime(status.elapsed_seconds);
   if (totalEl) totalEl.innerText = formatTime(status.total_seconds);
-
+  
   if (progressFill) {
     const percent = status.total_seconds > 0 ? (status.elapsed_seconds / status.total_seconds) * 100 : 0;
     progressFill.style.width = `${Math.min(percent, 100)}%`;
@@ -1100,7 +1113,7 @@ async function seekSong(event) {
   const clickX = event.clientX - rect.left;
   const width = rect.width;
   const percent = clickX / width;
-
+  
   try {
     await fetch(`${settings.hostApi}/api/arduino/seek_song`, {
       method: 'POST',
@@ -1115,7 +1128,7 @@ async function seekSong(event) {
 async function playSong(songId) {
   const playBtn = document.getElementById(getSongBtnId(songId));
   const songRow = document.getElementById(`row-${getSongBtnId(songId)}`);
-
+  
   if (songRow && songRow.classList.contains('playing')) {
     isManualStop = true;
     stopAllPlaybacks();
@@ -1124,12 +1137,12 @@ async function playSong(songId) {
 
   isManualStop = false;
   currentPlayingIndex = currentPlaylist.findIndex(s => s.id === songId);
-
+  
   stopAllPlaybacks();
   if (playBtn) {
     playBtn.innerHTML = '<i class="fa-solid fa-stop"></i>';
   }
-
+  
   const globalPlayPauseIcon = document.getElementById('icon-playpause');
   if (globalPlayPauseIcon) {
     globalPlayPauseIcon.classList.remove('fa-play');
@@ -1138,7 +1151,7 @@ async function playSong(songId) {
 
   if (songRow) {
     songRow.classList.add('playing');
-
+    
     // Update Album Art placeholder info
     const titleEl = document.getElementById('current-album-title');
     const descEl = document.getElementById('current-album-desc');
@@ -1171,9 +1184,9 @@ async function playSong(songId) {
 // 8.2 Album Controls Functions
 function playNextSong(autoPlay = false) {
   if (currentPlaylist.length === 0) return;
-
+  
   let nextIndex = currentPlayingIndex;
-
+  
   if (isRepeat && autoPlay) {
     nextIndex = currentPlayingIndex;
   } else if (isShuffle) {
@@ -1190,7 +1203,7 @@ function playNextSong(autoPlay = false) {
       nextIndex = 0;
     }
   }
-
+  
   const nextSong = currentPlaylist[nextIndex];
   if (nextSong) {
     playSong(nextSong.id);
@@ -1199,9 +1212,9 @@ function playNextSong(autoPlay = false) {
 
 function playPrevSong() {
   if (currentPlaylist.length === 0) return;
-
+  
   let prevIndex = currentPlayingIndex;
-
+  
   if (isShuffle) {
     if (currentPlaylist.length > 1) {
       do {
@@ -1216,7 +1229,7 @@ function playPrevSong() {
       prevIndex = currentPlaylist.length - 1;
     }
   }
-
+  
   const prevSong = currentPlaylist[prevIndex];
   if (prevSong) {
     playSong(prevSong.id);
@@ -1228,7 +1241,7 @@ function togglePlayPause() {
     playSong(currentPlaylist[0].id);
     return;
   }
-
+  
   const songRow = document.querySelector('.song-item.playing');
   if (songRow) {
     isManualStop = true;
@@ -1265,19 +1278,19 @@ function uploadAndPlaySong(inputElement) {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = async function (event) {
+  reader.onload = async function(event) {
     const text = event.target.result;
-
+    
     // Stop any active song playing in client
     stopAllPlaybacks();
-
+    
     try {
       const response = await fetch(`${settings.hostApi}/api/arduino/play_song_file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ file_content: text })
       });
-
+      
       if (response.ok) {
         console.log("[PLAYER] Memulai pemutaran file .123 di server.");
         startPlaybackStatusPolling();
@@ -1288,7 +1301,7 @@ function uploadAndPlaySong(inputElement) {
       alert("Gagal terhubung ke API server.");
     }
   };
-
+  
   reader.readAsText(file);
 }
 
@@ -1298,7 +1311,7 @@ function stopSongFile() {
     .then(() => {
       console.log("[PLAYER] Menghentikan pemutaran lagu di server.");
     })
-    .catch(() => { });
+    .catch(() => {});
 }
 
 // 9. Repeater Section (Pitch Tuning via Websocket)
@@ -1326,18 +1339,18 @@ function toggleRepeaterListening() {
   const wsHost = settings.hostApi.replace('http://', 'ws://');
   try {
     repeaterSocket = new WebSocket(`${wsHost}/ws/pitch`);
-
+    
     repeaterSocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.frequency > 0) {
         document.getElementById('repeater-note').textContent = data.note;
         document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
-
+        
         // Match frequency to closest note number and trigger flash
         if (data.note) {
           const matchedNote = mapPitchNameToNoteNumber(data.note);
           if (matchedNote) highlightKeyProgrammatic(matchedNote);
-
+          
           // Append to sequence if note changes
           if (window.lastRepeaterNote !== data.note) {
             window.lastRepeaterNote = data.note;
@@ -1386,7 +1399,7 @@ async function triggerLanguageClassification() {
     const response = await fetch(`${settings.hostApi}/api/record-and-classify`, { method: 'POST' });
     if (response.ok) {
       const data = await response.json();
-
+      
       document.getElementById('ai-class').textContent = data.predicted_class.toUpperCase();
       document.getElementById('ai-conf').textContent = `${(data.confidence * 100).toFixed(0)}%`;
       statusText.textContent = `Deteksi selesai! Wilayah: ${data.region}`;
@@ -1408,15 +1421,15 @@ async function triggerLanguageClassification() {
 function renderBahasaSongs(region) {
   const instructions = document.getElementById('bahasa-instructions');
   const songsListContainer = document.getElementById('bahasa-songs-list');
-
+  
   if (!instructions || !songsListContainer) return;
-
+  
   instructions.style.display = 'none';
   songsListContainer.style.display = 'block';
-
+  
   // Filter songs based on region (or folder if region matches)
   const filtered = songs.filter(s => s.region.toLowerCase() === region.toLowerCase() || s.folder.toLowerCase() === region.toLowerCase());
-
+  
   if (filtered.length === 0) {
     songsListContainer.innerHTML = `
       <div style="text-align: center; padding: 40px; color: #888;">
@@ -1425,7 +1438,7 @@ function renderBahasaSongs(region) {
       </div>`;
     return;
   }
-
+  
   songsListContainer.innerHTML = `
     <div style="margin-bottom: 24px;">
       <span style="font-size: 14px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; display: block;">Hasil Deteksi</span>
@@ -1460,7 +1473,7 @@ function stopAllPlaybacks() {
   playButtons.forEach(btn => {
     btn.innerHTML = '<i class="fa-solid fa-play"></i>';
   });
-
+  
   const songRows = document.querySelectorAll('.song-item');
   songRows.forEach(row => {
     row.classList.remove('playing');
@@ -1474,23 +1487,23 @@ function stopAllPlaybacks() {
 
   // Stop Repeater WebSocket
   if (repeaterSocket) {
-    try { repeaterSocket.close(); } catch (_) { }
+    try { repeaterSocket.close(); } catch (_) {}
     repeaterSocket = null;
   }
-
+  
   isRepeaterListening = false;
-
+  
   const micBtn = document.getElementById('mic-repeater-btn');
   if (micBtn) micBtn.classList.remove('active');
-
+  
   const sonar = document.querySelector('.sonar-wave.wave-green');
   if (sonar) sonar.classList.remove('active');
-
+  
   const repStatus = document.getElementById('repeater-status');
   if (repStatus) repStatus.textContent = 'Ketuk mikrofon untuk mendengarkan nada';
 
   // Stop any custom song playing on Python backend
-  fetch(`${settings.hostApi}/api/arduino/stop_song`).catch(() => { });
+  fetch(`${settings.hostApi}/api/arduino/stop_song`).catch(() => {});
 }
 
 // 11. Homepage Slider Logic
@@ -1500,7 +1513,7 @@ function updateMenuSlider() {
   const track = document.getElementById('menu-slider-track');
   if (!track) return;
   const cards = track.querySelectorAll('.cn-card-wrapper');
-
+  
   cards.forEach((card, index) => {
     if (index === currentMenuIndex) {
       card.classList.add('active-slide');
@@ -1515,7 +1528,7 @@ function nextMenu() {
   if (!track) return;
   const cards = track.querySelectorAll('.cn-card-wrapper');
   if (cards.length === 0) return;
-
+  
   currentMenuIndex = (currentMenuIndex + 1) % cards.length;
   updateMenuSlider();
 }
@@ -1525,7 +1538,7 @@ function prevMenu() {
   if (!track) return;
   const cards = track.querySelectorAll('.cn-card-wrapper');
   if (cards.length === 0) return;
-
+  
   currentMenuIndex = (currentMenuIndex - 1 + cards.length) % cards.length;
   updateMenuSlider();
 }
@@ -1534,7 +1547,6 @@ function prevMenu() {
 document.addEventListener('DOMContentLoaded', () => {
   updateMenuSlider();
 });
-
 // 12. Global Search Logic
 const systemIndex = [
   { type: 'Menu', title: 'Pustaka Lagu', subtitle: 'Koleksi Daerah', icon: 'fa-music', badgeClass: 'badge-menu', action: () => navigateTo('page-pustaka') },
@@ -1555,14 +1567,14 @@ function handleGlobalSearch(query) {
   }
 
   query = query.toLowerCase();
-
+  
   // Search system index
-  const matchedSystem = systemIndex.filter(item =>
+  const matchedSystem = systemIndex.filter(item => 
     item.title.toLowerCase().includes(query) || item.subtitle.toLowerCase().includes(query) || item.type.toLowerCase().includes(query)
   );
-
+  
   // Search songs (limit to 5 results to keep dropdown clean)
-  const matchedSongs = songs.filter(s =>
+  const matchedSongs = songs.filter(s => 
     s.title.toLowerCase().includes(query) || s.folder.toLowerCase().includes(query) || s.region.toLowerCase().includes(query)
   ).slice(0, 5).map(s => ({
     type: 'Lagu',
@@ -1595,15 +1607,15 @@ function handleGlobalSearch(query) {
         <div class="search-result-badge ${result.badgeClass}">${result.type}</div>
       </div>
     `).join('');
-
+    
     // Store results globally to execute actions via onclick string
     window.currentGlobalSearchResults = allResults;
   }
-
+  
   dropdown.classList.remove('hide');
 }
 
-window.executeGlobalSearchAction = function (index) {
+window.executeGlobalSearchAction = function(index) {
   const result = window.currentGlobalSearchResults[index];
   if (result && result.action) {
     const dropdown = document.getElementById('global-search-dropdown');

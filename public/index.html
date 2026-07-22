@@ -36,9 +36,13 @@
         <div class="nav-logo">
           <img src="logo-baru.png" alt="RIMA Logo Baru">
         </div>
-        <div class="nav-search">
+        <div class="nav-search" style="position: relative;">
           <i class="fa-solid fa-search search-icon"></i>
-          <input type="text" placeholder="Search songs..." id="cn-search-input">
+          <input type="text" placeholder="Search anything (songs, settings, menus)..." id="cn-search-input" onkeyup="handleGlobalSearch(this.value)" autocomplete="off" onfocus="handleGlobalSearch(this.value)">
+          
+          <!-- Global Search Dropdown -->
+          <div id="global-search-dropdown" class="search-dropdown hide">
+          </div>
         </div>
         <div class="nav-menu">
           <button class="cn-menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-grip"></i></button>
@@ -46,55 +50,65 @@
       </nav>
       
       <!-- Horizontal Carousel Content -->
-      <div class="cn-carousel-container">
-        <!-- Card 1 -->
-        <div class="cn-card-wrapper" onclick="navigateTo('page-pustaka')">
-          <div class="cn-character-placeholder">
-            <i class="fa-solid fa-music placeholder-icon"></i>
+      <div class="slider-wrapper">
+        <button class="slider-arrow left-arrow" onclick="prevMenu()">
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+
+        <div class="cn-carousel-container" id="menu-slider-track">
+          <!-- Card 1 -->
+          <div class="cn-card-wrapper active-slide" onclick="navigateTo('page-pustaka')">
+            <div class="cn-character-placeholder">
+              <img src="ikonpustakalagu.svg" alt="Kontrol Manual" class="placeholder-icon">
+            </div>
+            <div class="cn-card-bg bg-yellow">
+              <h3>Pustaka Lagu</h3>
+              <p>Koleksi Daerah</p>
+            </div>
           </div>
-          <div class="cn-card-bg bg-yellow">
-            <h3>Pustaka Lagu</h3>
-            <p>Koleksi Daerah</p>
+          
+          <!-- Card 2 -->
+          <div class="cn-card-wrapper" onclick="navigateTo('page-manual')">
+            <div class="cn-character-placeholder">
+              <img src="ikonkontrolmanual.svg" alt="Kontrol Manual" class="placeholder-icon">
+            </div>
+            <div class="cn-card-bg bg-orange">
+              <h3>Kontrol Manual</h3>
+              <p>Main Interaktif</p>
+            </div>
+          </div>
+          
+          <!-- Card 3 -->
+          <div class="cn-card-wrapper" onclick="navigateTo('page-repeater')">
+            <div class="cn-character-placeholder">
+              <img src="ikonrepeater.svg" alt="Repeater" class="placeholder-icon" style="transform: scale(0.7);">
+            </div>
+            <div class="cn-card-bg bg-cyan">
+              <h3>Repeater</h3>
+              <p>Ikuti Irama</p>
+            </div>
+          </div>
+          
+          <!-- Card 4 -->
+          <div class="cn-card-wrapper" onclick="navigateTo('page-bahasa')">
+            <div class="cn-character-placeholder">
+              <img src="ikondeteksibahasa.svg" alt="Kontrol Manual" class="placeholder-icon" style="transform: scale(0.8);">
+            </div>
+            <div class="cn-card-bg bg-red">
+              <h3>Deteksi Bahasa</h3>
+              <p>Perintah Suara</p>
+            </div>
           </div>
         </div>
-        
-        <!-- Card 2 -->
-        <div class="cn-card-wrapper" onclick="navigateTo('page-manual')">
-          <div class="cn-character-placeholder">
-            <i class="fa-solid fa-keyboard placeholder-icon"></i>
-          </div>
-          <div class="cn-card-bg bg-orange">
-            <h3>Kontrol Manual</h3>
-            <p>Main Interaktif</p>
-          </div>
-        </div>
-        
-        <!-- Card 3 -->
-        <div class="cn-card-wrapper" onclick="navigateTo('page-repeater')">
-          <div class="cn-character-placeholder">
-            <i class="fa-solid fa-microphone placeholder-icon"></i>
-          </div>
-          <div class="cn-card-bg bg-cyan">
-            <h3>Repeater</h3>
-            <p>Ikuti Irama</p>
-          </div>
-        </div>
-        
-        <!-- Card 4 -->
-        <div class="cn-card-wrapper" onclick="navigateTo('page-bahasa')">
-          <div class="cn-character-placeholder">
-            <i class="fa-solid fa-volume-high placeholder-icon"></i>
-          </div>
-          <div class="cn-card-bg bg-red">
-            <h3>Deteksi Bahasa</h3>
-            <p>Perintah Suara</p>
-          </div>
-        </div>
+
+        <button class="slider-arrow right-arrow" onclick="nextMenu()">
+          <i class="fa-solid fa-chevron-right"></i>
+        </button>
       </div>
       
       <!-- Bottom Navigation -->
       <div class="cn-bottom-nav collaboration-nav">
-        <span>Kolaborasi antara Museum Sri Baduga dan Institut Teknologi Nasional Bandung</span>
+        <span>Kolaborasi Museum Sri Baduga dan Institut Teknologi Nasional Bandung</span>
       </div>
     </section>
 
@@ -103,6 +117,7 @@
       <nav class="cn-top-nav">
         <div class="nav-logo" style="display: flex; gap: 20px; align-items: center;">
           <button class="cn-back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
+          <img src="logo-baru.png" alt="RIMA Logo Baru">
           <span style="font-family: var(--font-header); font-weight: 800; font-size: 24px; color: #1A1A1A; margin-top: 4px;">KONTROL MANUAL</span>
         </div>
         <div class="nav-menu">
@@ -316,74 +331,147 @@
     </section>
 
     <!-- 5. REPEATER PAGE -->
-    <section id="page-repeater" class="app-page">
+    <section id="page-repeater" class="app-page cn-layout">
       <nav class="cn-top-nav">
         <div class="nav-logo" style="display: flex; gap: 20px; align-items: center;">
           <button class="cn-back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
-          <span style="font-family: var(--font-header); font-weight: 800; font-size: 24px; color: #1A1A1A; margin-top: 4px;">REPEATER</span>
+          <img src="logo-baru.png" alt="RIMA Logo Baru">
         </div>
         <div class="nav-menu">
           <button class="cn-menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-grip"></i></button>
         </div>
       </nav>
 
-      <div class="page-content center-layout">
-        <!-- Glowing Green Mic Button -->
-        <div class="repeater-mic-wrapper">
-          <button id="mic-repeater-btn" class="mic-glow-btn mic-green" onclick="toggleRepeaterListening()">
-            <i class="fa-solid fa-microphone"></i>
-          </button>
-          <div class="sonar-wave wave-green"></div>
+      <div class="music-player-layout">
+        <!-- Sisi Kiri: Mic Controls -->
+        <div class="player-left-panel">
+          <div style="padding-top: 60px; padding-bottom: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%;">
+            <div class="repeater-mic-wrapper">
+              <button id="mic-repeater-btn" class="mic-glow-btn mic-green" onclick="toggleRepeaterListening()">
+                <i class="fa-solid fa-microphone"></i>
+              </button>
+              <div class="sonar-wave wave-green"></div>
+            </div>
+            
+            <p class="status-mic-text" id="repeater-status" style="margin-top: 40px; text-align: center;">Ketuk mikrofon untuk mendengarkan nada</p>
+            
+            <div class="hud-card green-hud" style="margin-top: 30px; width: 100%; max-width: 280px; box-shadow: 0 10px 20px rgba(0,0,0,0.05);">
+              <div class="hud-item">
+                <span class="hud-lbl">NADA AKTIF</span>
+                <span class="hud-val" id="repeater-note">---</span>
+              </div>
+              <div class="hud-item">
+                <span class="hud-lbl">FREKUENSI</span>
+                <span class="hud-val" id="repeater-freq">0.0 Hz</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <p class="status-mic-text" id="repeater-status">Ketuk mikrofon untuk mendengarkan nada</p>
-
-        <!-- Frequency & Pitch HUD Card -->
-        <div class="hud-card green-hud">
-          <div class="hud-item">
-            <span class="hud-lbl">NADA AKTIF</span>
-            <span class="hud-val" id="repeater-note">---</span>
-          </div>
-          <div class="hud-item">
-            <span class="hud-lbl">FREKUENSI</span>
-            <span class="hud-val" id="repeater-freq">0.0 Hz</span>
+        <!-- Sisi Kanan: Instruksi dan Urutan Nada -->
+        <div class="player-right-panel" style="display: flex; flex-direction: column;">
+          <div class="modern-song-list" id="repeater-results-container" style="flex: 1; display: flex; flex-direction: column;">
+            
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 40px;">
+              <!-- Header dan Instruksi -->
+              <div style="margin-bottom: 24px; text-align: center;">
+                <span style="font-size: 14px; font-weight: 700; color: #4caf50; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; display: block;">Repeater Nada</span>
+                <h1 style="font-family: var(--font-header); font-size: 38px; font-weight: 800; color: #1A1A1A; margin: 0 0 12px 0; line-height: 1.3;">Mainkan Nada Anda!</h1>
+                <p style="font-size: 16px; color: #666; margin: 0;">Urutan nada yang Anda mainkan akan tercatat di bawah ini.</p>
+              </div>
+              
+              <!-- Container untuk urutan nada -->
+              <div id="repeater-note-sequence" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; align-content: flex-start; max-height: 300px; overflow-y: auto; padding-right: 8px; width: 100%; max-width: 600px;">
+                <!-- Nada akan ditambahkan ke sini oleh JS -->
+              </div>
+            </div>
+            
           </div>
         </div>
       </div>
     </section>
 
     <!-- 6. DETEKSI BAHASA (AI CLASSIFIER) PAGE -->
-    <section id="page-bahasa" class="app-page">
+    <section id="page-bahasa" class="app-page cn-layout">
       <nav class="cn-top-nav">
         <div class="nav-logo" style="display: flex; gap: 20px; align-items: center;">
           <button class="cn-back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
-          <span style="font-family: var(--font-header); font-weight: 800; font-size: 24px; color: #1A1A1A; margin-top: 4px;">DETEKSI BAHASA</span>
+          <img src="logo-baru.png" alt="RIMA Logo Baru">
         </div>
         <div class="nav-menu">
           <button class="cn-menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-grip"></i></button>
         </div>
       </nav>
 
-      <div class="page-content center-layout">
-        <!-- Glowing Orange Mic Button -->
-        <div class="repeater-mic-wrapper">
-          <button id="mic-bahasa-btn" class="mic-glow-btn mic-orange" onclick="triggerLanguageClassification()">
-            <i class="fa-solid fa-microphone-lines"></i>
-          </button>
-          <div class="sonar-wave wave-orange" id="ai-waves"></div>
+      <div class="music-player-layout">
+        <!-- Sisi Kiri: Mic Controls -->
+        <div class="player-left-panel">
+          <div style="padding-top: 60px; padding-bottom: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%;">
+            <div class="repeater-mic-wrapper">
+              <button id="mic-bahasa-btn" class="mic-glow-btn mic-orange" onclick="triggerLanguageClassification()">
+                <i class="fa-solid fa-microphone-lines"></i>
+              </button>
+              <div class="sonar-wave wave-orange" id="ai-waves"></div>
+            </div>
+            
+            <p class="status-mic-text" id="ai-status" style="margin-top: 40px; text-align: center;">Ketuk mikrofon lalu ucapkan salam daerah</p>
+            
+            <div class="hud-card orange-hud" style="margin-top: 30px; width: 100%; max-width: 280px; box-shadow: 0 10px 20px rgba(0,0,0,0.05);">
+              <div class="hud-item">
+                <span class="hud-lbl">HASIL DETEKSI</span>
+                <span class="hud-val" id="ai-class">---</span>
+              </div>
+              <div class="hud-item">
+                <span class="hud-lbl">AKURASI</span>
+                <span class="hud-val" id="ai-conf">0%</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <p class="status-mic-text" id="ai-status">Ketuk mikrofon lalu ucapkan salam daerah</p>
-
-        <!-- Classification HUD Card -->
-        <div class="hud-card orange-hud">
-          <div class="hud-item">
-            <span class="hud-lbl">HASIL DETEKSI</span>
-            <span class="hud-val" id="ai-class">---</span>
-          </div>
-          <div class="hud-item">
-            <span class="hud-lbl">AKURASI</span>
-            <span class="hud-val" id="ai-conf">0%</span>
+        <!-- Sisi Kanan: Instruksi Sapaan atau Hasil Lagu -->
+        <div class="player-right-panel" style="display: flex; flex-direction: column;">
+          <div class="modern-song-list" id="bahasa-results-container" style="flex: 1; display: flex; flex-direction: column;">
+            <!-- Instruksi Awal -->
+            <div id="bahasa-instructions" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 40px;">
+              <span style="font-size: 14px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px;">Deteksi Bahasa</span>
+              <h1 style="font-family: var(--font-header); font-size: 38px; font-weight: 800; color: #1A1A1A; margin: 0 0 40px 0; text-align: center; line-height: 1.3; max-width: 600px;">Ucapkan Salah Satu Sapaan Daerah!</h1>
+              
+              <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; max-width: 600px;">
+                <div style="background: white; padding: 20px 24px; border-radius: 16px; border: 1px solid #f0f2f5; box-shadow: 0 4px 12px rgba(0,0,0,0.03); text-align: center; width: calc(33.333% - 16px); min-width: 140px; flex-grow: 1;">
+                  <strong style="color: #FF8A65; display: block; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Sunda</strong>
+                  <span style="color: #1A1A1A; font-weight: 800; font-size: 15px;">"Sampurasun"</span>
+                </div>
+                <div style="background: white; padding: 20px 24px; border-radius: 16px; border: 1px solid #f0f2f5; box-shadow: 0 4px 12px rgba(0,0,0,0.03); text-align: center; width: calc(33.333% - 16px); min-width: 140px; flex-grow: 1;">
+                  <strong style="color: #FF8A65; display: block; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Batak</strong>
+                  <span style="color: #1A1A1A; font-weight: 800; font-size: 15px;">"Horas"</span>
+                </div>
+                <div style="background: white; padding: 20px 24px; border-radius: 16px; border: 1px solid #f0f2f5; box-shadow: 0 4px 12px rgba(0,0,0,0.03); text-align: center; width: calc(33.333% - 16px); min-width: 140px; flex-grow: 1;">
+                  <strong style="color: #FF8A65; display: block; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Kalimantan</strong>
+                  <span style="color: #1A1A1A; font-weight: 800; font-size: 15px;">"Adil Ka' Talino"</span>
+                </div>
+                <div style="background: white; padding: 20px 24px; border-radius: 16px; border: 1px solid #f0f2f5; box-shadow: 0 4px 12px rgba(0,0,0,0.03); text-align: center; width: calc(33.333% - 16px); min-width: 140px; flex-grow: 1;">
+                  <strong style="color: #FF8A65; display: block; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Papua</strong>
+                  <span style="color: #1A1A1A; font-weight: 800; font-size: 15px;">"Wa Wa Wa"</span>
+                </div>
+                <div style="background: white; padding: 20px 24px; border-radius: 16px; border: 1px solid #f0f2f5; box-shadow: 0 4px 12px rgba(0,0,0,0.03); text-align: center; width: calc(33.333% - 16px); min-width: 140px; flex-grow: 1;">
+                  <strong style="color: #FF8A65; display: block; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Jawa</strong>
+                  <span style="color: #1A1A1A; font-weight: 800; font-size: 15px;">"Kula Nuwun"</span>
+                </div>
+                <div style="background: white; padding: 20px 24px; border-radius: 16px; border: 1px solid #f0f2f5; box-shadow: 0 4px 12px rgba(0,0,0,0.03); text-align: center; width: calc(33.333% - 16px); min-width: 140px; flex-grow: 1;">
+                  <strong style="color: #FF8A65; display: block; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Sulawesi</strong>
+                  <span style="color: #1A1A1A; font-weight: 800; font-size: 15px;">"Tabea"</span>
+                </div>
+                <div style="background: white; padding: 20px 24px; border-radius: 16px; border: 1px solid #f0f2f5; box-shadow: 0 4px 12px rgba(0,0,0,0.03); text-align: center; width: calc(33.333% - 16px); min-width: 140px; flex-grow: 1;">
+                  <strong style="color: #FF8A65; display: block; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Aceh</strong>
+                  <span style="color: #1A1A1A; font-weight: 800; font-size: 15px;">"Peuhaba"</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Daftar Lagu (Disembunyikan awalnya) -->
+            <div id="bahasa-songs-list" style="display: none;">
+            </div>
           </div>
         </div>
       </div>

@@ -304,15 +304,26 @@
       </header>
 
       <div class="page-content center-layout">
+        <!-- AI Mode Toggle -->
+        <div class="filter-tags" style="margin-bottom: 30px;">
+          <button class="tag-btn active" id="mode-local-btn" onclick="setDetectionMode('local')">LOKAL</button>
+          <button class="tag-btn" id="mode-api-btn" onclick="setDetectionMode('api')">CLOUD (Google API)</button>
+        </div>
+
         <!-- Glowing Orange Mic Button -->
         <div class="repeater-mic-wrapper">
-          <button id="mic-bahasa-btn" class="mic-glow-btn mic-orange" onclick="triggerLanguageClassification()">
+          <button id="mic-bahasa-btn" class="mic-glow-btn mic-orange" 
+            onmousedown="startLanguageClassification(event)" 
+            onmouseup="stopLanguageClassification(event)"
+            onmouseleave="stopLanguageClassification(event)"
+            ontouchstart="startLanguageClassification(event)" 
+            ontouchend="stopLanguageClassification(event)">
             <i class="fa-solid fa-microphone-lines"></i>
           </button>
           <div class="sonar-wave wave-orange" id="ai-waves"></div>
         </div>
 
-        <p class="status-mic-text" id="ai-status">Ketuk mikrofon lalu ucapkan salam daerah</p>
+        <p class="status-mic-text" id="ai-status">Tahan mikrofon lalu ucapkan salam daerah</p>
 
         <!-- Classification HUD Card -->
         <div class="hud-card orange-hud">
@@ -383,6 +394,6 @@
 
   </div>
 
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

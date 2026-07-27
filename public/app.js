@@ -947,96 +947,232 @@ function encodeWAV(samples, sampleRate) {
   return new Blob([view], { type: 'audio/wav' });
 }
 
-async function triggerLanguageClassification() {
+let detectionMode = 'local';
+
+function setDetectionMode(mode) {
+  detectionMode = mode;
+  document.getElementById('mode-local-btn').classList.toggle('active', mode === 'local');
+  document.getElementById('mode-api-btn').classList.toggle('active', mode === 'api');
+  document.getElementById('ai-status').textContent = 'Ketuk mikrofon lalu ucapkan salam daerah';
+  document.getElementById('ai-class').textContent = '---';
+  document.getElementById('ai-conf').textContent = '0%';
+}
+
+// --- GLOBAL VARIABLES FOR PUSH-TO-TALK ---
+let localMediaStream = null;
+let localAudioContext = null;
+let localScriptProcessor = null;
+let localRecordedBuffers = [];
+let localRecordingLength = 0;
+let isRecordingP2T = false;
+let globalSpeechRecognition = null;
+
+async function startLanguageClassification(event) {
+  if (event) event.preventDefault();
+  if (isRecordingP2T) return; // Prevent double trigger
+  isRecordingP2T = true;
+
   const micBtn = document.getElementById('mic-bahasa-btn');
   const sonar = document.getElementById('ai-waves');
   const statusText = document.getElementById('ai-status');
 
-  micBtn.disabled = true;
   micBtn.classList.add('active');
   sonar.classList.add('active');
-  statusText.textContent = 'Meminta izin mikrofon...';
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    statusText.textContent = 'Merekam ucapan Anda selama 1.5 detik...';
+  if (detectionMode === 'api') {
+    statusText.textContent = 'Mendengarkan (API)... Lepas untuk memproses.';
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert("Browser Anda tidak mendukung Web Speech API. Silakan gunakan Google Chrome.");
+      isRecordingP2T = false;
+      return;
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    globalSpeechRecognition = new SpeechRecognition();
+    globalSpeechRecognition.lang = 'id-ID';
+    globalSpeechRecognition.interimResults = false;
+    globalSpeechRecognition.maxAlternatives = 1;
     
-    const actx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = actx.createMediaStreamSource(stream);
-    const processor = actx.createScriptProcessor(4096, 1, 1);
-    
-    let recordedBuffers = [];
-    let recordingLength = 0;
-    let isRecording = true;
-    
-    source.connect(processor);
-    processor.connect(actx.destination);
-    
-    processor.onaudioprocess = (e) => {
-      if (!isRecording) return;
-      const input = e.inputBuffer.getChannelData(0);
-      recordedBuffers.push(new Float32Array(input));
-      recordingLength += input.length;
+    globalSpeechRecognition.onresult = handleAPIResult;
+    globalSpeechRecognition.onerror = function(e) {
+      statusText.textContent = `Error deteksi: ${e.error}`;
+      resetMicUI();
     };
+    globalSpeechRecognition.onend = resetMicUI;
     
-    setTimeout(async () => {
-      isRecording = false;
-      stream.getTracks().forEach(track => track.stop());
-      processor.disconnect();
-      if (actx.state !== 'closed') actx.close();
-      statusText.textContent = 'Menganalisis audio...';
-      
-      const result = new Float32Array(recordingLength);
-      let offset = 0;
-      for (let i = 0; i < recordedBuffers.length; i++) {
-        result.set(recordedBuffers[i], offset);
-        offset += recordedBuffers[i].length;
-      }
-      
-      const wavBlob = encodeWAV(result, actx.sampleRate);
-      const formData = new FormData();
-      formData.append("file", wavBlob, "recording.wav");
-      
-      try {
-        const response = await fetch(`${settings.aiApi}/api/classify-audio`, {
-          method: 'POST',
-          body: formData
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          document.getElementById('ai-class').textContent = data.predicted_class.toUpperCase();
-          document.getElementById('ai-conf').textContent = `${(data.confidence * 100).toFixed(0)}%`;
-          statusText.textContent = `Deteksi selesai! Wilayah: ${data.region}`;
+    globalSpeechRecognition.start();
 
-          if (data.song) {
-            const matchedSong = songs.find(s => s.id === data.song);
-            if (matchedSong) {
-              setTimeout(() => {
-                navigateTo('page-pustaka');
-                playSong(matchedSong.id, matchedSong.notes);
-              }, 1500);
-            }
-          }
-        } else {
-          statusText.textContent = 'Gagal memproses klasifikasi suara.';
-        }
-      } catch (e) {
-        statusText.textContent = 'Gagal menghubungi server backend AI.';
-      } finally {
-        micBtn.disabled = false;
-        micBtn.classList.remove('active');
-        sonar.classList.remove('active');
-      }
-    }, 1500);
-    
-  } catch (e) {
-    statusText.textContent = 'Gagal mengakses mikrofon browser.';
-    micBtn.disabled = false;
-    micBtn.classList.remove('active');
-    sonar.classList.remove('active');
+  } else {
+    // Mode Lokal
+    statusText.textContent = 'Merekam (Lokal)... Lepas untuk memproses.';
+    try {
+      localMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = localAudioContext.createMediaStreamSource(localMediaStream);
+      localScriptProcessor = localAudioContext.createScriptProcessor(4096, 1, 1);
+      
+      localRecordedBuffers = [];
+      localRecordingLength = 0;
+      
+      source.connect(localScriptProcessor);
+      localScriptProcessor.connect(localAudioContext.destination);
+      
+      localScriptProcessor.onaudioprocess = (e) => {
+        if (!isRecordingP2T) return;
+        const input = e.inputBuffer.getChannelData(0);
+        localRecordedBuffers.push(new Float32Array(input));
+        localRecordingLength += input.length;
+      };
+    } catch (e) {
+      statusText.textContent = 'Gagal mengakses mikrofon browser.';
+      resetMicUI();
+    }
   }
 }
+
+async function stopLanguageClassification(event) {
+  if (event) event.preventDefault();
+  if (!isRecordingP2T) return;
+  isRecordingP2T = false;
+
+  const statusText = document.getElementById('ai-status');
+
+  if (detectionMode === 'api') {
+    statusText.textContent = 'Menganalisis kalimat Anda (API)...';
+    if (globalSpeechRecognition) {
+      try {
+        globalSpeechRecognition.stop(); // This triggers onresult automatically
+      } catch (e) {
+        statusText.textContent = 'Membatalkan API (Terlalu cepat).';
+        resetMicUI();
+      }
+    }
+  } else {
+    // Mode Lokal
+    statusText.textContent = 'Mengemas audio & menganalisis (Lokal)...';
+    if (localMediaStream) {
+      localMediaStream.getTracks().forEach(track => track.stop());
+    }
+    if (localScriptProcessor) {
+      localScriptProcessor.disconnect();
+    }
+    if (localAudioContext && localAudioContext.state !== 'closed') {
+      localAudioContext.close();
+    }
+
+    if (localRecordingLength > 4000) {
+      const result = new Float32Array(localRecordingLength);
+      let offset = 0;
+      for (let i = 0; i < localRecordedBuffers.length; i++) {
+        result.set(localRecordedBuffers[i], offset);
+        offset += localRecordedBuffers[i].length;
+      }
+      
+      const wavBlob = encodeWAV(result, localAudioContext ? localAudioContext.sampleRate : 44100);
+      await sendToPythonBackend(wavBlob);
+    } else {
+      statusText.textContent = 'Rekaman dibatalkan (terlalu singkat).';
+    }
+    resetMicUI();
+  }
+}
+
+function resetMicUI() {
+  const micBtn = document.getElementById('mic-bahasa-btn');
+  const sonar = document.getElementById('ai-waves');
+  if (micBtn) micBtn.classList.remove('active');
+  if (sonar) sonar.classList.remove('active');
+  isRecordingP2T = false;
+}
+
+// Handler for Web Speech API Result
+function handleAPIResult(event) {
+  const statusText = document.getElementById('ai-status');
+  if (!event.results || event.results.length === 0 || !event.results[0][0]) {
+    statusText.textContent = 'Suara tidak tertangkap atau terlalu singkat.';
+    return;
+  }
+
+  const transcript = event.results[0][0].transcript.toLowerCase();
+  const confidence = event.results[0][0].confidence;
+  
+  let detectedClass = 'TIDAK DIKENALI';
+  let targetSongId = null;
+
+  if (transcript.includes('horas') || transcript.includes('beras') || transcript.includes('boras') || transcript.includes('poras') || transcript.includes('hora')) {
+    detectedClass = 'HORAS';
+    targetSongId = 'sinanggar-tulo';
+  } else if (transcript.includes('sampurasun') || transcript.includes('campurasun') || transcript.includes('sempurasun') || transcript.includes('sampura')) {
+    detectedClass = 'SAMPURASUN';
+    targetSongId = 'manuk-dadali';
+  } else if (transcript.includes('tabea') || transcript.includes('tapi ya') || transcript.includes('cabe a') || transcript.includes('kabea') || transcript.includes('tabe')) {
+    detectedClass = 'TABEA';
+    targetSongId = 'si-patokaan';
+  } else if (transcript.includes('adil katalino') || transcript.includes('adil kata') || transcript.includes('kalino') || transcript.includes('katalino')) {
+    detectedClass = "ADIL KA' TALINO";
+    targetSongId = 'ampar-ampar-pisang'; 
+  } else if (transcript.includes('wa wa') || transcript.includes('wawa')) {
+    detectedClass = 'WA WA WA';
+    targetSongId = 'apuse';
+  } else if (transcript.includes('peuhaba') || transcript.includes('paha ba') || transcript.includes('berharga')) {
+    detectedClass = 'PEUHABA';
+    targetSongId = 'bungong-jeumpa';
+  } else if (transcript.includes('kula nuwun') || transcript.includes('kula nu') || transcript.includes('nuwun') || transcript.includes('kulonuwun')) {
+    detectedClass = 'KULA NUWUN';
+    targetSongId = 'gundul-pacul';
+  }
+
+  document.getElementById('ai-class').textContent = detectedClass;
+  document.getElementById('ai-conf').textContent = `${(confidence * 100).toFixed(0)}% (API)`;
+  
+  if (detectedClass !== 'TIDAK DIKENALI' && targetSongId) {
+    statusText.textContent = `Terdengar: "${transcript}". Memainkan lagu daerah...`;
+    const matchedSong = songs.find(s => s.id === targetSongId);
+    if (matchedSong) {
+      setTimeout(() => {
+        navigateTo('page-pustaka');
+        playSong(matchedSong.id, matchedSong.notes);
+      }, 1500);
+    }
+  } else {
+    statusText.textContent = `Terdengar: "${transcript}". Kata tidak valid.`;
+  }
+}
+
+// Handler for Python Local Backend
+async function sendToPythonBackend(wavBlob) {
+  const statusText = document.getElementById('ai-status');
+  const formData = new FormData();
+  formData.append("file", wavBlob, "recording.wav");
+  
+  try {
+    const response = await fetch(`${settings.aiApi}/api/classify-audio`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      document.getElementById('ai-class').textContent = data.predicted_class.toUpperCase();
+      document.getElementById('ai-conf').textContent = `${(data.confidence * 100).toFixed(0)}% (Lokal)`;
+      statusText.textContent = `Deteksi selesai! Wilayah: ${data.region}`;
+
+      if (data.song) {
+        const matchedSong = songs.find(s => s.id === data.song);
+        if (matchedSong) {
+          setTimeout(() => {
+            navigateTo('page-pustaka');
+            playSong(matchedSong.id, matchedSong.notes);
+          }, 1500);
+        }
+      }
+    } else {
+      statusText.textContent = 'Gagal memproses klasifikasi suara (Python).';
+    }
+  } catch (e) {
+    statusText.textContent = 'Gagal menghubungi server backend AI.';
+  }
+}
+
 // Helper: Stop all active timers/sockets when exiting a page
 function stopAllPlaybacks() {
   if (activeSongInterval) {
@@ -1063,13 +1199,13 @@ function stopAllPlaybacks() {
     audioContext = null;
   }
 
-    if (repeaterPlaybackInterval) {
+  if (repeaterPlaybackInterval) {
     clearInterval(repeaterPlaybackInterval);
     repeaterPlaybackInterval = null;
   }
   repeaterState = 'idle';
-  const micBtn = document.getElementById('mic-repeater-btn');
-  if (micBtn) micBtn.classList.remove('active');
+  const repMicBtn = document.getElementById('mic-repeater-btn');
+  if (repMicBtn) repMicBtn.classList.remove('active');
   
   const sonar = document.querySelector('.sonar-wave.wave-green');
   if (sonar) sonar.classList.remove('active');

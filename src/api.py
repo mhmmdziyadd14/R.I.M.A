@@ -227,92 +227,83 @@ def generate_angklung_sound(frequency: float, duration: float = 1.2, sr: int = 4
     
     if instr_type == "drum":
         note_id = int(frequency)
-        if note_id == 34: # 'x' -> Snare Drum
-            noise = (np.random.rand(len(t)) - 0.5) * np.exp(-18.0 * t)
-            body = np.sin(2.0 * np.pi * 180.0 * t) * np.exp(-40.0 * t) * 0.4
+        if note_id == 34: # 'x' -> Hi-Hat / Cymbal (noise burst)
+            signal = (np.random.rand(len(t)) - 0.5) * np.exp(-60.0 * t) * 0.6
+        elif note_id == 36: # 'z' -> Kick Drum (sine sweep)
+            sweep_freq = 45.0 + 115.0 * np.exp(-35.0 * t)
+            signal = np.sin(2.0 * np.pi * sweep_freq * t) * np.exp(-18.0 * t)
+        else: # 'y' (35) -> Snare (body + noise sweep)
+            noise = (np.random.rand(len(t)) - 0.5) * np.exp(-22.0 * t) * 0.8
+            body = np.sin(2.0 * np.pi * 175.0 * t) * np.exp(-45.0 * t) * 0.35
             signal = noise + body
-        elif note_id == 36: # 'z' -> Kick Drum
-            sweep_freq = 45.0 + 105.0 * np.exp(-30.0 * t)
-            signal = np.sin(2.0 * np.pi * sweep_freq * t) * np.exp(-15.0 * t)
-        else: # 'y' (35) or other -> Hi-Hat
-            signal = (np.random.rand(len(t)) - 0.5) * np.exp(-90.0 * t) * 0.7
             
     elif instr_type == "bass":
-        # Bass: Deep fundamental, no harsh high harmonics, slower envelope decay
+        # Bass: Warm, deep fundamental with minimal high-frequency harshness
         f1 = frequency
         f2 = frequency * 2.0
-        env1 = np.exp(-2.0 * t)
-        env2 = np.exp(-4.5 * t)
+        env1 = np.exp(-2.2 * t)
+        env2 = np.exp(-5.0 * t)
         
-        tone1 = np.sin(2.0 * np.pi * f1 * t) * env1 * 0.8
-        tone2 = np.sin(2.0 * np.pi * f2 * t) * env2 * 0.2
+        tone1 = np.sin(2.0 * np.pi * f1 * t) * env1 * 0.85
+        tone2 = np.sin(2.0 * np.pi * f2 * t) * env2 * 0.15
         signal = tone1 + tone2
         
-        # Soft click for bass
+        # Soft woody pluck for bass attack
         click_len = int(sr * 0.02)
-        click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 4.0, click_len)) * 0.1
-        signal[:click_len] += click
-        
-    elif instr_type == "chord":
-        # Chord/Rhythm: Detuned stereo chorus backing wash (left slightly higher, right slightly lower)
-        f1_L = frequency * 1.002
-        f1_R = frequency * 0.998
-        f2_L = frequency * 2.002
-        f2_R = frequency * 1.998
-        
-        env1 = np.exp(-4.5 * t)  # Faster decay so it sits nicely in background
-        env2 = np.exp(-3.5 * t)
-        
-        tone1_L = np.sin(2.0 * np.pi * f1_L * t) * env1 * 0.5
-        tone1_R = np.sin(2.0 * np.pi * f1_R * t) * env1 * 0.5
-        tone2_L = np.sin(2.0 * np.pi * f2_L * t) * env2 * 0.4
-        tone2_R = np.sin(2.0 * np.pi * f2_R * t) * env2 * 0.4
-        
-        signal_L = tone1_L + tone2_L
-        signal_R = tone1_R + tone2_R
-        
-        # Click (strike sound)
-        click_len = int(sr * 0.025)
-        click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 5.0, click_len)) * 0.15
-        signal_L[:click_len] += click
-        signal_R[:click_len] += click
-        
-        # Normalize and scale
-        max_L = np.max(np.abs(signal_L))
-        max_R = np.max(np.abs(signal_R))
-        if max_L > 0: signal_L = (signal_L / max_L) * volume
-        if max_R > 0: signal_R = (signal_R / max_R) * volume
-        
-        stereo_signal = np.column_stack((signal_L, signal_R))
-        return (stereo_signal * 32767).astype(np.int16)
-        
-    else: # "melody"
-        # Melody: Sharp, bright, clear centered lead with full harmonics
+        if len(signal) >= click_len:
+            click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 4.0, click_len)) * 0.08
+            signal[:click_len] += click
+            
+    else: # "melody" or "chord"
+        # Clean, warm resonant bamboo angklung chime:
+        # - Two primary tubes tuned an octave apart (f1 and f2 = 2.0 * f1)
+        # - Gentle detuning for a rich, organic chorus effect
+        # - Smooth exponential decay for a clean, singing tone
+        # - Very soft low-frequency frame thump for the wood hammer strike (no harsh white noise)
         f1 = frequency
         f2 = frequency * 2.0
         f3 = frequency * 3.0
         
-        env1 = np.exp(-3.5 * t)
-        env2 = np.exp(-2.2 * t)
-        env3 = np.exp(-5.5 * t)
+        f1_detune = f1 * 1.0015
+        f2_detune = f2 * 0.9985
         
-        tone1 = np.sin(2.0 * np.pi * f1 * t) * env1 * 0.5
-        tone2 = np.sin(2.0 * np.pi * f2 * t) * env2 * 0.4
-        tone3 = np.sin(2.0 * np.pi * f3 * t) * env3 * 0.1
+        env1 = np.exp(-3.5 * t)
+        env2 = np.exp(-2.5 * t)
+        env3 = np.exp(-5.0 * t)
+        
+        tone1 = (np.sin(2.0 * np.pi * f1 * t) + np.sin(2.0 * np.pi * f1_detune * t)) * env1 * 0.50
+        tone2 = (np.sin(2.0 * np.pi * f2 * t) + np.sin(2.0 * np.pi * f2_detune * t)) * env2 * 0.40
+        tone3 = np.sin(2.0 * np.pi * f3 * t) * env3 * 0.10
         
         signal = tone1 + tone2 + tone3
         
-        # Bright strike click
+        # Soft woody attack thump (no high-frequency noise rattle)
         click_len = int(sr * 0.02)
-        click = (np.random.rand(click_len) - 0.5) * np.exp(-np.linspace(0, 4.0, click_len)) * 0.25
-        signal[:click_len] += click
+        if len(signal) >= click_len:
+            thunk = np.sin(2.0 * np.pi * 150.0 * np.linspace(0, 0.02, click_len)) * np.exp(-150.0 * np.linspace(0, 0.02, click_len)) * 0.15
+            signal[:click_len] += thunk
+            
+    # Normalize & Scale
+    if instr_type == "chord":
+        # Stereo spacing for chords
+        signal_L = signal * 1.001
+        signal_R = signal * 0.999
+        max_L = np.max(np.abs(signal_L))
+        max_R = np.max(np.abs(signal_R))
+        if max_L > 0: signal_L = (signal_L / max_L) * volume
+        if max_R > 0: signal_R = (signal_R / max_R) * volume
+        stereo_signal = np.column_stack((signal_L, signal_R))
+        return (stereo_signal * 32767).astype(np.int16)
         
+    # Mono centered for melody, bass, drums
     max_val = np.max(np.abs(signal))
     if max_val > 0:
         signal = (signal / max_val) * volume
         
     stereo_signal = np.column_stack((signal, signal))
     return (stereo_signal * 32767).astype(np.int16)
+
+global_synth_volume = 1.0
 
 def play_synth_note_async(note_num: int, angklung_id: int, volume: float = 1.0, instr_type: str = "melody"):
     global global_synth_volume
@@ -1236,6 +1227,7 @@ def list_songs():
         else:
             region = "Umum"
             
+        duration_formatted = "0:00"
         try:
             content = read_file_safely(file_path)
             lines = content.split('\n')
@@ -1245,8 +1237,32 @@ def list_songs():
                     title = line.split(':', 1)[1].strip()
                 elif line.startswith('C:') or line.startswith('O:'):
                     region = line.split(':', 1)[1].strip()
+            
+            # Calculate duration using existing parser
+            parsed = parse_partitur_data(content)
+            if parsed["tracks"]:
+                bpm = parsed["metadata"]["Q"]
+                beats_per_bar = parsed["metadata"]["beats_per_bar"]
+                denominator = parsed["metadata"]["denominator"]
+                seconds_per_beat = 60.0 / bpm
+                if denominator == 8:
+                    seconds_per_beat /= 3.0
+                
+                max_beat = 0.0
+                for track_name, bars in parsed["tracks"].items():
+                    for bar_idx, bar in enumerate(bars):
+                        bar_start = bar_idx * beats_per_bar
+                        current_beat = bar_start
+                        for tok in bar["tokens"]:
+                            current_beat += tok["duration"]
+                        max_beat = max(max_beat, current_beat)
+                
+                total_sec = int(round(max_beat * seconds_per_beat, 0))
+                mins = total_sec // 60
+                secs = total_sec % 60
+                duration_formatted = f"{mins}:{secs:02d}"
         except Exception as e:
-            print(f"Error reading metadata from {file_basename}: {e}")
+            print(f"Error reading metadata/duration from {file_basename}: {e}")
             
         # Get relative path relative to SONGS_DIR and make it web-safe
         rel_path = os.path.relpath(file_path, SONGS_DIR).replace(os.sep, '/')
@@ -1256,7 +1272,8 @@ def list_songs():
             "title": title,
             "region": region,
             "file_name": rel_path,
-            "folder": folder_name
+            "folder": folder_name,
+            "duration": duration_formatted
         })
     return results
 

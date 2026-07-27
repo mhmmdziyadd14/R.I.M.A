@@ -2,8 +2,15 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>R.I.M.A - IoT Angklung Controller</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>R.I.M.A</title>
+  
+  <!-- PWA Meta Tags -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#F0F0F0">
+  <link rel="apple-touch-icon" href="logo.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <!-- Google Fonts for premium typography -->
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <!-- FontAwesome for modern icons -->
@@ -16,83 +23,92 @@
   <div id="app-container">
 
     <!-- 1. LANDING PAGE -->
-    <section id="page-landing" class="app-page active">
-      <div class="landing-content" onclick="navigateTo('page-beranda')">
-        <div class="logo-wrapper">
-          <!-- Yellow-Blue SVG Angklung Logo -->
-          <svg class="rima-logo" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
-            <!-- Left Tube (Long) -->
-            <rect x="25" y="20" width="8" height="70" rx="4" fill="#FFC107" />
-            <!-- Middle Tube (Medium) -->
-            <rect x="40" y="35" width="8" height="55" rx="4" fill="#FFB300" />
-            <!-- Right Tube (Short) -->
-            <rect x="55" y="50" width="8" height="40" rx="4" fill="#FFA000" />
-            <!-- Frame Structure (Brown Bamboo) -->
-            <rect x="18" y="80" width="55" height="6" rx="2" fill="#8D6E63" />
-            <rect x="18" y="28" width="55" height="5" rx="2" fill="#8D6E63" />
-            <line x1="20" y1="15" x2="20" y2="95" stroke="#8D6E63" stroke-width="4" stroke-linecap="round"/>
-            <line x1="70" y1="15" x2="70" y2="95" stroke="#8D6E63" stroke-width="4" stroke-linecap="round"/>
-            <!-- Blue Ring Swoosh (Cyber Ring) -->
-            <path d="M 10 75 Q 50 100 90 60" fill="none" stroke="#29B6F6" stroke-width="6" stroke-linecap="round" />
-            <path d="M 90 60 Q 50 30 25 55" fill="none" stroke="#0288D1" stroke-width="4" stroke-dasharray="4,4" stroke-linecap="round" />
-          </svg>
-        </div>
-        <h1 class="landing-title">R.I.M.A</h1>
-        <p class="landing-subtitle">Ketuk untuk Memulai</p>
+    <section id="page-landing" class="app-page active" onclick="navigateTo('page-beranda')">
+      <div class="landing-content">
+        <img src="logo.png" alt="R.I.M.A Logo" class="rima-splash-logo">
       </div>
     </section>
 
     <!-- 2. BERANDA / DASHBOARD -->
-    <section id="page-beranda" class="app-page">
-      <header class="app-header">
-        <span class="header-title">BERANDA</span>
-        <button class="menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-bars"></i></button>
-      </header>
+    <section id="page-beranda" class="app-page cn-layout">
+      <!-- Top Navigation -->
+      <nav class="cn-top-nav">
+        <div class="nav-logo">
+          <img src="logo-baru.png" alt="RIMA Logo Baru">
+        </div>
+        <div class="nav-search">
+          <i class="fa-solid fa-search search-icon"></i>
+          <input type="text" placeholder="Search songs..." id="cn-search-input">
+        </div>
+        <div class="nav-menu">
+          <button class="cn-menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-grip"></i></button>
+        </div>
+      </nav>
       
-      <div class="beranda-content">
-        <!-- Centered Logo -->
-        <div class="center-logo-small">
-          <svg class="small-logo" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
-            <rect x="25" y="20" width="8" height="70" rx="4" fill="#FFC107" />
-            <rect x="40" y="35" width="8" height="55" rx="4" fill="#FFB300" />
-            <rect x="55" y="50" width="8" height="40" rx="4" fill="#FFA000" />
-            <rect x="18" y="80" width="55" height="6" rx="2" fill="#8D6E63" />
-            <rect x="18" y="28" width="55" height="5" rx="2" fill="#8D6E63" />
-            <line x1="20" y1="15" x2="20" y2="95" stroke="#8D6E63" stroke-width="4" stroke-linecap="round"/>
-            <line x1="70" y1="15" x2="70" y2="95" stroke="#8D6E63" stroke-width="4" stroke-linecap="round"/>
-            <path d="M 10 75 Q 50 100 90 60" fill="none" stroke="#29B6F6" stroke-width="6" stroke-linecap="round" />
-          </svg>
-        </div>
-
-        <!-- 4 Cards Grid Menu -->
-        <div class="menu-grid">
-          <div class="menu-card" onclick="navigateTo('page-pustaka')">
-            <div class="card-icon icon-pink"><i class="fa-solid fa-music"></i></div>
-            <span class="card-label">PUSTAKA LAGU</span>
+      <!-- Horizontal Carousel Content -->
+      <div class="cn-carousel-container">
+        <!-- Card 1 -->
+        <div class="cn-card-wrapper" onclick="navigateTo('page-pustaka')">
+          <div class="cn-character-placeholder">
+            <i class="fa-solid fa-music placeholder-icon"></i>
           </div>
-          <div class="menu-card" onclick="navigateTo('page-manual')">
-            <div class="card-icon icon-blue"><i class="fa-solid fa-keyboard"></i></div>
-            <span class="card-label">KONTROL MANUAL</span>
-          </div>
-          <div class="menu-card" onclick="navigateTo('page-repeater')">
-            <div class="card-icon icon-green"><i class="fa-solid fa-microphone"></i></div>
-            <span class="card-label">REPEATER</span>
-          </div>
-          <div class="menu-card" onclick="navigateTo('page-bahasa')">
-            <div class="card-icon icon-orange"><i class="fa-solid fa-volume-high"></i></div>
-            <span class="card-label">DETEKSI BAHASA</span>
+          <div class="cn-card-bg bg-yellow">
+            <h3>Pustaka Lagu</h3>
+            <p>Koleksi Daerah</p>
           </div>
         </div>
+        
+        <!-- Card 2 -->
+        <div class="cn-card-wrapper" onclick="navigateTo('page-manual')">
+          <div class="cn-character-placeholder">
+            <i class="fa-solid fa-keyboard placeholder-icon"></i>
+          </div>
+          <div class="cn-card-bg bg-orange">
+            <h3>Kontrol Manual</h3>
+            <p>Main Interaktif</p>
+          </div>
+        </div>
+        
+        <!-- Card 3 -->
+        <div class="cn-card-wrapper" onclick="navigateTo('page-repeater')">
+          <div class="cn-character-placeholder">
+            <i class="fa-solid fa-microphone placeholder-icon"></i>
+          </div>
+          <div class="cn-card-bg bg-cyan">
+            <h3>Repeater</h3>
+            <p>Ikuti Irama</p>
+          </div>
+        </div>
+        
+        <!-- Card 4 -->
+        <div class="cn-card-wrapper" onclick="navigateTo('page-bahasa')">
+          <div class="cn-character-placeholder">
+            <i class="fa-solid fa-volume-high placeholder-icon"></i>
+          </div>
+          <div class="cn-card-bg bg-red">
+            <h3>Deteksi Bahasa</h3>
+            <p>Perintah Suara</p>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Bottom Navigation -->
+      <div class="cn-bottom-nav collaboration-nav">
+        <span>Kolaborasi antara Museum Sri Baduga dan Institut Teknologi Nasional Bandung</span>
       </div>
     </section>
 
     <!-- 3. KONTROL MANUAL PAGE -->
     <section id="page-manual" class="app-page">
-      <header class="app-header">
-        <button class="back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
-        <span class="header-title">KONTROL MANUAL</span>
-        <button class="menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-bars"></i></button>
-      </header>
+      <nav class="cn-top-nav">
+        <div class="nav-logo" style="display: flex; gap: 20px; align-items: center;">
+          <button class="cn-back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
+          <span style="font-family: var(--font-header); font-weight: 800; font-size: 24px; color: #1A1A1A; margin-top: 4px;">KONTROL MANUAL</span>
+        </div>
+        <div class="nav-menu">
+          <button class="cn-menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-grip"></i></button>
+        </div>
+      </nav>
 
       <div class="page-content center-layout">
         <!-- Top Display Indicator (Matches Yellow Pill in Sketch) -->
@@ -241,36 +257,75 @@
     </section>
 
     <!-- 4. PUSTAKA LAGU PAGE -->
-    <section id="page-pustaka" class="app-page">
-      <header class="app-header">
-        <button class="back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
-        <span class="header-title">PUSTAKA LAGU</span>
-        <button class="menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-bars"></i></button>
-      </header>
+    <section id="page-pustaka" class="app-page cn-layout">
+      <!-- Top Navigation -->
+      <nav class="cn-top-nav">
+        <div class="nav-logo" style="display: flex; gap: 20px; align-items: center;">
+          <button class="cn-back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
+          <img src="logo-baru.png" alt="RIMA Logo Baru">
+        </div>
+        <div class="nav-search">
+          <i class="fa-solid fa-search search-icon"></i>
+          <input type="text" placeholder="Search songs..." id="cn-pustaka-search-input" onkeyup="searchSongs(this.value)">
+        </div>
+        <div class="nav-menu">
+          <button class="cn-menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-grip"></i></button>
+        </div>
+      </nav>
 
-      <div class="page-content">
-                <!-- Category Tags (Orange pills at top of drawing) -->
-        <div class="filter-tags">
-          <button class="tag-btn active" onclick="filterSongs('all')">SEMUA</button>
-          <button class="tag-btn" onclick="filterSongs('sunda')">SUNDA</button>
-          <button class="tag-btn" onclick="filterSongs('jawa')">JAWA</button>
-          <button class="tag-btn" onclick="filterSongs('papua')">PAPUA</button>
+      <div class="music-player-layout">
+        <!-- Sisi Kiri: Album Art / Player -->
+        <div class="player-left-panel">
+          <div class="album-art-card">
+            <div class="album-cover">
+              <i class="fa-solid fa-music"></i>
+            </div>
+            <div class="album-info">
+              <h2 id="current-album-title">Pilih Lagu</h2>
+              <p id="current-album-desc">Mainkan otomatis lagu daerah</p>
+            </div>
+            <div class="album-controls">
+              <!-- Basic controls mockup for visual completeness -->
+              <button class="mock-btn" id="ctrl-shuffle" onclick="toggleShuffle()"><i class="fa-solid fa-shuffle"></i></button>
+              <button class="mock-btn" id="ctrl-prev" onclick="playPrevSong()"><i class="fa-solid fa-backward-step"></i></button>
+              <button class="mock-btn play-btn" id="ctrl-playpause" onclick="togglePlayPause()"><i class="fa-solid fa-play" id="icon-playpause"></i></button>
+              <button class="mock-btn" id="ctrl-next" onclick="playNextSong()"><i class="fa-solid fa-forward-step"></i></button>
+              <button class="mock-btn" id="ctrl-repeat" onclick="toggleRepeat()"><i class="fa-solid fa-repeat"></i></button>
+            </div>
+          </div>
         </div>
 
-        <!-- Song List Container -->
-        <div class="song-list" id="songs-container">
-          <!-- Dynamic loading via JS -->
+        <!-- Sisi Kanan: Daftar Lagu & Filter -->
+        <div class="player-right-panel">
+          <div class="right-panel-header">
+            <h2 class="panel-title">Pustaka Lagu</h2>
+            <!-- Category Filter Dropdown -->
+            <div class="filter-dropdown-container">
+              <select id="song-category-filter" class="cn-select-filter" onchange="loadSongsList(this.value)">
+                <!-- Dinamis via JS -->
+              </select>
+            </div>
+          </div>
+
+          <!-- Song List Container -->
+          <div class="modern-song-list" id="songs-container">
+            <!-- Dinamis via JS -->
+          </div>
         </div>
       </div>
     </section>
 
     <!-- 5. REPEATER PAGE -->
     <section id="page-repeater" class="app-page">
-      <header class="app-header">
-        <button class="back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
-        <span class="header-title">REPEATER</span>
-        <button class="menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-bars"></i></button>
-      </header>
+      <nav class="cn-top-nav">
+        <div class="nav-logo" style="display: flex; gap: 20px; align-items: center;">
+          <button class="cn-back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
+          <span style="font-family: var(--font-header); font-weight: 800; font-size: 24px; color: #1A1A1A; margin-top: 4px;">REPEATER</span>
+        </div>
+        <div class="nav-menu">
+          <button class="cn-menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-grip"></i></button>
+        </div>
+      </nav>
 
       <div class="page-content center-layout">
         <!-- Glowing Green Mic Button -->
@@ -299,11 +354,15 @@
 
     <!-- 6. DETEKSI BAHASA (AI CLASSIFIER) PAGE -->
     <section id="page-bahasa" class="app-page">
-      <header class="app-header">
-        <button class="back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
-        <span class="header-title">DETEKSI BAHASA</span>
-        <button class="menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-bars"></i></button>
-      </header>
+      <nav class="cn-top-nav">
+        <div class="nav-logo" style="display: flex; gap: 20px; align-items: center;">
+          <button class="cn-back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
+          <span style="font-family: var(--font-header); font-weight: 800; font-size: 24px; color: #1A1A1A; margin-top: 4px;">DETEKSI BAHASA</span>
+        </div>
+        <div class="nav-menu">
+          <button class="cn-menu-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-grip"></i></button>
+        </div>
+      </nav>
 
       <div class="page-content center-layout">
         <!-- Glowing Orange Mic Button -->
@@ -355,131 +414,151 @@
     </div>
 
     <!-- Settings Overlay Modal -->
-    <div id="settings-modal" class="modal-overlay">
-      <div class="modal-card">
-        <h3>Pengaturan Sistem &amp; Koneksi</h3>
+    <div id="settings-modal" class="modal-overlay cn-modal-overlay">
+      <div class="modal-card cn-modal-card">
         
-        <div class="modal-body-layout">
-          <!-- Left Column: inputs -->
-          <div class="modal-body-column">
-            <h4 style="margin: 0 0 12px 0; color: #3b82f6; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Koneksi Port Angklung</h4>
-            <div class="input-group">
-              <label for="input-com-port-1">Port Angklung 1 & 2 (Melodi & Chord)</label>
-              <input type="text" id="input-com-port-1" value="COM10">
-            </div>
-            <div class="input-group" style="display: none;">
-              <label for="input-com-port-2">Port Angklung 2 (Sedang)</label>
-              <input type="text" id="input-com-port-2" value="Terintegrasi dengan Angklung 1" disabled style="background-color: rgba(255,255,255,0.05); color: #888; border-color: #444;">
-            </div>
-            <div class="input-group">
-              <label for="input-com-port-3">Port Angklung 3 (Bass)</label>
-              <input type="text" id="input-com-port-3" value="COM12">
-            </div>
-            <div class="input-group">
-              <label for="input-host-api">Alamat Host API Python</label>
-              <input type="text" id="input-host-api" value="http://localhost:8000">
-            </div>
-            <div class="input-group">
-              <label for="input-synth-volume">Volume Suara Virtual (Synth Laptop): <span id="label-synth-volume">70%</span></label>
-              <input type="range" id="input-synth-volume" min="0" max="100" value="70" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
-            </div>
-            <div class="input-group">
-              <label for="input-physical-volume">Volume Suara Fisik (Angklung): <span id="label-physical-volume">100%</span></label>
-              <input type="range" id="input-physical-volume" min="10" max="100" value="100" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
-            </div>
-            <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 12px; padding-top: 12px;">
-              <h4 style="margin: 0 0 10px 0; color: #a855f7; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Keseimbangan Jalur Suara (Track Mix)</h4>
+        <div class="cn-modal-header">
+          <h3>Pengaturan Sistem</h3>
+          <button class="cn-close-btn" onclick="toggleSettingsModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div class="cn-modal-tabs">
+          <button class="tab-btn active" id="tab-btn-koneksi" onclick="switchSettingTab('koneksi')">Koneksi & Status</button>
+          <button class="tab-btn" id="tab-btn-volume" onclick="switchSettingTab('volume')">Volume & Audio</button>
+        </div>
+        
+        <!-- TAB KONEKSI -->
+        <div id="tab-koneksi" class="tab-content active">
+          <div class="modal-body-layout">
+            <div class="modal-body-column">
+              <h4 class="cn-section-title text-blue">Koneksi Port Angklung</h4>
               <div class="input-group">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                  <label for="input-volume-v1" style="margin: 0;">Melodi Utama (V1): <span id="label-volume-v1">100%</span></label>
-                  <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; margin: 0; cursor: pointer; color: #c084fc;">
-                    <input type="checkbox" id="input-staccato-v1" style="width: auto; height: auto; margin: 0; cursor: pointer;">
-                    Staccato (Singkat)
-                  </label>
-                </div>
-                <input type="range" id="input-volume-v1" min="0" max="100" value="100" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
+                <label for="input-com-port-1">Port Angklung 1 & 2 (Melodi & Chord)</label>
+                <input type="text" id="input-com-port-1" class="cn-input" value="COM10">
+              </div>
+              <div class="input-group" style="display: none;">
+                <label for="input-com-port-2">Port Angklung 2 (Sedang)</label>
+                <input type="text" id="input-com-port-2" class="cn-input disabled-input" value="Terintegrasi dengan Angklung 1" disabled>
               </div>
               <div class="input-group">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                  <label for="input-volume-v2" style="margin: 0;">Harmoni/Melodi 2 (V2): <span id="label-volume-v2">18%</span></label>
-                  <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; margin: 0; cursor: pointer; color: #c084fc;">
-                    <input type="checkbox" id="input-staccato-v2" style="width: auto; height: auto; margin: 0; cursor: pointer;">
-                    Staccato (Singkat)
-                  </label>
-                </div>
-                <input type="range" id="input-volume-v2" min="0" max="100" value="18" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
+                <label for="input-com-port-3">Port Angklung 3 (Bass)</label>
+                <input type="text" id="input-com-port-3" class="cn-input" value="COM12">
               </div>
               <div class="input-group">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                  <label for="input-volume-vb" style="margin: 0;">Bass (VB): <span id="label-volume-vb">25%</span></label>
-                  <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; margin: 0; cursor: pointer; color: #c084fc;">
-                    <input type="checkbox" id="input-staccato-vb" style="width: auto; height: auto; margin: 0; cursor: pointer;">
-                    Staccato (Singkat)
-                  </label>
-                </div>
-                <input type="range" id="input-volume-vb" min="0" max="100" value="25" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
+                <label for="input-host-api">Alamat Host API Python</label>
+                <input type="text" id="input-host-api" class="cn-input" value="http://localhost:8000">
               </div>
-              <div class="input-group">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                  <label for="input-volume-va" style="margin: 0;">Akord & Iringan (VA): <span id="label-volume-va">6%</span></label>
-                  <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; margin: 0; cursor: pointer; color: #c084fc;">
-                    <input type="checkbox" id="input-staccato-va" style="width: auto; height: auto; margin: 0; cursor: pointer;">
-                    Staccato (Singkat)
-                  </label>
-                </div>
-                <input type="range" id="input-volume-va" min="0" max="100" value="6" oninput="updateVolumeLabels()" style="cursor: pointer; width: 100%;">
-              </div>
-            </div>
-            <div class="input-group" style="display: none;">
-              <input type="checkbox" id="input-simulation-mode" style="width: auto; height: 18px; margin: 0; cursor: pointer;">
-              <label for="input-simulation-mode" style="margin: 0; font-weight: normal; cursor: pointer; color: #38bdf8;">Mode Simulasi (Hanya suara laptop)</label>
-            </div>
-          </div>
-          
-          <!-- Right Column: status & MIDI -->
-          <div class="modal-body-column">
-            <h4 style="margin: 0 0 12px 0; color: #f43f5e; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Status Perangkat</h4>
-            <div class="modal-status-box" style="margin-bottom: 20px;">
-              <div class="status-line">
-                <span>Server FastAPI:</span>
-                <span id="modal-api-status" class="badge badge-red">Offline</span>
-              </div>
-              <div class="status-line">
-                <span>Angklung 1 & 2 (Melodi & Chord):</span>
-                <span id="modal-serial-status-1" class="badge badge-red">Offline</span>
-              </div>
-              <div class="status-line" style="display: none;">
-                <span>Angklung 2 (Sedang):</span>
-                <span id="modal-serial-status-2" class="badge badge-red">Offline</span>
-              </div>
-              <div class="status-line">
-                <span>Angklung 3 (Bass):</span>
-                <span id="modal-serial-status-3" class="badge badge-red">Offline</span>
+              <div class="input-group" style="display: none;">
+                <label class="cn-checkbox-label">
+                  <input type="checkbox" id="input-simulation-mode">
+                  <span class="text-blue">Mode Simulasi (Hanya suara laptop)</span>
+                </label>
               </div>
             </div>
             
-            <h4 style="margin: 0 0 12px 0; color: #10b981; display: flex; align-items: center; gap: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
-              <i class="fa-solid fa-keyboard"></i> MIDI Keyboard Fisik
-            </h4>
-            <div class="input-group">
-              <label for="select-midi-device">Pilih Input MIDI Device</label>
-              <div style="display: flex; gap: 8px;">
-                <select id="select-midi-device" style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid #444; color: #fff; padding: 8px; border-radius: 4px; cursor: pointer;">
-                  <option value="">-- Scan/Pilih Keyboard MIDI --</option>
-                </select>
-                <button class="modal-btn" onclick="scanMidiDevices()" style="padding: 0 12px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; flex: none;">Scan</button>
+            <div class="modal-body-column">
+              <h4 class="cn-section-title text-red">Status Perangkat</h4>
+              <div class="modal-status-box">
+                <div class="status-line">
+                  <span>Server FastAPI:</span>
+                  <span id="modal-api-status" class="badge badge-red">Offline</span>
+                </div>
+                <div class="status-line">
+                  <span>Angklung 1 & 2:</span>
+                  <span id="modal-serial-status-1" class="badge badge-red">Offline</span>
+                </div>
+                <div class="status-line" style="display: none;">
+                  <span>Angklung 2:</span>
+                  <span id="modal-serial-status-2" class="badge badge-red">Offline</span>
+                </div>
+                <div class="status-line">
+                  <span>Angklung 3:</span>
+                  <span id="modal-serial-status-3" class="badge badge-red">Offline</span>
+                </div>
+              </div>
+              
+              <h4 class="cn-section-title text-green" style="margin-top:20px;">
+                <i class="fa-solid fa-keyboard"></i> MIDI Keyboard
+              </h4>
+              <div class="input-group">
+                <label for="select-midi-device">Pilih Input MIDI Device</label>
+                <div style="display: flex; gap: 8px;">
+                  <select id="select-midi-device" class="cn-input cn-select">
+                    <option value="">-- Scan/Pilih Keyboard MIDI --</option>
+                  </select>
+                  <button class="modal-btn scan-btn" onclick="scanMidiDevices()">Scan</button>
+                </div>
+              </div>
+              <div class="status-line" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <span>Status MIDI:</span>
+                <span id="modal-midi-status" class="badge badge-red">Offline</span>
               </div>
             </div>
-            <div class="status-line" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-              <span>Status MIDI:</span>
-              <span id="modal-midi-status" class="badge badge-red">Offline</span>
+          </div>
+        </div>
+        
+        <!-- TAB VOLUME -->
+        <div id="tab-volume" class="tab-content" style="display:none;">
+          <div class="modal-body-layout">
+            <div class="modal-body-column">
+              <h4 class="cn-section-title text-purple">Volume Keseluruhan</h4>
+              <div class="input-group">
+                <label for="input-synth-volume">Volume Suara Virtual (Synth Laptop): <span id="label-synth-volume">70%</span></label>
+                <input type="range" id="input-synth-volume" class="cn-slider" min="0" max="100" value="70" oninput="updateVolumeLabels()">
+              </div>
+              <div class="input-group">
+                <label for="input-physical-volume">Volume Suara Fisik (Angklung): <span id="label-physical-volume">100%</span></label>
+                <input type="range" id="input-physical-volume" class="cn-slider" min="10" max="100" value="100" oninput="updateVolumeLabels()">
+              </div>
+            </div>
+            
+            <div class="modal-body-column">
+              <h4 class="cn-section-title text-amber">Keseimbangan Jalur Suara (Track Mix)</h4>
+              <div class="input-group">
+                <div class="slider-header">
+                  <label for="input-volume-v1">Melodi Utama (V1): <span id="label-volume-v1">100%</span></label>
+                  <label class="cn-checkbox-label text-purple-light">
+                    <input type="checkbox" id="input-staccato-v1"> Staccato
+                  </label>
+                </div>
+                <input type="range" id="input-volume-v1" class="cn-slider" min="0" max="100" value="100" oninput="updateVolumeLabels()">
+              </div>
+              
+              <div class="input-group">
+                <div class="slider-header">
+                  <label for="input-volume-v2">Harmoni (V2): <span id="label-volume-v2">18%</span></label>
+                  <label class="cn-checkbox-label text-purple-light">
+                    <input type="checkbox" id="input-staccato-v2"> Staccato
+                  </label>
+                </div>
+                <input type="range" id="input-volume-v2" class="cn-slider" min="0" max="100" value="18" oninput="updateVolumeLabels()">
+              </div>
+              
+              <div class="input-group">
+                <div class="slider-header">
+                  <label for="input-volume-vb">Bass (VB): <span id="label-volume-vb">25%</span></label>
+                  <label class="cn-checkbox-label text-purple-light">
+                    <input type="checkbox" id="input-staccato-vb"> Staccato
+                  </label>
+                </div>
+                <input type="range" id="input-volume-vb" class="cn-slider" min="0" max="100" value="25" oninput="updateVolumeLabels()">
+              </div>
+              
+              <div class="input-group">
+                <div class="slider-header">
+                  <label for="input-volume-va">Akord & Iringan (VA): <span id="label-volume-va">6%</span></label>
+                  <label class="cn-checkbox-label text-purple-light">
+                    <input type="checkbox" id="input-staccato-va"> Staccato
+                  </label>
+                </div>
+                <input type="range" id="input-volume-va" class="cn-slider" min="0" max="100" value="6" oninput="updateVolumeLabels()">
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="modal-actions" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;">
-          <button class="modal-btn btn-cancel" onclick="toggleSettingsModal()">Tutup</button>
-          <button class="modal-btn btn-save" onclick="saveConnectionSettings()">Simpan</button>
+        <div class="modal-actions">
+          <button class="modal-btn btn-save-cn" onclick="saveConnectionSettings()">Simpan Pengaturan</button>
         </div>
       </div>
     </div>
@@ -487,5 +566,17 @@
   </div>
 
   <script src="app.js"></script>
+  <!-- Service Worker Registration for PWA -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then(registration => {
+          console.log('SW registered: ', registration);
+        }).catch(registrationError => {
+          console.log('SW registration failed: ', registrationError);
+        });
+      });
+    }
+  </script>
 </body>
 </html>

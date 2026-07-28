@@ -1603,55 +1603,94 @@ const GREETING_TO_REGION = {
   "wawawa": "PAPUA"
 };
 
+const REGION_CLUSTERS = {
+  "SUNDA": { island: "Pulau Jawa", nearby: ["JAWA"] },
+  "JAWA": { island: "Pulau Jawa", nearby: ["SUNDA"] },
+  "ACEH": { island: "Pulau Sumatera", nearby: ["BATAK"] },
+  "BATAK": { island: "Pulau Sumatera", nearby: ["ACEH"] },
+  "SULAWESI": { island: "Sulawesi & Indonesia Timur", nearby: ["PAPUA", "KALIMANTAN"] },
+  "PAPUA": { island: "Papua & Indonesia Timur", nearby: ["SULAWESI", "KALIMANTAN"] },
+  "KALIMANTAN": { island: "Pulau Kalimantan", nearby: ["SUNDA", "SULAWESI"] }
+};
+
 function renderBahasaSongs(region) {
   const songsListContainer = document.getElementById('bahasa-songs-list');
   if (!songsListContainer || !region) return;
 
-  const resolvedRegion = GREETING_TO_REGION[region.toLowerCase()] || region;
+  const resolvedRegion = (GREETING_TO_REGION[region.toLowerCase()] || region).toUpperCase();
+  const clusterInfo = REGION_CLUSTERS[resolvedRegion] || { island: "Nusantara", nearby: [] };
 
-  const filtered = songs.filter(s => 
-    s.region.toLowerCase() === resolvedRegion.toLowerCase() || 
-    s.folder.toLowerCase() === resolvedRegion.toLowerCase()
+  // 1. Primary Songs (Exact Region)
+  const primarySongs = songs.filter(s => 
+    s.region.toUpperCase() === resolvedRegion || 
+    s.folder.toUpperCase() === resolvedRegion
   );
 
-  if (filtered.length === 0) {
-    songsListContainer.innerHTML = `
-      <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
-        <div>
-          <span style="font-size: 14px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; display: block;">Hasil Deteksi</span>
-          <h2 style="font-family: var(--font-header); font-size: 26px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${resolvedRegion.toUpperCase()}</h2>
-        </div>
-        <button onclick="setBahasaMode(1)" style="background: #fff; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 12px; font-weight: 700; color: #FF8A65; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-          <i class="fa-solid fa-rotate-left"></i> Deteksi Ulang
-        </button>
-      </div>
-      <div style="text-align: center; padding: 40px; color: #888;">
-        <i class="fa-solid fa-music" style="font-size: 32px; margin-bottom: 16px; opacity: 0.5;"></i>
-        <p>Tidak ada lagu yang ditemukan untuk daerah ${resolvedRegion}.</p>
-      </div>`;
-    return;
-  }
+  // 2. Nearby Recommended Songs (Same Island / Cluster)
+  const nearbyFolders = clusterInfo.nearby.map(r => r.toUpperCase());
+  const recommendedSongs = songs.filter(s => 
+    nearbyFolders.includes(s.region.toUpperCase()) || 
+    nearbyFolders.includes(s.folder.toUpperCase())
+  );
 
-  songsListContainer.innerHTML = `
+  let htmlContent = `
     <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
       <div>
-        <span style="font-size: 14px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; display: block;">Hasil Deteksi</span>
-        <h2 style="font-family: var(--font-header); font-size: 26px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${resolvedRegion.toUpperCase()}</h2>
+        <span style="font-size: 13px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; display: block;">Hasil Deteksi • ${clusterInfo.island}</span>
+        <h2 style="font-family: var(--font-header); font-size: 28px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${resolvedRegion}</h2>
       </div>
-      <button onclick="setBahasaMode(1)" style="background: #fff; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 12px; font-weight: 700; color: #FF8A65; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+      <button onclick="setBahasaMode(1)" style="background: #fff; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 12px; font-weight: 700; color: #FF8A65; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); flex-shrink: 0;">
         <i class="fa-solid fa-rotate-left"></i> Deteksi Ulang
       </button>
     </div>
-  ` + filtered.map(song => `
-    <div class="song-item" id="row-${getSongBtnId(song.id)}" onclick="playBahasaSong('${song.id}')">
-      <div class="song-icon"><i class="fa-solid fa-music"></i></div>
-      <div class="song-info">
-        <h4>${song.title}</h4>
-        <p>${song.folder} • ${song.region}</p>
+  `;
+
+  // Primary Songs Cards
+  if (primarySongs.length > 0) {
+    htmlContent += primarySongs.map(song => `
+      <div class="song-item" id="row-${getSongBtnId(song.id)}" onclick="playBahasaSong('${song.id}')">
+        <div class="song-icon"><i class="fa-solid fa-music"></i></div>
+        <div class="song-info">
+          <h4>${song.title}</h4>
+          <p>${song.folder} • ${song.region}</p>
+        </div>
+        <button class="song-play-btn" id="${getSongBtnId(song.id)}"><i class="fa-solid fa-play"></i></button>
       </div>
-      <button class="song-play-btn" id="${getSongBtnId(song.id)}"><i class="fa-solid fa-play"></i></button>
-    </div>
-  `).join('');
+    `).join('');
+  } else {
+    htmlContent += `
+      <div style="text-align: center; padding: 24px; color: #888; background: #fff; border-radius: 16px; margin-bottom: 20px; border: 1px solid #f0f2f5;">
+        <p style="margin: 0;">Tidak ada lagu utama yang ditemukan untuk daerah ${resolvedRegion}.</p>
+      </div>`;
+  }
+
+  // Recommended Nearby Songs Section
+  if (recommendedSongs.length > 0) {
+    htmlContent += `
+      <div style="margin-top: 32px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+        <div style="background: #FFF3E0; color: #E65100; width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 14px; box-shadow: 0 2px 6px rgba(230,81,0,0.15);">
+          <i class="fa-solid fa-compass"></i>
+        </div>
+        <div>
+          <h3 style="font-family: var(--font-header); font-size: 18px; font-weight: 800; color: #1A1A1A; margin: 0;">Rekomendasi Lagu Daerah Terdekat</h3>
+          <span style="font-size: 12px; color: #666; font-weight: 600;">Lagu-lagu daerah tetangga di wilayah ${clusterInfo.island}</span>
+        </div>
+      </div>
+    `;
+
+    htmlContent += recommendedSongs.map(song => `
+      <div class="song-item" id="row-${getSongBtnId(song.id)}" onclick="playBahasaSong('${song.id}')" style="background: #fafafa; border: 1px dashed #cbd5e1;">
+        <div class="song-icon" style="background: #fff; color: #FF8A65; box-shadow: 0 2px 6px rgba(0,0,0,0.05);"><i class="fa-solid fa-location-dot"></i></div>
+        <div class="song-info">
+          <h4>${song.title}</h4>
+          <p><span style="background: #FFECB3; color: #795548; padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 10px; margin-right: 6px;">${song.folder}</span> ${song.region}</p>
+        </div>
+        <button class="song-play-btn" id="${getSongBtnId(song.id)}"><i class="fa-solid fa-play"></i></button>
+      </div>
+    `).join('');
+  }
+
+  songsListContainer.innerHTML = htmlContent;
 }
 
 // Helper: Stop all active timers/sockets when exiting a page

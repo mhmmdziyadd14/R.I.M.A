@@ -431,66 +431,66 @@
       </nav>
 
       <div class="music-player-layout">
-        <!-- Sisi Kiri: Mic Controls, HUD & Kumpulan Kata Sapaan (Compact Design) -->
-        <div class="player-left-panel" style="flex: 0 0 340px; display: flex; flex-direction: column; max-height: calc(100vh - 120px); padding-right: 8px;">
+        <!-- Sisi Kiri: Mic Controls, HUD & Kumpulan Kata Sapaan (Wider & Vertical Stack Cards) -->
+        <div class="player-left-panel" style="flex: 0 0 400px; display: flex; flex-direction: column; max-height: calc(100vh - 120px); padding-right: 12px; scrollbar-width: thin;">
           <!-- Top Area: Mic & Compact HUD -->
           <div style="padding: 10px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;">
-            <div class="repeater-mic-wrapper" style="transform: scale(0.75); margin-bottom: -5px;">
+            <div class="repeater-mic-wrapper" style="transform: scale(0.8); margin-bottom: 0;">
               <button id="mic-bahasa-btn" class="mic-glow-btn mic-orange" onclick="triggerLanguageClassification()">
                 <i class="fa-solid fa-microphone-lines"></i>
               </button>
               <div class="sonar-wave wave-orange" id="ai-waves"></div>
             </div>
             
-            <p class="status-mic-text" id="ai-status" style="margin-top: 5px; margin-bottom: 10px; text-align: center; font-size: 12px; font-weight: 600; color: #555;">Ketuk mikrofon lalu ucapkan salam daerah</p>
+            <p class="status-mic-text" id="ai-status" style="margin-top: 8px; margin-bottom: 12px; text-align: center; font-size: 13px; font-weight: 600; color: #555;">Ketuk mikrofon lalu ucapkan salam daerah</p>
             
-            <div class="hud-card orange-hud" style="margin-top: 0; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.03); padding: 8px 14px; border-radius: 14px;">
+            <div class="hud-card orange-hud" style="margin-top: 0; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.04); padding: 10px 18px; border-radius: 16px;">
               <div class="hud-item">
-                <span class="hud-lbl" style="font-size: 9px; margin-bottom: 2px;">HASIL DETEKSI</span>
-                <span class="hud-val" id="ai-class" style="font-size: 14px;">---</span>
+                <span class="hud-lbl" style="font-size: 10px; margin-bottom: 2px;">HASIL DETEKSI</span>
+                <span class="hud-val" id="ai-class" style="font-size: 15px;">---</span>
               </div>
               <div class="hud-item">
-                <span class="hud-lbl" style="font-size: 9px; margin-bottom: 2px;">AKURASI</span>
-                <span class="hud-val" id="ai-conf" style="font-size: 14px;">0%</span>
+                <span class="hud-lbl" style="font-size: 10px; margin-bottom: 2px;">AKURASI</span>
+                <span class="hud-val" id="ai-conf" style="font-size: 15px;">0%</span>
               </div>
             </div>
           </div>
 
-          <!-- Kumpulan Kata Sapaan Daerah (Mini Grid Compact 2-Kolom) -->
-          <div id="bahasa-greetings-container" style="margin-top: 6px; background: white; padding: 12px; border-radius: 16px; border: 1px solid #f0f2f5; box-shadow: 0 2px 10px rgba(0,0,0,0.03); width: 100%; box-sizing: border-box;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <span style="font-size: 10px; font-weight: 800; color: #FF8A65; letter-spacing: 0.8px; text-transform: uppercase;">Kata Sapaan (7 Wilayah)</span>
-              <span style="font-size: 9px; color: #888; font-weight: 600;">Ucapkan via Mic</span>
+          <!-- Kumpulan Kata Sapaan Daerah (Berjajar Vertikal: Bahasa -> Kata Sapaan) -->
+          <div id="bahasa-greetings-container" style="margin-top: 8px; background: white; padding: 14px; border-radius: 18px; border: 1px solid #f0f2f5; box-shadow: 0 4px 16px rgba(0,0,0,0.03); width: 100%; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <span style="font-size: 11px; font-weight: 800; color: #FF8A65; letter-spacing: 1px; text-transform: uppercase;">Kata Sapaan (7 Wilayah)</span>
+              <span style="font-size: 10px; color: #888; font-weight: 600;">Ucapkan via Mic</span>
             </div>
             
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;" id="greeting-chips-list">
-              <div class="greeting-chip-card" id="chip-SUNDA" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 5px 8px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 4px; transition: all 0.2s;">
-                <span style="font-size: 9px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 1px 4px; border-radius: 4px;">Sunda</span>
-                <strong style="font-size: 11px; color: #1A1A1A;">"Sampurasun"</strong>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;" id="greeting-chips-list">
+              <div class="greeting-chip-card" id="chip-SUNDA" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 10px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; transition: all 0.2s;">
+                <span style="font-size: 10px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 2px 8px; border-radius: 6px; margin-bottom: 4px; display: inline-block;">Sunda</span>
+                <strong style="font-size: 12px; color: #1A1A1A; display: block;">"Sampurasun"</strong>
               </div>
-              <div class="greeting-chip-card" id="chip-BATAK" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 5px 8px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 4px; transition: all 0.2s;">
-                <span style="font-size: 9px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 1px 4px; border-radius: 4px;">Batak</span>
-                <strong style="font-size: 11px; color: #1A1A1A;">"Horas"</strong>
+              <div class="greeting-chip-card" id="chip-BATAK" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 10px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; transition: all 0.2s;">
+                <span style="font-size: 10px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 2px 8px; border-radius: 6px; margin-bottom: 4px; display: inline-block;">Batak</span>
+                <strong style="font-size: 12px; color: #1A1A1A; display: block;">"Horas"</strong>
               </div>
-              <div class="greeting-chip-card" id="chip-KALIMANTAN" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 5px 8px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 4px; transition: all 0.2s;">
-                <span style="font-size: 9px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 1px 4px; border-radius: 4px;">Kalimantan</span>
-                <strong style="font-size: 11px; color: #1A1A1A;">"Adil Ka'..."</strong>
+              <div class="greeting-chip-card" id="chip-KALIMANTAN" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 10px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; transition: all 0.2s;">
+                <span style="font-size: 10px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 2px 8px; border-radius: 6px; margin-bottom: 4px; display: inline-block;">Kalimantan</span>
+                <strong style="font-size: 12px; color: #1A1A1A; display: block;">"Adil Ka' Talino"</strong>
               </div>
-              <div class="greeting-chip-card" id="chip-PAPUA" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 5px 8px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 4px; transition: all 0.2s;">
-                <span style="font-size: 9px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 1px 4px; border-radius: 4px;">Papua</span>
-                <strong style="font-size: 11px; color: #1A1A1A;">"Wa Wa Wa"</strong>
+              <div class="greeting-chip-card" id="chip-PAPUA" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 10px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; transition: all 0.2s;">
+                <span style="font-size: 10px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 2px 8px; border-radius: 6px; margin-bottom: 4px; display: inline-block;">Papua</span>
+                <strong style="font-size: 12px; color: #1A1A1A; display: block;">"Wa Wa Wa"</strong>
               </div>
-              <div class="greeting-chip-card" id="chip-JAWA" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 5px 8px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 4px; transition: all 0.2s;">
-                <span style="font-size: 9px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 1px 4px; border-radius: 4px;">Jawa</span>
-                <strong style="font-size: 11px; color: #1A1A1A;">"Kula Nuwun"</strong>
+              <div class="greeting-chip-card" id="chip-JAWA" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 10px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; transition: all 0.2s;">
+                <span style="font-size: 10px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 2px 8px; border-radius: 6px; margin-bottom: 4px; display: inline-block;">Jawa</span>
+                <strong style="font-size: 12px; color: #1A1A1A; display: block;">"Kula Nuwun"</strong>
               </div>
-              <div class="greeting-chip-card" id="chip-SULAWESI" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 5px 8px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 4px; transition: all 0.2s;">
-                <span style="font-size: 9px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 1px 4px; border-radius: 4px;">Sulawesi</span>
-                <strong style="font-size: 11px; color: #1A1A1A;">"Tabea"</strong>
+              <div class="greeting-chip-card" id="chip-SULAWESI" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 10px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; transition: all 0.2s;">
+                <span style="font-size: 10px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 2px 8px; border-radius: 6px; margin-bottom: 4px; display: inline-block;">Sulawesi</span>
+                <strong style="font-size: 12px; color: #1A1A1A; display: block;">"Tabea"</strong>
               </div>
-              <div class="greeting-chip-card" id="chip-ACEH" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 5px 8px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 4px; transition: all 0.2s; grid-column: span 2;">
-                <span style="font-size: 9px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 1px 4px; border-radius: 4px;">Aceh</span>
-                <strong style="font-size: 11px; color: #1A1A1A;">"Peuhaba"</strong>
+              <div class="greeting-chip-card" id="chip-ACEH" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 10px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; transition: all 0.2s; grid-column: span 2;">
+                <span style="font-size: 10px; font-weight: 800; color: #FF8A65; text-transform: uppercase; background: #FFF3E0; padding: 2px 8px; border-radius: 6px; margin-bottom: 4px; display: inline-block;">Aceh</span>
+                <strong style="font-size: 12px; color: #1A1A1A; display: block;">"Peuhaba"</strong>
               </div>
             </div>
           </div>

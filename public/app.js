@@ -386,6 +386,9 @@ document.addEventListener('DOMContentLoaded', () => {
 function navigateTo(pageId) {
   // Clear any running song playbacks or socket connections when switching pages
   stopAllPlaybacks();
+  if (pageId !== 'page-bahasa') {
+    setBahasaMode(1);
+  }
 
   // Hide all screens and activate selected
   const pages = document.querySelectorAll('.app-page');
@@ -1040,7 +1043,7 @@ function startPlaybackStatusPolling() {
           }
           
           if (isBahasaPlayback) {
-            resetBahasaPage();
+            setBahasaMode(1);
           } else if (!isManualStop) {
             setTimeout(() => {
               playNextSong(true);
@@ -1528,20 +1531,14 @@ async function triggerLanguageClassification() {
     if (response.ok) {
       const data = await response.json();
       
-      const displayClass = data.song_title ? `${data.predicted_class.toUpperCase()} (${data.song_title})` : data.predicted_class.toUpperCase();
-      document.getElementById('ai-class').textContent = displayClass;
-      document.getElementById('ai-conf').textContent = `${(data.confidence * 100).toFixed(0)}%`;
-      statusText.textContent = `Deteksi kata selesai! Wilayah: ${data.region}`;
+      // Mode 2: Switch to Mode 2 (Shows Region's Song List & Updates HUD)
+      setBahasaMode(2, data);
 
-      // Mark as Bahasa page playback and render regional song list
-      isBahasaPlayback = true;
-      renderBahasaSongs(data.region);
-
-      // Automatically play matched regional song right here without navigating to Pustaka Lagu
+      // Automatically play matched regional song right here
       if (data.song) {
         setTimeout(() => {
           playBahasaSong(data.song);
-        }, 800);
+        }, 500);
       }
     } else {
       statusText.textContent = 'Gagal memproses klasifikasi suara.';
@@ -1560,58 +1557,84 @@ function playBahasaSong(songId) {
   playSong(songId);
 }
 
-function resetBahasaPage() {
-  isBahasaPlayback = false;
+function setBahasaMode(mode, data = {}) {
   const instructions = document.getElementById('bahasa-instructions');
   const songsListContainer = document.getElementById('bahasa-songs-list');
   const aiClass = document.getElementById('ai-class');
   const aiConf = document.getElementById('ai-conf');
   const aiStatus = document.getElementById('ai-status');
 
-  if (instructions) instructions.style.display = 'flex';
-  if (songsListContainer) {
-    songsListContainer.style.display = 'none';
-    songsListContainer.innerHTML = '';
+  if (mode === 1) {
+    isBahasaPlayback = false;
+    if (instructions) instructions.style.display = 'flex';
+    if (songsListContainer) {
+      songsListContainer.style.display = 'none';
+      songsListContainer.innerHTML = '';
+    }
+    if (aiClass) aiClass.textContent = '---';
+    if (aiConf) aiConf.textContent = '0%';
+    if (aiStatus) aiStatus.textContent = 'Ketuk mikrofon lalu ucapkan salam daerah';
+  } else if (mode === 2) {
+    if (instructions) instructions.style.display = 'none';
+    if (songsListContainer) songsListContainer.style.display = 'block';
+
+    if (data.predicted_class) {
+      const displayClass = data.song_title ? `${data.predicted_class.toUpperCase()} (${data.song_title})` : data.predicted_class.toUpperCase();
+      if (aiClass) aiClass.textContent = displayClass;
+      if (aiConf) aiConf.textContent = `${(data.confidence * 100).toFixed(0)}%`;
+      if (aiStatus) aiStatus.textContent = `Deteksi kata selesai! Wilayah: ${data.region}`;
+    }
+
+    renderBahasaSongs(data.region);
   }
-  if (aiClass) aiClass.textContent = '---';
-  if (aiConf) aiConf.textContent = '0%';
-  if (aiStatus) aiStatus.textContent = 'Ketuk mikrofon lalu ucapkan salam daerah';
+}
+
+function resetBahasaPage() {
+  setBahasaMode(1);
 }
 
 function renderBahasaSongs(region) {
-  const instructions = document.getElementById('bahasa-instructions');
   const songsListContainer = document.getElementById('bahasa-songs-list');
-  
-  if (!instructions || !songsListContainer) return;
-  
-  instructions.style.display = 'none';
-  songsListContainer.style.display = 'block';
-  
-  // Filter songs based on region (or folder if region matches)
+  if (!songsListContainer || !region) return;
+
   const filtered = songs.filter(s => s.region.toLowerCase() === region.toLowerCase() || s.folder.toLowerCase() === region.toLowerCase());
-  
+
   if (filtered.length === 0) {
     songsListContainer.innerHTML = `
+      <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span style="font-size: 14px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; display: block;">Hasil Deteksi</span>
+          <h2 style="font-family: var(--font-header); font-size: 26px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${region}</h2>
+        </div>
+        <button onclick="setBahasaMode(1)" style="background: #fff; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 12px; font-weight: 700; color: #FF8A65; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-rotate-left"></i> Deteksi Ulang
+        </button>
+      </div>
       <div style="text-align: center; padding: 40px; color: #888;">
         <i class="fa-solid fa-music" style="font-size: 32px; margin-bottom: 16px; opacity: 0.5;"></i>
         <p>Tidak ada lagu yang ditemukan untuk daerah ${region}.</p>
       </div>`;
     return;
   }
-  
+
   songsListContainer.innerHTML = `
-    <div style="margin-bottom: 24px;">
-      <span style="font-size: 14px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; display: block;">Hasil Deteksi</span>
-      <h2 style="font-family: var(--font-header); font-size: 28px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${region}</h2>
+    <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+      <div>
+        <span style="font-size: 14px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; display: block;">Hasil Deteksi</span>
+        <h2 style="font-family: var(--font-header); font-size: 26px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${region}</h2>
+      </div>
+      <button onclick="setBahasaMode(1)" style="background: #fff; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 12px; font-weight: 700; color: #FF8A65; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+        <i class="fa-solid fa-rotate-left"></i> Deteksi Ulang
+      </button>
     </div>
   ` + filtered.map(song => `
-    <div class="song-item" onclick="playBahasaSong('${song.id}')">
+    <div class="song-item" id="row-${getSongBtnId(song.id)}" onclick="playBahasaSong('${song.id}')">
       <div class="song-icon"><i class="fa-solid fa-music"></i></div>
       <div class="song-info">
         <h4>${song.title}</h4>
         <p>${song.folder} • ${song.region}</p>
       </div>
-      <button class="song-play-btn"><i class="fa-solid fa-play"></i></button>
+      <button class="song-play-btn" id="${getSongBtnId(song.id)}"><i class="fa-solid fa-play"></i></button>
     </div>
   `).join('');
 }
@@ -1666,10 +1689,6 @@ function stopAllPlaybacks() {
 
   // Stop any custom song playing on Python backend
   fetch(`${settings.hostApi}/api/arduino/stop_song`).catch(() => {});
-
-  if (isBahasaPlayback) {
-    resetBahasaPage();
-  }
 }
 
 // 11. Homepage Slider Logic
@@ -1825,3 +1844,4 @@ window.nextMenu = nextMenu;
 window.prevMenu = prevMenu;
 window.playBahasaSong = playBahasaSong;
 window.resetBahasaPage = resetBahasaPage;
+window.setBahasaMode = setBahasaMode;

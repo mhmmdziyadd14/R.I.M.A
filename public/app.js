@@ -1557,6 +1557,24 @@ function playBahasaSong(songId) {
   playSong(songId);
 }
 
+function highlightGreetingChip(region) {
+  const chips = document.querySelectorAll('.greeting-chip-card');
+  chips.forEach(chip => {
+    chip.style.background = '#f8fafc';
+    chip.style.border = '1px solid #e2e8f0';
+    chip.style.boxShadow = 'none';
+  });
+
+  if (!region) return;
+  const resolvedRegion = (GREETING_TO_REGION[region.toLowerCase()] || region).toUpperCase();
+  const activeChip = document.getElementById(`chip-${resolvedRegion}`);
+  if (activeChip) {
+    activeChip.style.background = '#FFF3E0';
+    activeChip.style.border = '2px solid #FF8A65';
+    activeChip.style.boxShadow = '0 4px 12px rgba(255, 138, 101, 0.25)';
+  }
+}
+
 function setBahasaMode(mode, data = {}) {
   const instructions = document.getElementById('bahasa-instructions');
   const songsListContainer = document.getElementById('bahasa-songs-list');
@@ -1566,6 +1584,7 @@ function setBahasaMode(mode, data = {}) {
 
   if (mode === 1) {
     isBahasaPlayback = false;
+    highlightGreetingChip(null);
     if (instructions) instructions.style.display = 'flex';
     if (songsListContainer) {
       songsListContainer.style.display = 'none';
@@ -1585,6 +1604,7 @@ function setBahasaMode(mode, data = {}) {
       if (aiStatus) aiStatus.textContent = `Deteksi kata selesai! Wilayah: ${data.region}`;
     }
 
+    highlightGreetingChip(data.region);
     renderBahasaSongs(data.region);
   }
 }

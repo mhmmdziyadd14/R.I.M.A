@@ -1650,14 +1650,9 @@ function renderBahasaSongs(region) {
   );
 
   let htmlContent = `
-    <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-      <div>
-        <span style="font-size: 13px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; display: block;">Hasil Deteksi • ${clusterInfo.island}</span>
-        <h2 style="font-family: var(--font-header); font-size: 28px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${resolvedRegion}</h2>
-      </div>
-      <button onclick="setBahasaMode(1)" style="background: #fff; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 12px; font-weight: 700; color: #FF8A65; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); flex-shrink: 0;">
-        <i class="fa-solid fa-rotate-left"></i> Deteksi Ulang
-      </button>
+    <div style="margin-bottom: 24px;">
+      <span style="font-size: 13px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; display: block;">Hasil Deteksi • ${clusterInfo.island}</span>
+      <h2 style="font-family: var(--font-header); font-size: 28px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${resolvedRegion}</h2>
     </div>
   `;
 

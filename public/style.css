@@ -1636,8 +1636,8 @@ body {
   right: 48px;
   left: auto;
   transform: translateY(0);
-  width: calc(50% - 70px);
-  max-width: 540px;
+  width: calc(50% - 68px);
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);

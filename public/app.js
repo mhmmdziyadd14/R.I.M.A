@@ -1515,40 +1515,142 @@ function mapPitchNameToNoteNumber(pitchName) {
   return null;
 }
 
-// 10. Language Classification (AI Perekam CRNN)
-async function triggerLanguageClassification() {
+// 10. Language Classification (AI Perekam CRNN - Hold-to-Record)
+let mediaRecorderBahasa = null;
+let audioChunksBahasa = [];
+let isRecordingBahasa = false;
+
+function setupBahasaMicEvents() {
+  const micBtn = document.getElementById('mic-bahasa-btn');
+  if (!micBtn) return;
+
+  // Press & Hold to Record
+  micBtn.addEventListener('mousedown', startBahasaRecording);
+  micBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    startBahasaRecording();
+  });
+
+  // Release to Stop & Classify
+  micBtn.addEventListener('mouseup', stopBahasaRecording);
+  micBtn.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    stopBahasaRecording();
+  });
+  micBtn.addEventListener('mouseleave', () => {
+    if (isRecordingBahasa) {
+      stopBahasaRecording();
+    }
+  });
+}
+
+async function startBahasaRecording() {
+  if (isRecordingBahasa) return;
+
+  // REQUIREMENT: Stop media player immediately when mic is pressed!
+  stopAllPlaybacks();
+
   const micBtn = document.getElementById('mic-bahasa-btn');
   const sonar = document.getElementById('ai-waves');
   const statusText = document.getElementById('ai-status');
 
-  micBtn.disabled = true;
-  micBtn.classList.add('active');
-  sonar.classList.add('active');
-  statusText.textContent = 'Merekam kata sapaan selama 2.0 detik...';
+  isRecordingBahasa = true;
+
+  if (micBtn) micBtn.classList.add('active');
+  if (sonar) sonar.classList.add('active');
+  if (statusText) statusText.textContent = 'Merekam... Lepaskan tombol setelah selesai bicara';
+
+  audioChunksBahasa = [];
 
   try {
-    const response = await fetch(`${settings.hostApi}/api/record-and-classify`, { method: 'POST' });
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderBahasa = new MediaRecorder(stream);
+      mediaRecorderBahasa.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksBahasa.push(event.data);
+        }
+      };
+      mediaRecorderBahasa.start();
+    }
+  } catch (err) {
+    console.warn("MediaRecorder browser tidak tersedia, menggunakan fallback server mic:", err);
+  }
+}
+
+async function stopBahasaRecording() {
+  if (!isRecordingBahasa) return;
+  isRecordingBahasa = false;
+
+  const micBtn = document.getElementById('mic-bahasa-btn');
+  const sonar = document.getElementById('ai-waves');
+  const statusText = document.getElementById('ai-status');
+
+  if (micBtn) micBtn.classList.remove('active');
+  if (sonar) sonar.classList.remove('active');
+  if (statusText) statusText.textContent = 'Menganalisis ucapan kata sapaan...';
+
+  // If MediaRecorder browser was running
+  if (mediaRecorderBahasa && mediaRecorderBahasa.state !== 'inactive') {
+    mediaRecorderBahasa.onstop = async () => {
+      const audioBlob = new Blob(audioChunksBahasa, { type: 'audio/wav' });
+      if (mediaRecorderBahasa.stream) {
+        mediaRecorderBahasa.stream.getTracks().forEach(track => track.stop());
+      }
+      await processUploadedAudioBlob(audioBlob);
+    };
+    mediaRecorderBahasa.stop();
+  } else {
+    // Fallback: Use backend record-and-classify endpoint
+    await triggerLanguageClassificationBackend();
+  }
+}
+
+async function processUploadedAudioBlob(blob) {
+  const statusText = document.getElementById('ai-status');
+  const formData = new FormData();
+  formData.append('file', blob, 'recording.wav');
+
+  try {
+    const response = await fetch(`${settings.hostApi}/api/classify-audio`, {
+      method: 'POST',
+      body: formData
+    });
+
     if (response.ok) {
       const data = await response.json();
-      
-      // Mode 2: Switch to Mode 2 (Shows Region's Song List & Updates HUD)
       setBahasaMode(2, data);
-
-      // Automatically play matched regional song right here
       if (data.song) {
         setTimeout(() => {
           playBahasaSong(data.song);
         }, 500);
       }
     } else {
-      statusText.textContent = 'Gagal memproses klasifikasi suara.';
+      await triggerLanguageClassificationBackend();
+    }
+  } catch (err) {
+    console.warn("Error unggah classify-audio, menggunakan fallback backend:", err);
+    await triggerLanguageClassificationBackend();
+  }
+}
+
+async function triggerLanguageClassificationBackend() {
+  const statusText = document.getElementById('ai-status');
+  try {
+    const response = await fetch(`${settings.hostApi}/api/record-and-classify`, { method: 'POST' });
+    if (response.ok) {
+      const data = await response.json();
+      setBahasaMode(2, data);
+      if (data.song) {
+        setTimeout(() => {
+          playBahasaSong(data.song);
+        }, 500);
+      }
+    } else {
+      if (statusText) statusText.textContent = 'Gagal memproses klasifikasi suara.';
     }
   } catch (e) {
-    statusText.textContent = 'Gagal menghubungi server backend AI.';
-  } finally {
-    micBtn.disabled = false;
-    micBtn.classList.remove('active');
-    sonar.classList.remove('active');
+    if (statusText) statusText.textContent = 'Gagal menghubungi server backend AI.';
   }
 }
 
@@ -1796,6 +1898,7 @@ function prevMenu() {
 // Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
   updateMenuSlider();
+  setupBahasaMicEvents();
 });
 // 12. Global Search Logic
 const systemIndex = [

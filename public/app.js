@@ -1786,3 +1786,27 @@ document.addEventListener('click', (e) => {
     dropdown.classList.add('hide');
   }
 });
+
+// Explicitly register UI event handler functions on global window object
+window.navigateTo = navigateTo;
+window.toggleSettingsModal = toggleSettingsModal;
+window.switchSettingTab = switchSettingTab;
+window.saveConnectionSettings = saveConnectionSettings;
+window.scanMidiDevices = scanMidiDevices;
+window.updateVolumeLabels = updateVolumeLabels;
+window.searchSongs = searchSongs;
+window.loadSongsList = loadSongsList;
+window.filterSongs = filterSongs;
+window.stopSongPlayback = stopSongPlayback;
+window.seekSong = seekSong;
+window.playSong = playSong;
+window.playNextSong = playNextSong;
+window.playPrevSong = playPrevSong;
+window.togglePlayPause = togglePlayPause;
+window.toggleShuffle = toggleShuffle;
+window.toggleRepeat = toggleRepeat;
+window.toggleRepeaterListening = toggleRepeaterListening;
+window.triggerLanguageClassification = triggerLanguageClassification;
+window.handleGlobalSearch = handleGlobalSearch;
+window.nextMenu = nextMenu;
+window.prevMenu = prevMenu;

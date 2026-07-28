@@ -1,47 +1,44 @@
 import os
 
-# Paths
+# Base Directories
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATASET_RAW_DIR = os.path.join(BASE_DIR, "Dataset", "raw")
+DATASET_DIR = os.path.join(BASE_DIR, "Dataset")
 SONGS_DIR = os.path.join(BASE_DIR, "Songs")
-MODEL_SAVE_PATH = os.path.join(BASE_DIR, "best_model.pth")
+MODELS_DIR = os.path.join(BASE_DIR, "models_saved")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output_evaluations")
 
 # Audio Config
 SAMPLE_RATE = 16000
-DURATION = 1.5  # seconds
-NUM_SAMPLES = int(SAMPLE_RATE * DURATION)  # 24000 samples
-
-# Feature Extraction (MFCC) Config
-N_MFCC = 40
+N_MELS = 64
 N_FFT = 1024
 HOP_LENGTH = 512
+N_MFCC = 40
 
 # Training Config
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 LEARNING_RATE = 0.001
-EPOCHS = 30
+EPOCHS = 50
 VAL_SPLIT = 0.2
+RANDOM_SEED = 42
 
-# Classes mapping
+# Classes mapping from Dataset folder names
 CLASSES = [
-    "aceh",       # Peue Haba
-    "batak",      # Horas
-    "sunda",      # Sampurasun
-    "jawa",       # Sugeng / Kulanuwun
-    "bali",       # Om Swastyastu
-    "sulsel",     # Salama'ki
-    "papua",      # Amolongo / Apuse
-    "unknown",    # Kelas negatif (kata lain)
-    "silence"     # Kelas negatif (hening/ambient)
+    "Adil",          # Dayak (Adil Ka' Talino)
+    "Horas",         # Batak
+    "Kula Nuwun",    # Jawa
+    "Peuhaba",       # Aceh
+    "Sampurasun",    # Sunda
+    "Tabea",         # Minahasa / Maluku
+    "Wawawa"         # Papua
 ]
 
-# Songs mapping corresponding to classes
+# Songs mapping for inference audio playback
 SONG_MAP = {
-    "aceh": "bungong_jeumpa.mp3",
-    "batak": "sinanggar_tulo.mp3",
-    "sunda": "manuk_dadali.mp3",
-    "jawa": "suwe_ora_jamu.mp3",
-    "bali": "mejangeran.mp3",
-    "sulsel": "angin_mamiri.mp3",
-    "papua": "apuse.mp3"
+    "Adil": "adil_dayak.mp3",
+    "Horas": "sinanggar_tulo.mp3",
+    "Kula Nuwun": "suwe_ora_jamu.mp3",
+    "Peuhaba": "bungong_jeumpa.mp3",
+    "Sampurasun": "manuk_dadali.mp3",
+    "Tabea": "mejangeran.mp3",
+    "Wawawa": "apuse.mp3"
 }

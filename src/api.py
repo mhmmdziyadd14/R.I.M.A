@@ -4,10 +4,11 @@ import re
 # Auto-resolve parent folder in python path to prevent import errors
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import socket
 import threading
 import time
 import asyncio
+import glob
+import random
 import numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,7 +47,8 @@ try:
     import torch
     import librosa
     import soundfile as sf
-    from src.model import AudioCNN
+    from src.model import GreetingCRNN
+    from src.dataset import extract_mel_spectrogram
     HAS_AI = True
 except ImportError as e:
     HAS_AI = False
@@ -64,7 +66,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load CNN Model
+# Load CRNN Model
 device = None
 model = None
 
@@ -74,30 +76,22 @@ def init_model():
         return
     try:
         device = torch.device("cpu")
-        if os.path.exists(config.MODEL_SAVE_PATH):
-            model = AudioCNN(num_classes=len(config.CLASSES)).to(device)
-            model.load_state_dict(torch.load(config.MODEL_SAVE_PATH, map_location=device))
+        model_path = os.path.join(config.MODELS_DIR, "best_model_CRNN.pth")
+        # if not os.path.exists(model_path):
+        #     model_path = os.path.join(config.MODELS_DIR, "best_overall_model.pth")
+            
+        if os.path.exists(model_path):
+            model = GreetingCRNN(num_classes=len(config.CLASSES)).to(device)
+            model.load_state_dict(torch.load(model_path, map_location=device))
             model.eval()
-            print("[MODEL] Model PyTorch berhasil dimuat.")
+            print(f"[MODEL] Model PyTorch CRNN berhasil dimuat dari '{model_path}'.")
         else:
-            print(f"[WARNING] File model '{config.MODEL_SAVE_PATH}' belum ada. Silakan lakukan training.")
+            print(f"[WARNING] File model CRNN '{model_path}' belum ada. Silakan lakukan training.")
     except Exception as e:
-        print(f"[MODEL] Gagal memuat model: {e}")
+        print(f"[MODEL] Gagal memuat model CRNN: {e}")
 
 if HAS_AI:
     init_model()
-
-# Frequency to Note mapping helper
-NOTE_FREQS = {
-    "C4": 261.63,
-    "D4": 293.66,
-    "E4": 329.63,
-    "F4": 349.23,
-    "G4": 392.00,
-    "A4": 440.00,
-    "B4": 493.88,
-    "C5": 523.25,
-}
 
 def frequency_to_note(freq):
     if freq < 65 or freq > 1200:
@@ -164,24 +158,10 @@ def detect_pitch(signal, sr):
     return freq
 
 def preprocess_audio_data(y):
-    """Pads/crops audio array to config.NUM_SAMPLES and extracts MFCC."""
-    # Ensure audio length is exactly NUM_SAMPLES
-    if len(y) < config.NUM_SAMPLES:
-        y = np.pad(y, (0, config.NUM_SAMPLES - len(y)), mode='constant')
-    elif len(y) > config.NUM_SAMPLES:
-        y = y[:config.NUM_SAMPLES]
-        
-    # Extract MFCC
-    mfcc = librosa.feature.mfcc(
-        y=y, 
-        sr=config.SAMPLE_RATE, 
-        n_mfcc=config.N_MFCC, 
-        n_fft=config.N_FFT, 
-        hop_length=config.HOP_LENGTH
-    )
-    mfcc = np.expand_dims(mfcc, axis=0) # Add channel
-    mfcc = np.expand_dims(mfcc, axis=0) # Add batch
-    return torch.tensor(mfcc, dtype=torch.float32)
+    """Extracts Mel-Spectrogram features for CRNN model inference."""
+    mel_spec = extract_mel_spectrogram(y, sr=config.SAMPLE_RATE)
+    # Shape for CRNN: (1, 1, N_MELS, Time_Steps)
+    return torch.tensor(mel_spec, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
 
 @app.get("/api/health")
 def health_check():
@@ -215,8 +195,9 @@ def init_pygame_mixer():
         return True
     try:
         pygame.mixer.init()
+        pygame.mixer.set_num_channels(64)
         pygame_mixer_initialized = True
-        print("[AUDIO] Pygame mixer berhasil diaktifkan!")
+        print("[AUDIO] Pygame mixer berhasil diaktifkan dengan 64 channels!")
         return True
     except Exception as e:
         print(f"[AUDIO] Gagal mengaktifkan pygame mixer: {e}")
@@ -580,11 +561,6 @@ def arduino_play_multi(a1: str = "", a3: str = ""):
 song_playback_active = False
 current_playback_thread = None
 current_playback_token = 0
-
-active_playback_notes = {1: set(), 3: set()}
-active_playback_notes_lock = threading.Lock()
-playback_repeater_thread = None
-playback_repeater_active = False
 
 current_playback_status = {
     "active": False,
@@ -1436,28 +1412,85 @@ def set_volume_settings(data: dict):
         "va_staccato": global_va_staccato
     }
 
+CLASS_REGION_FOLDERS = {
+    "Adil": ["KALIMANTAN"],
+    "Horas": ["BATAK"],
+    "Kula Nuwun": ["JAWA"],
+    "Peuhaba": ["ACEH"],
+    "Sampurasun": ["SUNDA"],
+    "Tabea": ["SULAWESI"],
+    "Wawawa": ["PAPUA"]
+}
+
+def get_random_regional_song(predicted_class: str) -> dict:
+    """Finds all .123 songs for the predicted regional class and selects a random one."""
+    folders = CLASS_REGION_FOLDERS.get(predicted_class, [])
+    candidate_songs = []
+    
+    for folder in folders:
+        folder_path = os.path.join(SONGS_DIR, folder)
+        if os.path.exists(folder_path):
+            files = glob.glob(os.path.join(folder_path, "*.123"))
+            candidate_songs.extend(files)
+            
+    if not candidate_songs:
+        all_files = glob.glob(os.path.join(SONGS_DIR, "**", "*.123"), recursive=True)
+        for f in all_files:
+            rel_path = os.path.relpath(f, SONGS_DIR).replace('\\', '/')
+            folder_name = rel_path.split('/')[0] if '/' in rel_path else ''
+            if folder_name.upper() in [fol.upper() for fol in folders]:
+                candidate_songs.append(f)
+                
+    if not candidate_songs:
+        candidate_songs = glob.glob(os.path.join(SONGS_DIR, "**", "*.123"), recursive=True)
+        
+    if not candidate_songs:
+        return None
+        
+    selected_path = random.choice(candidate_songs)
+    rel_path = os.path.relpath(selected_path, SONGS_DIR).replace('\\', '/')
+    
+    title = os.path.basename(selected_path).replace(".123", "").replace("_", " ")
+    try:
+        content = read_file_safely(selected_path)
+        for line in content.split('\n')[:15]:
+            line = line.strip()
+            if line.startswith('T:'):
+                title = line.split(':', 1)[1].strip()
+                break
+    except:
+        pass
+        
+    return {
+        "file_name": rel_path,
+        "title": title,
+        "region": predicted_class.upper()
+    }
+
 @app.post("/api/record-and-classify")
 def record_and_classify():
-    """Records 1.5 seconds of audio from the server's microphone and runs classification."""
+    """Records 2.0 seconds of audio from the server's microphone and runs CRNN classification."""
     global model
     if model is None:
         init_model()
         if model is None:
-            raise HTTPException(status_code=503, detail="Model belum dilatih atau tidak ditemukan.")
+            raise HTTPException(status_code=503, detail="Model CRNN belum dilatih atau tidak ditemukan.")
             
     try:
-        print("[API] Perekaman dimulai (1.5 detik)...")
+        rec_duration = 2.0
+        print(f"[API-CRNN] Perekaman mic dimulai ({rec_duration} detik)...")
         recording = sd.rec(
-            int(config.NUM_SAMPLES), 
+            int(config.SAMPLE_RATE * rec_duration), 
             samplerate=config.SAMPLE_RATE, 
             channels=1, 
             dtype='float32'
         )
         sd.wait()
-        print("[API] Perekaman selesai. Menganalisis...")
+        print("[API-CRNN] Perekaman selesai. Menganalisis ucapan kata sapaan...")
         
-        # Inference
-        inputs = preprocess_audio_data(recording.flatten()).to(device)
+        # CRNN Inference
+        audio = recording.flatten()
+        inputs = preprocess_audio_data(audio).to(device)
         with torch.no_grad():
             outputs = model(inputs)
             probabilities = torch.softmax(outputs, dim=1)[0]
@@ -1466,50 +1499,52 @@ def record_and_classify():
             predicted_class = config.CLASSES[class_idx.item()]
             conf_val = confidence.item()
             
-        print(f"[API] Hasil: {predicted_class} ({conf_val:.2f})")
+        print(f"[API-CRNN] Hasil Klasifikasi: {predicted_class} (Akurasi: {conf_val*100:.2f}%)")
         
-        song = config.SONG_MAP.get(predicted_class, None)
+        # Pick a random regional song matching the predicted greeting word
+        song_info = get_random_regional_song(predicted_class)
+        song_file = song_info["file_name"] if song_info else None
+        song_title = song_info["title"] if song_info else predicted_class
         
         return {
             "status": "success",
             "predicted_class": predicted_class,
             "confidence": conf_val,
-            "song": song,
-            "region": predicted_class.upper() if predicted_class in config.SONG_MAP else "UNKNOWN"
+            "song": song_file,
+            "song_title": song_title,
+            "region": predicted_class.upper()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal melakukan perekaman/analisis: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Gagal melakukan perekaman/analisis CRNN: {e}")
 
 @app.post("/api/classify-audio")
 async def classify_audio(file: UploadFile = File(...)):
-    """Receives an uploaded audio file from the Flutter client and runs classification."""
+    """Receives an uploaded audio file from the client and runs CRNN classification."""
     if not HAS_AI:
-        raise HTTPException(status_code=501, detail="AI classification is disabled on this machine (missing PyTorch/Librosa)")
+        raise HTTPException(status_code=501, detail="AI classification is disabled on this machine")
     global model
     if model is None:
         init_model()
         if model is None:
-            raise HTTPException(status_code=503, detail="Model belum dilatih atau tidak ditemukan.")
+            raise HTTPException(status_code=503, detail="Model CRNN belum dilatih atau tidak ditemukan.")
             
     try:
-        # Save temp file
         temp_filename = "temp_upload.wav"
         with open(temp_filename, "wb") as buffer:
             buffer.write(await file.read())
             
-        # Load audio file using soundfile
         data, samplerate = sf.read(temp_filename)
-        os.remove(temp_filename)
-        
-        # Convert to mono if stereo
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)
+            
         if len(data.shape) > 1:
             data = data.mean(axis=1)
             
-        # Resample if needed
         if samplerate != config.SAMPLE_RATE:
             data = librosa.resample(data, orig_sr=samplerate, target_sr=config.SAMPLE_RATE)
             
-        # Inference
         inputs = preprocess_audio_data(data).to(device)
         with torch.no_grad():
             outputs = model(inputs)
@@ -1519,17 +1554,20 @@ async def classify_audio(file: UploadFile = File(...)):
             predicted_class = config.CLASSES[class_idx.item()]
             conf_val = confidence.item()
             
-        song = config.SONG_MAP.get(predicted_class, None)
+        song_info = get_random_regional_song(predicted_class)
+        song_file = song_info["file_name"] if song_info else None
+        song_title = song_info["title"] if song_info else predicted_class
         
         return {
             "status": "success",
             "predicted_class": predicted_class,
             "confidence": conf_val,
-            "song": song,
-            "region": predicted_class.upper() if predicted_class in config.SONG_MAP else "UNKNOWN"
+            "song": song_file,
+            "song_title": song_title,
+            "region": predicted_class.upper()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal memproses file audio: {e}")
+        raise HTTPException(status_code=500, detail=f"Gagal memproses file audio CRNN: {e}")
 
 @app.websocket("/ws/pitch")
 async def pitch_websocket(websocket: WebSocket):

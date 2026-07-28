@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rima-pwa-v1';
+const CACHE_NAME = 'rima-pwa-v2';
 const urlsToCache = [
   './',
   './index.html',
@@ -17,14 +17,20 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
+  if (!event.request.url.startsWith('http')) return;
+  
   event.respondWith(
-    caches.match(event.request)
+    fetch(event.request)
       .then(response => {
-        if (response) {
-          return response; // Return from cache
+        if (response && response.status === 200 && response.type === 'basic') {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, responseClone);
+          });
         }
-        return fetch(event.request); // Fetch from network
+        return response;
       })
+      .catch(() => caches.match(event.request))
   );
 });
 

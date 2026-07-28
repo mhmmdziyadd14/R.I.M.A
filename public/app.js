@@ -920,12 +920,11 @@ function renderSongCards(songArray, container) {
   container.innerHTML = '';
   
   songArray.forEach((song, index) => {
-    const cleanId = song.id.replace(/'/g, "\\'");
     const btnDomId = getSongBtnId(song.id);
     const item = document.createElement('div');
     item.className = 'song-item';
     item.id = `row-${btnDomId}`;
-    item.onclick = () => playSong(cleanId); // Klik baris memutar lagu
+    item.onclick = () => playSong(song.id); // Klik baris memutar lagu
     item.innerHTML = `
       <div class="song-info">
         <span class="song-index">${index + 1}</span>
@@ -1492,7 +1491,7 @@ function mapPitchNameToNoteNumber(pitchName) {
   return null;
 }
 
-// 10. Language Classification (AI Perekam)
+// 10. Language Classification (AI Perekam CRNN)
 async function triggerLanguageClassification() {
   const micBtn = document.getElementById('mic-bahasa-btn');
   const sonar = document.getElementById('ai-waves');
@@ -1501,26 +1500,24 @@ async function triggerLanguageClassification() {
   micBtn.disabled = true;
   micBtn.classList.add('active');
   sonar.classList.add('active');
-  statusText.textContent = 'Merekam ucapan Anda selama 1.5 detik...';
+  statusText.textContent = 'Merekam kata sapaan selama 2.0 detik...';
 
   try {
     const response = await fetch(`${settings.hostApi}/api/record-and-classify`, { method: 'POST' });
     if (response.ok) {
       const data = await response.json();
       
-      document.getElementById('ai-class').textContent = data.predicted_class.toUpperCase();
+      const displayClass = data.song_title ? `${data.predicted_class.toUpperCase()} (${data.song_title})` : data.predicted_class.toUpperCase();
+      document.getElementById('ai-class').textContent = displayClass;
       document.getElementById('ai-conf').textContent = `${(data.confidence * 100).toFixed(0)}%`;
-      statusText.textContent = `Deteksi selesai! Wilayah: ${data.region}`;
+      statusText.textContent = `Deteksi kata selesai! Wilayah: ${data.region}`;
 
-      // Automatically play corresponding regional song
+      // Automatically play randomly selected regional song
       if (data.song) {
-        const matchedSong = songs.find(s => s.id === data.song);
-        if (matchedSong) {
-          setTimeout(() => {
-            navigateTo('page-pustaka');
-            playSong(matchedSong.id, matchedSong.notes);
-          }, 1500);
-        }
+        setTimeout(() => {
+          navigateTo('page-pustaka');
+          playSong(data.song);
+        }, 1200);
       }
     } else {
       statusText.textContent = 'Gagal memproses klasifikasi suara.';

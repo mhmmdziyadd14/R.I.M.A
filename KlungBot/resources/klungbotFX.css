@@ -1,0 +1,202 @@
+.tab-pane {
+    -fx-padding: 20 0 0 0;
+    -fx-background-color: #222;
+}
+
+.tab-pane *.tab-header-background {
+    -fx-background-color: #222;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab  {  
+    -fx-background-color: transparent;
+    -fx-padding: 0 40 0 20;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab > .tab-container > .tab-label {  
+    -fx-alignment: CENTER;  
+    -fx-text-fill: #DDD;  
+    -fx-font-size: 16;
+}  
+
+.tab-pane > .tab-header-area > .headers-region > .tab:selected > .tab-container > .tab-label {  
+    -fx-alignment: CENTER;  
+    -fx-text-fill: #DDD;  
+    -fx-font-weight: bold;  
+    -fx-font-size: 16;
+}  
+
+.table-view .scroll-bar:vertical > .increment-button,
+.table-view .scroll-bar:vertical > .decrement-button,
+ .table-view .scroll-bar:horizontal > .increment-button,
+ .table-view .scroll-bar:horizontal > .decrement-button{
+    -fx-padding: 0.001em 0.001em  ;
+}
+
+#panelLeft, #panelRight, #panelLeftDB, #panelRightDB {
+    -fx-background-color: #333;
+}
+
+#labelPlaylist, #labelDB {
+    -fx-font-size: 19;
+    -fx-text-fill: #DDD;
+    -fx-padding: 0 30 0 30;
+}
+
+#Playlist {
+    -fx-font-size: 34;
+}
+
+#tableSongDB {
+    -fx-font-size: 34;
+}
+#tableSongPlaylist {
+    -fx-font-size: 34;
+}
+
+#currentSong, #currentSongDB{
+    -fx-font-size: 18;
+}
+#showInfo {
+    -fx-font-size: 34;
+    -fx-background-color: #333;
+    -fx-text-fill: #DDD;
+    -fx-alignment: CENTER;
+}
+
+#searchField{
+   -fx-font-size: 15;
+}
+
+#labelSearch{
+   -fx-padding: 10 0 10 0;
+   -fx-font-size: 15;
+}
+#labelSong{
+   -fx-padding: 10 0 10 0;
+   -fx-font-size: 15;
+}
+
+
+#btPlay{
+    -fx-graphic: url("../resources/play.png");
+    -fx-background-color: #333;
+}
+
+#btPause{
+    -fx-graphic: url("../resources/pause.png");
+    -fx-background-color: #333;
+}
+
+#btStop{
+    -fx-graphic: url("../resources/stop.png");
+    -fx-background-color: #333;
+}
+
+#btPrevious{
+    -fx-graphic: url("../resources/restart.png");
+    -fx-background-color: #333;
+}
+
+#btNext{
+    -fx-graphic: url("../resources/finish.png");
+    -fx-background-color: #333;
+}
+
+#playerSetting .label{
+    -fx-font-size: 32;
+    -fx-text-fill: #DDD;
+    -fx-padding: 0 30 0 30;
+}
+
+#playerSetting .choice-box .label {
+    -fx-text-fill: #333;
+}
+
+#playerSetting .choice-box{
+    -fx-pref-width: 350;
+}
+
+#playerSetting #labelHeader{
+    -fx-font-size: 20;
+    -fx-text-fill: #DDD;
+    -fx-padding: 0 30 0 30;
+}
+
+#midiDeviceLabel{
+    -fx-font-size: 32;
+    -fx-text-fill: #DDD;
+}
+#trackLabel{
+    -fx-font-size: 32;
+    -fx-text-fill: #DDD;
+}
+#trackChoicebox{
+    -fx-font-size: 32;
+}
+
+
+.buttonPressed{-fx-background-color:#999;}
+
+#p14 { -fx-background-color:#333; }
+#p14:hover { -fx-background-color:#999; }
+#p14:pressed { -fx-background-color:#AAA; }
+#p16 { -fx-background-color:#333; }
+#p16:hover { -fx-background-color:#999; }
+#p16:pressed { -fx-background-color:#AAA; }
+#p19 { -fx-background-color:#333; }
+#p19:hover { -fx-background-color:#999; }
+#p19:pressed { -fx-background-color:#AAA; }
+#p21 { -fx-background-color:#333; }
+#p21:hover { -fx-background-color:#999; }
+#p21:pressed { -fx-background-color:#AAA; }
+#p23 { -fx-background-color:#333; }
+#p23:hover { -fx-background-color:#999; }
+#p23:pressed { -fx-background-color:#AAA; }
+#p26 { -fx-background-color:#333; }
+#p26:hover { -fx-background-color:#999; }
+#p26:pressed { -fx-background-color:#AAA; }
+#p28 { -fx-background-color:#333; }
+#p28:hover { -fx-background-color:#999; }
+#p28:pressed { -fx-background-color:#AAA; }
+#p31 { -fx-background-color:#333; }
+#p31:hover { -fx-background-color:#999; }
+#p31:pressed { -fx-background-color:#AAA; }
+#p33 { -fx-background-color:#333; }
+#p33:hover { -fx-background-color:#999; }
+#p33:pressed { -fx-background-color:#AAA; }
+#p35 { -fx-background-color:#333; }
+#p35:hover { -fx-background-color:#999; }
+#p35:pressed { -fx-background-color:#AAA; }
+#p38 { -fx-background-color:#333; }
+#p38:hover { -fx-background-color:#999; }
+#p38:pressed { -fx-background-color:#AAA; }
+#p40 { -fx-background-color:#333; }
+#p40:hover { -fx-background-color:#999; }
+#p40:pressed { -fx-background-color:#AAA; }
+#p43 { -fx-background-color:#333; }
+#p43:hover { -fx-background-color:#999; }
+#p43:pressed { -fx-background-color:#AAA; }
+#p45 { -fx-background-color:#333; }
+#p45:hover { -fx-background-color:#999; }
+#p45:pressed { -fx-background-color:#AAA; }
+#p47 { -fx-background-color:#333; }
+#p47:hover { -fx-background-color:#999; }
+#p47:pressed { -fx-background-color:#AAA; }
+
+.about *.text {
+    -fx-text-alignment: center;
+}
+
+#la1,#la2,#la3,#la4,#la5,#la6,#la7,#la8,#la9,#la10, #la11,#la12,#la13,#la14,#la15,#la16,#la17,#la18{
+    -fx-text-fill: #DDD;
+    -fx-font-size: 17;
+}
+#la1, #la8, #la14, #la18{
+    -fx-font-weight: bold;
+}
+/*
+.tab-pane *.tab-header-background {
+    -fx-background-color: -fx-outer-border, -fx-inner-border, derive(-fx-color, -20%);
+    -fx-effect: innershadow(two-pass-box , rgba(0,0,0,0.6) , 4, 0.0 , 0 , 0);
+}
+*/

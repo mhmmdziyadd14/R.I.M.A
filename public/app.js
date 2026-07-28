@@ -157,6 +157,7 @@ function startKeyTrigger(keyElement) {
     const angklungId = parseInt(keyElement.getAttribute('data-angklung') || '3', 10);
     
     document.getElementById('active-note-display').textContent = label.toUpperCase();
+    document.getElementById('notes-indicator-container').style.opacity = '1';
 
     // Play local synthesizer sound
     const freqMap = NOTE_FREQUENCIES[angklungId];
@@ -193,6 +194,7 @@ function setKeyProgrammaticState(noteNum, angklungId, isDown) {
     if (isDown) {
       key.classList.add('active');
       document.getElementById('active-note-display').textContent = key.getAttribute('data-label').toUpperCase();
+      document.getElementById('notes-indicator-container').style.opacity = '1';
       
       const freqMap = NOTE_FREQUENCIES[angklungId];
       if (freqMap && freqMap[noteNum]) {
@@ -691,6 +693,7 @@ function triggerKeyOn(keyElement) {
   // Show active visual trigger
   keyElement.classList.add('active');
   document.getElementById('active-note-display').textContent = label.toUpperCase();
+  document.getElementById('notes-indicator-container').style.opacity = '1';
 
   // Play client-side audio synth instantly
   const freqMap = NOTE_FREQUENCIES[angklungId];
@@ -713,6 +716,7 @@ function highlightKeyProgrammatic(noteNum, angklungId = 3, playSound = true) {
   if (key) {
     key.classList.add('active');
     document.getElementById('active-note-display').textContent = key.getAttribute('data-label').toUpperCase();
+    document.getElementById('notes-indicator-container').style.opacity = '1';
     
     if (playSound) {
       const freqMap = NOTE_FREQUENCIES[angklungId];
@@ -765,15 +769,17 @@ function midiToPitchName(midi, preferBass) {
   return pitch;
 }
 
-// 7. Chord Triggering (C, Cm, C#, C#m, ... B, Bm)
+// 7. Chord Triggering
 function playChord(chordName) {
   let rootName = chordName;
-  let isMinor = false;
+  let suffix = '';
   
-  if (chordName.endsWith('m')) {
-    rootName = chordName.slice(0, -1);
-    isMinor = true;
-  }
+  // Extract root and suffix
+  const regex = /^([A-G][#b]?)(.*)$/;
+  const match = chordName.match(regex);
+  if (!match) return;
+  rootName = match[1];
+  suffix = match[2];
   
   const rootMap = {
     'C': 60, 'C#': 61, 'Db': 61, 'D': 62, 'D#': 63, 'Eb': 63,
@@ -784,10 +790,16 @@ function playChord(chordName) {
   const rootMidi = rootMap[rootName];
   if (!rootMidi) return;
   
-  const thirdOffset = isMinor ? 3 : 4;
-  const fifthOffset = 7;
+  let offsets = [];
+  if (suffix === '') offsets = [0, 4, 7]; // Major
+  else if (suffix === 'm') offsets = [0, 3, 7]; // Minor
+  else if (suffix === '7') offsets = [0, 4, 7, 10]; // Dominant 7th
+  else if (suffix === 'maj7') offsets = [0, 4, 7, 11]; // Major 7th
+  else if (suffix === 'm7') offsets = [0, 3, 7, 10]; // Minor 7th
+  else if (suffix === 'dim') offsets = [0, 3, 6]; // Diminished
+  else return; // Unsupported
   
-  const melodyNotes = [rootMidi, rootMidi + thirdOffset, rootMidi + fifthOffset];
+  const melodyNotes = offsets.map(o => rootMidi + o);
   
   let bassMidi = rootMidi;
   while (bassMidi < 52) bassMidi += 12;
@@ -814,6 +826,7 @@ function playChord(chordName) {
   });
 
   document.getElementById('active-note-display').textContent = chordName;
+  document.getElementById('notes-indicator-container').style.opacity = '1';
 
   const arduino1Notes = [];
   const arduino3Notes = [];
@@ -1352,6 +1365,11 @@ async function toggleRepeaterListening() {
   sonar.classList.add('active');
   statusText.textContent = 'Merekam nada... Tekan lagi untuk putar ulang!';
 
+  // Clear sequence
+  const sequenceContainer = document.getElementById('repeater-note-sequence');
+  if (sequenceContainer) sequenceContainer.innerHTML = '';
+  window.lastRepeaterNote = null;
+
   // Connect to FastAPI WebSocket endpoint
   const wsHost = settings.hostApi.replace('http://', 'ws://');
   try {
@@ -1385,6 +1403,7 @@ async function toggleRepeaterListening() {
       if (detectedNote !== currentRecNote) {
         const dur = now - currentRecStart;
         
+<<<<<<< HEAD
         if (dur >= 100) {
           // Nada atau hening yang cukup panjang, simpan sebagai blok baru
           if (currentRecNote !== null || recordedSequence.length > 0) {
@@ -1410,6 +1429,23 @@ async function toggleRepeaterListening() {
           if (hw) {
             // false: tidak memutar suara synth (hanya animasi visual) saat merekam
             highlightKeyProgrammatic(hw.note, hw.angklung, false);
+=======
+        // Match frequency to closest note number and trigger flash
+        if (data.note) {
+          const matchedNote = mapPitchNameToNoteNumber(data.note);
+          if (matchedNote) highlightKeyProgrammatic(matchedNote);
+          
+          // Append to sequence if note changes
+          if (window.lastRepeaterNote !== data.note) {
+            window.lastRepeaterNote = data.note;
+            if (sequenceContainer) {
+              const chip = document.createElement('div');
+              chip.textContent = data.note;
+              chip.style.cssText = 'background: #e8f5e9; color: #2e7d32; padding: 12px 20px; border-radius: 12px; font-weight: 800; font-size: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 1px solid #c8e6c9; min-width: 60px; text-align: center;';
+              sequenceContainer.appendChild(chip);
+              sequenceContainer.scrollTop = sequenceContainer.scrollHeight;
+            }
+>>>>>>> origin/UI
           }
         }
       }
@@ -1512,12 +1548,14 @@ async function triggerLanguageClassification() {
       document.getElementById('ai-conf').textContent = `${(data.confidence * 100).toFixed(0)}%`;
       statusText.textContent = `Deteksi kata selesai! Wilayah: ${data.region}`;
 
-      // Automatically play randomly selected regional song
+      // Render regional song list on the Deteksi Bahasa page right panel
+      renderBahasaSongs(data.region);
+
+      // Automatically play matched regional song right here without navigating to Pustaka Lagu
       if (data.song) {
         setTimeout(() => {
-          navigateTo('page-pustaka');
           playSong(data.song);
-        }, 1200);
+        }, 800);
       }
     } else {
       statusText.textContent = 'Gagal memproses klasifikasi suara.';
@@ -1529,6 +1567,44 @@ async function triggerLanguageClassification() {
     micBtn.classList.remove('active');
     sonar.classList.remove('active');
   }
+}
+
+function renderBahasaSongs(region) {
+  const instructions = document.getElementById('bahasa-instructions');
+  const songsListContainer = document.getElementById('bahasa-songs-list');
+  
+  if (!instructions || !songsListContainer) return;
+  
+  instructions.style.display = 'none';
+  songsListContainer.style.display = 'block';
+  
+  // Filter songs based on region (or folder if region matches)
+  const filtered = songs.filter(s => s.region.toLowerCase() === region.toLowerCase() || s.folder.toLowerCase() === region.toLowerCase());
+  
+  if (filtered.length === 0) {
+    songsListContainer.innerHTML = `
+      <div style="text-align: center; padding: 40px; color: #888;">
+        <i class="fa-solid fa-music" style="font-size: 32px; margin-bottom: 16px; opacity: 0.5;"></i>
+        <p>Tidak ada lagu yang ditemukan untuk daerah ${region}.</p>
+      </div>`;
+    return;
+  }
+  
+  songsListContainer.innerHTML = `
+    <div style="margin-bottom: 24px;">
+      <span style="font-size: 14px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; display: block;">Hasil Deteksi</span>
+      <h2 style="font-family: var(--font-header); font-size: 28px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${region}</h2>
+    </div>
+  ` + filtered.map(song => `
+    <div class="song-item" onclick="playSong('${song.id}')">
+      <div class="song-icon"><i class="fa-solid fa-music"></i></div>
+      <div class="song-info">
+        <h4>${song.title}</h4>
+        <p>${song.folder} • ${song.region}</p>
+      </div>
+      <button class="song-play-btn"><i class="fa-solid fa-play"></i></button>
+    </div>
+  `).join('');
 }
 
 // Helper: Stop all active timers/sockets when exiting a page
@@ -1582,3 +1658,131 @@ function stopAllPlaybacks() {
   // Stop any custom song playing on Python backend
   fetch(`${settings.hostApi}/api/arduino/stop_song`).catch(() => {});
 }
+
+// 11. Homepage Slider Logic
+let currentMenuIndex = 0;
+
+function updateMenuSlider() {
+  const track = document.getElementById('menu-slider-track');
+  if (!track) return;
+  const cards = track.querySelectorAll('.cn-card-wrapper');
+  
+  cards.forEach((card, index) => {
+    if (index === currentMenuIndex) {
+      card.classList.add('active-slide');
+    } else {
+      card.classList.remove('active-slide');
+    }
+  });
+}
+
+function nextMenu() {
+  const track = document.getElementById('menu-slider-track');
+  if (!track) return;
+  const cards = track.querySelectorAll('.cn-card-wrapper');
+  if (cards.length === 0) return;
+  
+  currentMenuIndex = (currentMenuIndex + 1) % cards.length;
+  updateMenuSlider();
+}
+
+function prevMenu() {
+  const track = document.getElementById('menu-slider-track');
+  if (!track) return;
+  const cards = track.querySelectorAll('.cn-card-wrapper');
+  if (cards.length === 0) return;
+  
+  currentMenuIndex = (currentMenuIndex - 1 + cards.length) % cards.length;
+  updateMenuSlider();
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+  updateMenuSlider();
+});
+// 12. Global Search Logic
+const systemIndex = [
+  { type: 'Menu', title: 'Pustaka Lagu', subtitle: 'Koleksi Daerah', icon: 'fa-music', badgeClass: 'badge-menu', action: () => navigateTo('page-pustaka') },
+  { type: 'Menu', title: 'Kontrol Manual', subtitle: 'Main Interaktif', icon: 'fa-keyboard', badgeClass: 'badge-menu', action: () => navigateTo('page-manual') },
+  { type: 'Menu', title: 'Repeater', subtitle: 'Ikuti Irama', icon: 'fa-microphone', badgeClass: 'badge-menu', action: () => navigateTo('page-repeater') },
+  { type: 'Menu', title: 'Deteksi Bahasa', subtitle: 'Perintah Suara', icon: 'fa-volume-high', badgeClass: 'badge-menu', action: () => navigateTo('page-bahasa') },
+  { type: 'Pengaturan', title: 'Koneksi Port Angklung', subtitle: 'Serial COM, Host API, Simulasi', icon: 'fa-plug', badgeClass: 'badge-pengaturan', action: () => { toggleSettingsModal(); switchSettingTab('koneksi'); } },
+  { type: 'Pengaturan', title: 'Volume & Audio', subtitle: 'Volume Synth, Fisik, Keseimbangan Track', icon: 'fa-sliders', badgeClass: 'badge-pengaturan', action: () => { toggleSettingsModal(); switchSettingTab('volume'); } }
+];
+
+function handleGlobalSearch(query) {
+  const dropdown = document.getElementById('global-search-dropdown');
+  if (!dropdown) return;
+
+  if (query.length < 2) {
+    dropdown.classList.add('hide');
+    return;
+  }
+
+  query = query.toLowerCase();
+  
+  // Search system index
+  const matchedSystem = systemIndex.filter(item => 
+    item.title.toLowerCase().includes(query) || item.subtitle.toLowerCase().includes(query) || item.type.toLowerCase().includes(query)
+  );
+  
+  // Search songs (limit to 5 results to keep dropdown clean)
+  const matchedSongs = songs.filter(s => 
+    s.title.toLowerCase().includes(query) || s.folder.toLowerCase().includes(query) || s.region.toLowerCase().includes(query)
+  ).slice(0, 5).map(s => ({
+    type: 'Lagu',
+    title: s.title,
+    subtitle: `${s.folder} • ${s.region}`,
+    icon: 'fa-compact-disc',
+    badgeClass: 'badge-lagu',
+    action: () => {
+      document.getElementById('cn-search-input').value = '';
+      dropdown.classList.add('hide');
+      navigateTo('page-pustaka');
+      setTimeout(() => playSong(s.id, s.notes), 400); // Give time for UI transition
+    }
+  }));
+
+  const allResults = [...matchedSystem, ...matchedSongs];
+
+  if (allResults.length === 0) {
+    dropdown.innerHTML = `<div style="padding: 20px; text-align: center; color: #888;">Tidak ada hasil untuk "${query}"</div>`;
+  } else {
+    dropdown.innerHTML = allResults.map((result, idx) => `
+      <div class="search-result-item" onclick="executeGlobalSearchAction(${idx})">
+        <div class="search-result-icon">
+          <i class="fa-solid ${result.icon}"></i>
+        </div>
+        <div class="search-result-info">
+          <h4>${result.title}</h4>
+          <p>${result.subtitle}</p>
+        </div>
+        <div class="search-result-badge ${result.badgeClass}">${result.type}</div>
+      </div>
+    `).join('');
+    
+    // Store results globally to execute actions via onclick string
+    window.currentGlobalSearchResults = allResults;
+  }
+  
+  dropdown.classList.remove('hide');
+}
+
+window.executeGlobalSearchAction = function(index) {
+  const result = window.currentGlobalSearchResults[index];
+  if (result && result.action) {
+    const dropdown = document.getElementById('global-search-dropdown');
+    document.getElementById('cn-search-input').value = '';
+    dropdown.classList.add('hide');
+    result.action();
+  }
+};
+
+// Close dropdown on click outside
+document.addEventListener('click', (e) => {
+  const searchContainer = document.querySelector('.nav-search');
+  const dropdown = document.getElementById('global-search-dropdown');
+  if (searchContainer && dropdown && !searchContainer.contains(e.target)) {
+    dropdown.classList.add('hide');
+  }
+});

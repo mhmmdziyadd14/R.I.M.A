@@ -1593,18 +1593,33 @@ function resetBahasaPage() {
   setBahasaMode(1);
 }
 
+const GREETING_TO_REGION = {
+  "adil": "KALIMANTAN",
+  "horas": "BATAK",
+  "kula nuwun": "JAWA",
+  "peuhaba": "ACEH",
+  "sampurasun": "SUNDA",
+  "tabea": "SULAWESI",
+  "wawawa": "PAPUA"
+};
+
 function renderBahasaSongs(region) {
   const songsListContainer = document.getElementById('bahasa-songs-list');
   if (!songsListContainer || !region) return;
 
-  const filtered = songs.filter(s => s.region.toLowerCase() === region.toLowerCase() || s.folder.toLowerCase() === region.toLowerCase());
+  const resolvedRegion = GREETING_TO_REGION[region.toLowerCase()] || region;
+
+  const filtered = songs.filter(s => 
+    s.region.toLowerCase() === resolvedRegion.toLowerCase() || 
+    s.folder.toLowerCase() === resolvedRegion.toLowerCase()
+  );
 
   if (filtered.length === 0) {
     songsListContainer.innerHTML = `
       <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
         <div>
           <span style="font-size: 14px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; display: block;">Hasil Deteksi</span>
-          <h2 style="font-family: var(--font-header); font-size: 26px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${region}</h2>
+          <h2 style="font-family: var(--font-header); font-size: 26px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${resolvedRegion.toUpperCase()}</h2>
         </div>
         <button onclick="setBahasaMode(1)" style="background: #fff; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 12px; font-weight: 700; color: #FF8A65; cursor: pointer; display: flex; align-items: center; gap: 8px;">
           <i class="fa-solid fa-rotate-left"></i> Deteksi Ulang
@@ -1612,7 +1627,7 @@ function renderBahasaSongs(region) {
       </div>
       <div style="text-align: center; padding: 40px; color: #888;">
         <i class="fa-solid fa-music" style="font-size: 32px; margin-bottom: 16px; opacity: 0.5;"></i>
-        <p>Tidak ada lagu yang ditemukan untuk daerah ${region}.</p>
+        <p>Tidak ada lagu yang ditemukan untuk daerah ${resolvedRegion}.</p>
       </div>`;
     return;
   }
@@ -1621,7 +1636,7 @@ function renderBahasaSongs(region) {
     <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
       <div>
         <span style="font-size: 14px; font-weight: 700; color: #FF8A65; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; display: block;">Hasil Deteksi</span>
-        <h2 style="font-family: var(--font-header); font-size: 26px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${region}</h2>
+        <h2 style="font-family: var(--font-header); font-size: 26px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${resolvedRegion.toUpperCase()}</h2>
       </div>
       <button onclick="setBahasaMode(1)" style="background: #fff; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 12px; font-weight: 700; color: #FF8A65; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
         <i class="fa-solid fa-rotate-left"></i> Deteksi Ulang

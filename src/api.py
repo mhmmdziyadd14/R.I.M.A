@@ -1464,7 +1464,7 @@ def get_random_regional_song(predicted_class: str) -> dict:
     return {
         "file_name": rel_path,
         "title": title,
-        "region": predicted_class.upper()
+        "region": folders[0] if folders else predicted_class.upper()
     }
 
 @app.post("/api/record-and-classify")
@@ -1506,13 +1506,15 @@ def record_and_classify():
         song_file = song_info["file_name"] if song_info else None
         song_title = song_info["title"] if song_info else predicted_class
         
+        region_name = CLASS_REGION_FOLDERS.get(predicted_class, [predicted_class])[0]
+        
         return {
             "status": "success",
             "predicted_class": predicted_class,
             "confidence": conf_val,
             "song": song_file,
             "song_title": song_title,
-            "region": predicted_class.upper()
+            "region": region_name
         }
     except Exception as e:
         import traceback
@@ -1558,13 +1560,15 @@ async def classify_audio(file: UploadFile = File(...)):
         song_file = song_info["file_name"] if song_info else None
         song_title = song_info["title"] if song_info else predicted_class
         
+        region_name = CLASS_REGION_FOLDERS.get(predicted_class, [predicted_class])[0]
+        
         return {
             "status": "success",
             "predicted_class": predicted_class,
             "confidence": conf_val,
             "song": song_file,
             "song_title": song_title,
-            "region": predicted_class.upper()
+            "region": region_name
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memproses file audio CRNN: {e}")

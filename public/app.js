@@ -895,6 +895,7 @@ let currentPlayingIndex = -1;
 let isShuffle = false;
 let isRepeat = false;
 let isManualStop = false;
+let isBahasaPlayback = false;
 
 function searchSongs(query) {
   const container = document.getElementById('songs-container');
@@ -1038,7 +1039,9 @@ function startPlaybackStatusPolling() {
             globalPlayPauseIcon.classList.add('fa-play');
           }
           
-          if (!isManualStop) {
+          if (isBahasaPlayback) {
+            resetBahasaPage();
+          } else if (!isManualStop) {
             setTimeout(() => {
               playNextSong(true);
             }, 500);
@@ -1530,13 +1533,14 @@ async function triggerLanguageClassification() {
       document.getElementById('ai-conf').textContent = `${(data.confidence * 100).toFixed(0)}%`;
       statusText.textContent = `Deteksi kata selesai! Wilayah: ${data.region}`;
 
-      // Render regional song list on the Deteksi Bahasa page right panel
+      // Mark as Bahasa page playback and render regional song list
+      isBahasaPlayback = true;
       renderBahasaSongs(data.region);
 
       // Automatically play matched regional song right here without navigating to Pustaka Lagu
       if (data.song) {
         setTimeout(() => {
-          playSong(data.song);
+          playBahasaSong(data.song);
         }, 800);
       }
     } else {
@@ -1549,6 +1553,29 @@ async function triggerLanguageClassification() {
     micBtn.classList.remove('active');
     sonar.classList.remove('active');
   }
+}
+
+function playBahasaSong(songId) {
+  isBahasaPlayback = true;
+  playSong(songId);
+}
+
+function resetBahasaPage() {
+  isBahasaPlayback = false;
+  const instructions = document.getElementById('bahasa-instructions');
+  const songsListContainer = document.getElementById('bahasa-songs-list');
+  const aiClass = document.getElementById('ai-class');
+  const aiConf = document.getElementById('ai-conf');
+  const aiStatus = document.getElementById('ai-status');
+
+  if (instructions) instructions.style.display = 'flex';
+  if (songsListContainer) {
+    songsListContainer.style.display = 'none';
+    songsListContainer.innerHTML = '';
+  }
+  if (aiClass) aiClass.textContent = '---';
+  if (aiConf) aiConf.textContent = '0%';
+  if (aiStatus) aiStatus.textContent = 'Ketuk mikrofon lalu ucapkan salam daerah';
 }
 
 function renderBahasaSongs(region) {
@@ -1578,7 +1605,7 @@ function renderBahasaSongs(region) {
       <h2 style="font-family: var(--font-header); font-size: 28px; font-weight: 800; color: #1A1A1A; margin: 0;">Lagu Daerah ${region}</h2>
     </div>
   ` + filtered.map(song => `
-    <div class="song-item" onclick="playSong('${song.id}')">
+    <div class="song-item" onclick="playBahasaSong('${song.id}')">
       <div class="song-icon"><i class="fa-solid fa-music"></i></div>
       <div class="song-info">
         <h4>${song.title}</h4>
@@ -1639,6 +1666,10 @@ function stopAllPlaybacks() {
 
   // Stop any custom song playing on Python backend
   fetch(`${settings.hostApi}/api/arduino/stop_song`).catch(() => {});
+
+  if (isBahasaPlayback) {
+    resetBahasaPage();
+  }
 }
 
 // 11. Homepage Slider Logic
@@ -1792,3 +1823,5 @@ window.triggerLanguageClassification = triggerLanguageClassification;
 window.handleGlobalSearch = handleGlobalSearch;
 window.nextMenu = nextMenu;
 window.prevMenu = prevMenu;
+window.playBahasaSong = playBahasaSong;
+window.resetBahasaPage = resetBahasaPage;

@@ -1403,7 +1403,6 @@ async function toggleRepeaterListening() {
       if (detectedNote !== currentRecNote) {
         const dur = now - currentRecStart;
         
-<<<<<<< HEAD
         if (dur >= 100) {
           // Nada atau hening yang cukup panjang, simpan sebagai blok baru
           if (currentRecNote !== null || recordedSequence.length > 0) {
@@ -1429,23 +1428,6 @@ async function toggleRepeaterListening() {
           if (hw) {
             // false: tidak memutar suara synth (hanya animasi visual) saat merekam
             highlightKeyProgrammatic(hw.note, hw.angklung, false);
-=======
-        // Match frequency to closest note number and trigger flash
-        if (data.note) {
-          const matchedNote = mapPitchNameToNoteNumber(data.note);
-          if (matchedNote) highlightKeyProgrammatic(matchedNote);
-          
-          // Append to sequence if note changes
-          if (window.lastRepeaterNote !== data.note) {
-            window.lastRepeaterNote = data.note;
-            if (sequenceContainer) {
-              const chip = document.createElement('div');
-              chip.textContent = data.note;
-              chip.style.cssText = 'background: #e8f5e9; color: #2e7d32; padding: 12px 20px; border-radius: 12px; font-weight: 800; font-size: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 1px solid #c8e6c9; min-width: 60px; text-align: center;';
-              sequenceContainer.appendChild(chip);
-              sequenceContainer.scrollTop = sequenceContainer.scrollHeight;
-            }
->>>>>>> origin/UI
           }
         }
       }

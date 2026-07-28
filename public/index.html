@@ -313,17 +313,13 @@
         <!-- Glowing Orange Mic Button -->
         <div class="repeater-mic-wrapper">
           <button id="mic-bahasa-btn" class="mic-glow-btn mic-orange" 
-            onmousedown="startLanguageClassification(event)" 
-            onmouseup="stopLanguageClassification(event)"
-            onmouseleave="stopLanguageClassification(event)"
-            ontouchstart="startLanguageClassification(event)" 
-            ontouchend="stopLanguageClassification(event)">
+            onclick="toggleLanguageClassification(event)">
             <i class="fa-solid fa-microphone-lines"></i>
           </button>
           <div class="sonar-wave wave-orange" id="ai-waves"></div>
         </div>
 
-        <p class="status-mic-text" id="ai-status">Tahan mikrofon lalu ucapkan salam daerah</p>
+        <p class="status-mic-text" id="ai-status">Ketuk mikrofon lalu ucapkan salam daerah</p>
 
         <!-- Classification HUD Card -->
         <div class="hud-card orange-hud">

@@ -1,0 +1,30 @@
+# File Model dan Fitur Data (Matrix)
+*.pkl
+*.h5
+*.npy
+
+# Folder Dataset dan Model
+Deteksi Bahasa/dataset/
+Deteksi Bahasa/models/
+dataset/
+models/
+
+# File Audio Rekaman/Mentah
+*.wav
+*.mp3
+*.ogg
+*.m4a
+
+# Python Cache & Jupyter Checkpoints
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Virtual Environment & Secrets
+venv/
+env/
+.env
+
+# OS generated files
+.DS_Store
+Thumbs.db

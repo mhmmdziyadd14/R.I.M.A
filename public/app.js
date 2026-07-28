@@ -967,6 +967,15 @@ let localRecordingLength = 0;
 let isRecordingP2T = false;
 let globalSpeechRecognition = null;
 
+function toggleLanguageClassification(event) {
+  if (event) event.preventDefault();
+  if (isRecordingP2T) {
+    stopLanguageClassification();
+  } else {
+    startLanguageClassification();
+  }
+}
+
 async function startLanguageClassification(event) {
   if (event) event.preventDefault();
   if (isRecordingP2T) return; // Prevent double trigger
@@ -980,7 +989,7 @@ async function startLanguageClassification(event) {
   sonar.classList.add('active');
 
   if (detectionMode === 'api') {
-    statusText.textContent = 'Mendengarkan (API)... Lepas untuk memproses.';
+    statusText.textContent = 'Mendengarkan (API)... Ketuk lagi untuk memproses.';
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       alert("Browser Anda tidak mendukung Web Speech API. Silakan gunakan Google Chrome.");
       isRecordingP2T = false;
@@ -1003,7 +1012,7 @@ async function startLanguageClassification(event) {
 
   } else {
     // Mode Lokal
-    statusText.textContent = 'Merekam (Lokal)... Lepas untuk memproses.';
+    statusText.textContent = 'Merekam (Lokal)... Ketuk lagi untuk memproses.';
     try {
       localMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localAudioContext = new (window.AudioContext || window.webkitAudioContext)();

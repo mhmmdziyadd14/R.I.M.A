@@ -18,14 +18,16 @@ import src.config as config
 # 3. Protect heavy AI dependencies
 try:
     import sounddevice as sd
-    import torch
     import librosa
     import soundfile as sf
-    from src.model import AudioCNN
+    import os
+    import os
+    import torch
+    from src.model import AudioCRNN
     HAS_AI = True
 except ImportError as e:
     HAS_AI = False
-    print(f"[WARN] Optional AI dependencies (torch, librosa, sounddevice, soundfile) missing: {e}")
+    print(f"[WARN] Optional AI dependencies (tensorflow, librosa, sounddevice, soundfile) missing: {e}")
     print("[WARN] Microphone pitch tracking and AI song detection are disabled. Arduino control is fully functional.")
 
 app = FastAPI(title="Angklung AI & Pitch Backend")
@@ -40,22 +42,21 @@ app.add_middleware(
 )
 
 # Load CNN Model
-device = None
 model = None
 
 def init_model():
-    global model, device
+    global model
     if not HAS_AI:
         return
     try:
-        device = torch.device("cpu")
-        if os.path.exists(config.MODEL_SAVE_PATH):
-            model = AudioCNN(num_classes=len(config.CLASSES)).to(device)
-            model.load_state_dict(torch.load(config.MODEL_SAVE_PATH, map_location=device))
+        model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Deteksi Bahasa", "models", "best_model_CRNN.pth")
+        if os.path.exists(model_path):
+            model = AudioCRNN(num_classes=len(config.CLASSES))
+            model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
             model.eval()
-            print("[MODEL] Model PyTorch berhasil dimuat.")
+            print("[MODEL] Model CRNN PyTorch berhasil dimuat.")
         else:
-            print(f"[WARNING] File model '{config.MODEL_SAVE_PATH}' belum ada. Silakan lakukan training.")
+            print(f"[WARNING] File model '{model_path}' belum ada.")
     except Exception as e:
         print(f"[MODEL] Gagal memuat model: {e}")
 
@@ -122,25 +123,41 @@ def detect_pitch(signal, sr):
     freq = sr / peak
     return freq
 
-def preprocess_audio_data(y):
-    """Pads/crops audio array to config.NUM_SAMPLES and extracts MFCC."""
-    # Ensure audio length is exactly NUM_SAMPLES
-    if len(y) < config.NUM_SAMPLES:
-        y = np.pad(y, (0, config.NUM_SAMPLES - len(y)), mode='constant')
-    elif len(y) > config.NUM_SAMPLES:
-        y = y[:config.NUM_SAMPLES]
+def preprocess_audio_data(y, max_pad_len=100):
+    """Pads/crops audio array and extracts MFCC for Keras CNN 2D."""
+    # 1. Hapus DC Offset
+    y = y - np.mean(y)
+    
+    # 2. Trim silence (sama seperti di tahap training)
+    y_trimmed, _ = librosa.effects.trim(y, top_db=20)
+    if len(y_trimmed) < int(config.SAMPLE_RATE * 0.1): # Failsafe
+        y_trimmed = y
         
-    # Extract MFCC
+    # 3. Pre-Emphasis
+    y_preemph = librosa.effects.preemphasis(y_trimmed)
+    
+    # 4. Normalisasi Volume
+    y_clean = librosa.util.normalize(y_preemph)
+        
+    # Extract MFCC (gunakan 64 untuk model CRNN)
     mfcc = librosa.feature.mfcc(
-        y=y, 
+        y=y_clean, 
         sr=config.SAMPLE_RATE, 
-        n_mfcc=config.N_MFCC, 
-        n_fft=config.N_FFT, 
-        hop_length=config.HOP_LENGTH
+        n_mfcc=64
     )
-    mfcc = np.expand_dims(mfcc, axis=0) # Add channel
-    mfcc = np.expand_dims(mfcc, axis=0) # Add batch
-    return torch.tensor(mfcc, dtype=torch.float32)
+    
+    # 2D Padding ke ukuran statis 100
+    if mfcc.shape[1] > max_pad_len:
+        mfccs_2d = mfcc[:, :max_pad_len]
+    else:
+        pad_width = max_pad_len - mfcc.shape[1]
+        mfccs_2d = np.pad(mfcc, pad_width=((0, 0), (0, pad_width)), mode='constant')
+        
+    # PyTorch butuh shape: (Batch, Channel, Height, Width) -> (1, 1, 64, 100)
+    mfccs_2d = mfccs_2d[np.newaxis, np.newaxis, ...]
+    
+    # Return as torch tensor
+    return torch.tensor(mfccs_2d, dtype=torch.float32)
 
 @app.get("/api/health")
 def health_check():
@@ -179,24 +196,27 @@ async def classify_audio(file: UploadFile = File(...)):
         if samplerate != config.SAMPLE_RATE:
             data = librosa.resample(data, orig_sr=samplerate, target_sr=config.SAMPLE_RATE)
             
-        # Inference
-        inputs = preprocess_audio_data(data).to(device)
+        # Inference using PyTorch CRNN
+        inputs = preprocess_audio_data(data)
         with torch.no_grad():
             outputs = model(inputs)
-            probabilities = torch.softmax(outputs, dim=1)[0]
-            confidence, class_idx = torch.max(probabilities, 0)
+            probabilities = torch.nn.functional.softmax(outputs, dim=1)[0].numpy()
+        
+        class_idx = np.argmax(probabilities)
+        conf_val = float(probabilities[class_idx])
+        predicted_class = config.CLASSES[class_idx]
             
-            predicted_class = config.CLASSES[class_idx.item()]
-            conf_val = confidence.item()
-            
-        song = config.SONG_MAP.get(predicted_class, None)
+        # Bypass lagu untuk murni mengetes deteksi sapaan (sesuai request)
+        song = None 
+        
+        display_text = config.DISPLAY_MAP.get(predicted_class, predicted_class.upper())
         
         return {
             "status": "success",
             "predicted_class": predicted_class,
             "confidence": conf_val,
             "song": song,
-            "region": predicted_class.upper() if predicted_class in config.SONG_MAP else "UNKNOWN"
+            "region": display_text
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memproses file audio: {e}")

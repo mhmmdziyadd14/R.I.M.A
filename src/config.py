@@ -22,26 +22,30 @@ LEARNING_RATE = 0.001
 EPOCHS = 30
 VAL_SPLIT = 0.2
 
-# Classes mapping
+# Classes mapping (Urutan harus sama persis dengan y_labels.npy saat training)
 CLASSES = [
-    "aceh",       # Peue Haba
-    "batak",      # Horas
-    "sunda",      # Sampurasun
-    "jawa",       # Sugeng / Kulanuwun
-    "bali",       # Om Swastyastu
-    "sulsel",     # Salama'ki
-    "papua",      # Amolongo / Apuse
-    "unknown",    # Kelas negatif (kata lain)
-    "silence"     # Kelas negatif (hening/ambient)
+    "horas",
+    "sampurasun",
+    "adilkatalino",
+    "wawawa",
+    "kulanuwun",
+    "tabea",
+    "peuhaba"
 ]
 
-# Songs mapping corresponding to classes
+# Display label mapping (Format: "Kata Sapaan (Suku/Daerah)")
+DISPLAY_MAP = {
+    "horas": "Horas (Batak)",
+    "sampurasun": "Sampurasun (Sunda)",
+    "adilkatalino": "Adil Ka' Talino (Dayak)",
+    "wawawa": "Wa Wa Wa (Papua)",
+    "kulanuwun": "Kulanuwun (Jawa)",
+    "tabea": "Tabea (Maluku/Minahasa)",
+    "peuhaba": "Peue Haba (Aceh)"
+}
+
+# Songs mapping (Bisa disesuaikan nanti dengan file Klungbot)
 SONG_MAP = {
-    "aceh": "bungong_jeumpa.mp3",
-    "batak": "sinanggar_tulo.mp3",
-    "sunda": "manuk_dadali.mp3",
-    "jawa": "suwe_ora_jamu.mp3",
-    "bali": "mejangeran.mp3",
-    "sulsel": "angin_mamiri.mp3",
-    "papua": "apuse.mp3"
+    "horas": "BATAK/sinanggar_tulo.txt",
+    "sampurasun": "SUNDA/manuk_dadali.txt"
 }

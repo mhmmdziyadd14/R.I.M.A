@@ -1558,20 +1558,16 @@ function playBahasaSong(songId) {
 }
 
 function highlightGreetingChip(region) {
-  const chips = document.querySelectorAll('.greeting-chip-card');
+  const chips = document.querySelectorAll('.orbit-word-badge');
   chips.forEach(chip => {
-    chip.style.background = '#f8fafc';
-    chip.style.border = '1px solid #e2e8f0';
-    chip.style.boxShadow = 'none';
+    chip.classList.remove('active-orbit-word');
   });
 
   if (!region) return;
   const resolvedRegion = (GREETING_TO_REGION[region.toLowerCase()] || region).toUpperCase();
   const activeChip = document.getElementById(`chip-${resolvedRegion}`);
   if (activeChip) {
-    activeChip.style.background = '#FFF3E0';
-    activeChip.style.border = '2px solid #FF8A65';
-    activeChip.style.boxShadow = '0 4px 12px rgba(255, 138, 101, 0.25)';
+    activeChip.classList.add('active-orbit-word');
   }
 }
 

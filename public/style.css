@@ -640,11 +640,108 @@ body {
 }
 
 .player-left-panel {
-  flex: 0 0 35%;
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  min-width: 0;
+}
+
+/* --- Orbital Greeting Words Microphone Stage --- */
+.orbital-stage-wrapper {
+  position: relative;
+  width: 360px;
+  height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 10px auto 16px auto;
+}
+
+.orbit-ring {
+  position: absolute;
+  width: 310px;
+  height: 310px;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 138, 101, 0.3);
+  animation: orbitSpin 35s linear infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: animation-play-state 0.3s;
+}
+
+.orbital-stage-wrapper:hover .orbit-ring {
+  animation-play-state: paused;
+}
+
+.orbital-center-mic {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+}
+
+.orbit-item {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+/* 7 Orbital Positions around circle */
+.orbit-pos-1 { top: 2%; left: 50%; }
+.orbit-pos-2 { top: 20%; left: 89%; }
+.orbit-pos-3 { top: 63%; left: 97%; }
+.orbit-pos-4 { top: 96%; left: 69%; }
+.orbit-pos-5 { top: 96%; left: 31%; }
+.orbit-pos-6 { top: 63%; left: 3%; }
+.orbit-pos-7 { top: 20%; left: 11%; }
+
+.orbit-word-badge {
+  animation: counterSpin 35s linear infinite;
+  background: #ffffff;
+  border: 2px solid #FFE0B2;
+  padding: 8px 16px;
+  border-radius: 30px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  font-family: var(--font-header);
+  font-weight: 800;
+  font-size: 13px;
+  color: #1A1A1A;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: inline-block;
+  user-select: none;
+}
+
+.orbital-stage-wrapper:hover .orbit-word-badge {
+  animation-play-state: paused;
+}
+
+.orbit-word-badge:hover {
+  border-color: #FF8A65;
+  box-shadow: 0 8px 20px rgba(255, 138, 101, 0.25);
+}
+
+.orbit-word-badge.active-orbit-word {
+  background: linear-gradient(135deg, #FF8A65 0%, #E64A19 100%) !important;
+  color: #FFFFFF !important;
+  border-color: #FF7043 !important;
+  box-shadow: 0 0 25px rgba(230, 74, 25, 0.5) !important;
+  transform: scale(1.25) !important;
+  z-index: 30;
+}
+
+@keyframes orbitSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes counterSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(-360deg); }
 }
 
 .album-art-card {

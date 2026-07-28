@@ -1629,27 +1629,28 @@ body {
   font-size: 8px;
 }
 
-/* Global Floating Player Panel Style */
+/* Global Floating Player Panel Style (Positioned Right Above Song List Area) */
 .player-panel {
   position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%) translateY(0);
-  width: 90%;
-  max-width: 600px;
-  background: rgba(255, 255, 255, 0.95);
+  bottom: 24px;
+  right: 48px;
+  left: auto;
+  transform: translateY(0);
+  width: calc(50% - 70px);
+  max-width: 540px;
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 20px;
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12);
   z-index: 999;
   overflow: hidden;
   transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
 }
 
 .player-panel.hide {
-  transform: translateX(-50%) translateY(120px);
+  transform: translateY(120px);
   opacity: 0;
   pointer-events: none;
 }
@@ -1967,6 +1968,13 @@ body {
   .player-right-panel {
     width: 100%;
     padding: 0 !important;
+  }
+  .player-panel {
+    right: 16px !important;
+    left: 16px !important;
+    width: auto !important;
+    max-width: none !important;
+    bottom: 16px !important;
   }
   .album-art-card {
     padding: 16px !important;

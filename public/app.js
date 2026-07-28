@@ -1536,8 +1536,15 @@ async function triggerLanguageClassification() {
     if (response.ok) {
       const data = await response.json();
       
-      // Tampilkan hasil deteksi & daftar lagu di panel kanan (tanpa memutar lagu otomatis)
+      // Mode 2: Tampilkan hasil deteksi & daftar lagu di panel kanan
       setBahasaMode(2, data);
+
+      // Otomatis putar lagu daerah yang terdeteksi
+      if (data.song) {
+        setTimeout(() => {
+          playBahasaSong(data.song);
+        }, 300);
+      }
     } else {
       statusText.textContent = 'Gagal memproses klasifikasi suara.';
     }

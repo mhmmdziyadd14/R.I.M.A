@@ -1347,11 +1347,11 @@ async function toggleRepeaterListening() {
     
     micBtn.classList.remove('active');
     sonar.classList.remove('active');
-    statusText.textContent = 'Memainkan urutan nada...';
+    statusText.textContent = 'Memproses & memainkan urutan nada...';
     
-    // Finalize the last note if exists (bahkan jika itu hening)
+    // Finalize the last note if exists
     const dur = Date.now() - currentRecStart;
-    if (dur >= 100 && (currentRecNote !== null || recordedSequence.length > 0)) {
+    if (dur >= 80) {
       recordedSequence.push({ note: currentRecNote, duration: dur });
     }
     currentRecNote = null;
@@ -1365,7 +1365,7 @@ async function toggleRepeaterListening() {
   recordedSequence = [];
   currentRecNote = null;
   currentRecStart = Date.now();
-  let noteHistory = []; // Buffer untuk menghaluskan perpindahan nada (glissando)
+  let noteHistory = []; // Buffer 5 frame untuk menghaluskan perpindahan nada (glissando/noise filter)
   
   micBtn.classList.add('active');
   sonar.classList.add('active');
@@ -1388,12 +1388,12 @@ async function toggleRepeaterListening() {
       const now = Date.now();
       let rawNote = (data.frequency > 0 && data.note) ? data.note : null;
       
-      // Mode Filter (Mencari nada yang dominan dari 3 frame terakhir agar respons lebih cepat)
+      // Mode Filter 5 Frame (Mencari nada dominan stabil untuk menapis noise transient)
       noteHistory.push(rawNote);
-      if (noteHistory.length > 3) noteHistory.shift();
+      if (noteHistory.length > 5) noteHistory.shift();
       
       let detectedNote = rawNote;
-      if (noteHistory.length === 3) {
+      if (noteHistory.length >= 3) {
         let noteCounts = {};
         let maxCount = 0;
         for (let n of noteHistory) {
@@ -1403,19 +1403,22 @@ async function toggleRepeaterListening() {
             detectedNote = n;
           }
         }
+        // Jika tidak ada suara mayoritas stabil (kurang dari 2 frame sama), anggap hening/noise
+        if (maxCount < 2) {
+          detectedNote = null;
+        }
       }
       
       // State change in recorded note
       if (detectedNote !== currentRecNote) {
         const dur = now - currentRecStart;
         
-        if (dur >= 100) {
-          // Nada atau hening yang cukup panjang, simpan sebagai blok baru
+        if (dur >= 80) {
           if (currentRecNote !== null || recordedSequence.length > 0) {
             recordedSequence.push({ note: currentRecNote, duration: dur });
           }
         } else {
-          // Nada transisi/glitch yang sangat pendek (< 80ms) seperti suara "meluncur"
+          // Glitch sangat pendek, sambungkan ke durasi sebelumnya
           if (recordedSequence.length > 0) {
             recordedSequence[recordedSequence.length - 1].duration += dur;
           }
@@ -1432,7 +1435,6 @@ async function toggleRepeaterListening() {
         if (detectedNote) {
           const hw = mapPitchNameToNoteNumber(detectedNote);
           if (hw) {
-            // false: tidak memutar suara synth (hanya animasi visual) saat merekam
             highlightKeyProgrammatic(hw.note, hw.angklung, false);
           }
         }
@@ -1448,11 +1450,128 @@ async function toggleRepeaterListening() {
   }
 }
 
-async function playRepeaterSequence(sequence, statusText, micBtn, sonar) {
+// Post-Processing Sequence Cleaner to Filter Noise & Preserve Fast Melodic Notes
+function cleanRepeaterSequence(rawSequence) {
+  if (!rawSequence || rawSequence.length === 0) return [];
+
+  // Step 1: Merge consecutive identical notes or consecutive silences
+  let merged = [];
+  for (let item of rawSequence) {
+    let note = item.note || null;
+    if (merged.length > 0 && merged[merged.length - 1].note === note) {
+      merged[merged.length - 1].duration += item.duration;
+    } else {
+      merged.push({ note: note, duration: item.duration });
+    }
+  }
+
+  // Step 2: Filter out transient noise spikes (< 120ms surrounded by silence/glitches)
+  // Preserve fast notes (>= 90ms) if connected in a valid note sequence (e.g. Do -> Re -> Mi)
+  let filtered = [];
+  for (let i = 0; i < merged.length; i++) {
+    const item = merged[i];
+    const prev = i > 0 ? merged[i - 1] : null;
+    const next = i < merged.length - 1 ? merged[i + 1] : null;
+
+    if (item.note === null) {
+      filtered.push(item);
+      continue;
+    }
+
+    if (item.duration < 120) {
+      const isConnectedMelody = (prev && prev.note !== null) && (next && next.note !== null);
+      if (isConnectedMelody && item.duration >= 90) {
+        // Fast intentional note in a sequence -> KEEP IT!
+        filtered.push(item);
+      } else {
+        // Isolated noise glitch -> absorb into surrounding silence/note
+        if (prev) {
+          prev.duration += item.duration;
+        } else if (next) {
+          next.duration += item.duration;
+        }
+      }
+    } else {
+      filtered.push(item);
+    }
+  }
+
+  // Step 3: Re-merge consecutive identical notes/silences
+  let reMerged = [];
+  for (let item of filtered) {
+    if (reMerged.length > 0 && reMerged[reMerged.length - 1].note === item.note) {
+      reMerged[reMerged.length - 1].duration += item.duration;
+    } else {
+      reMerged.push({ note: item.note, duration: item.duration });
+    }
+  }
+
+  // Step 4: Absorb micro-silence gaps (< 100ms) to keep melody continuous
+  let continuous = [];
+  for (let i = 0; i < reMerged.length; i++) {
+    const item = reMerged[i];
+    if (item.note === null && item.duration < 100 && continuous.length > 0 && i < reMerged.length - 1) {
+      continuous[continuous.length - 1].duration += item.duration;
+    } else {
+      continuous.push(item);
+    }
+  }
+
+  // Step 5: Trim leading and trailing silence
+  while (continuous.length > 0 && continuous[0].note === null) {
+    continuous.shift();
+  }
+  while (continuous.length > 0 && continuous[continuous.length - 1].note === null) {
+    continuous.pop();
+  }
+
+  return continuous;
+}
+
+// Render cleaned note chips on UI
+function renderRepeaterNoteChips(sequence) {
+  const sequenceContainer = document.getElementById('repeater-note-sequence');
+  if (!sequenceContainer) return;
+  sequenceContainer.innerHTML = '';
+
+  sequence.forEach((item) => {
+    if (!item.note) return;
+    const chip = document.createElement('div');
+    chip.style.background = '#FFF3E0';
+    chip.style.border = '1px solid #FF8A65';
+    chip.style.borderRadius = '20px';
+    chip.style.padding = '8px 16px';
+    chip.style.fontWeight = '800';
+    chip.style.color = '#E64A19';
+    chip.style.boxShadow = '0 2px 8px rgba(255, 138, 101, 0.2)';
+    chip.style.display = 'flex';
+    chip.style.alignItems = 'center';
+    chip.style.gap = '6px';
+    chip.innerHTML = `<span>🎵 ${item.note}</span> <span style="font-size: 11px; opacity: 0.85; font-weight: 600;">(${(item.duration / 1000).toFixed(1)}s)</span>`;
+    sequenceContainer.appendChild(chip);
+  });
+}
+
+// Playback Repeater Sequence (Continuous Legato Playback, Non-Staccato)
+async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
+  const sequence = cleanRepeaterSequence(rawSequence);
+
+  renderRepeaterNoteChips(sequence);
+
+  if (sequence.length === 0) {
+    statusText.textContent = 'Tidak ada nada stabil yang terdeteksi. Coba nyanyikan nada lebih jelas!';
+    repeaterState = 'idle';
+    micBtn.classList.remove('active');
+    micBtn.classList.remove('mic-playing');
+    sonar.classList.remove('active');
+    return;
+  }
+
   repeaterState = 'playing';
   micBtn.classList.add('active');
   micBtn.classList.add('mic-playing');
   sonar.classList.add('active');
+  statusText.textContent = 'Memainkan nada (Legato / Kontinu)...';
   
   for (let item of sequence) {
     if (repeaterState !== 'playing') break;
@@ -1460,18 +1579,15 @@ async function playRepeaterSequence(sequence, statusText, micBtn, sonar) {
     let hw = mapPitchNameToNoteNumber(item.note);
     if (hw) {
       document.getElementById('repeater-note').textContent = item.note;
-      highlightKeyProgrammatic(hw.note, hw.angklung);
       
-      // Tremolo hit loop (simulate shaking angklung)
-      const hitInterval = setInterval(() => {
-        playChordForNoteNum(hw.note, hw.angklung);
-      }, 160);
-      playChordForNoteNum(hw.note, hw.angklung); // First hit immediately
+      // Trigger note ONCE per note item for continuous legato playback (no staccato interval hits!)
+      highlightKeyProgrammatic(hw.note, hw.angklung, true);
+      playChordForNoteNum(hw.note, hw.angklung);
       
+      // Hold note continuously for the exact length of the note
       await new Promise(r => setTimeout(r, item.duration));
-      clearInterval(hitInterval);
     } else {
-      // Unrecognized note or silence
+      // Silence gap
       document.getElementById('repeater-note').textContent = '---';
       await new Promise(r => setTimeout(r, item.duration));
     }

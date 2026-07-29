@@ -117,26 +117,24 @@ def frequency_to_note(freq):
     return f"{pitch_name}{octave}"
 
 def detect_pitch(signal, sr):
-    """Simple Autocorrelation Pitch Detector for real-time monophonic pitch tracking."""
+    """Autocorrelation Pitch Detector with Noise Filtering and Parabolic Interpolation."""
     if len(signal) == 0:
         return 0.0
     signal = signal - np.mean(signal)
     
     # Hitung volume (Root Mean Square)
     rms = np.sqrt(np.mean(signal**2))
-    # Threshold volume minimum untuk dianggap suara valid
-    # Pengunjung harus bernyanyi cukup dekat ke mic agar terdeteksi.
-    if rms < 0.03:
+    # Threshold volume minimum untuk menolak noise ruangan & desahan napas
+    if rms < 0.035:
         return 0.0
         
-    # Low-Pass Filter sederhana (Moving Average) untuk menghapus suara statis/noise frekuensi tinggi (desisan angin, kipas, dll)
-    # Filter ukuran 3 cukup untuk melembutkan noise kasar tanpa merusak frekuensi vokal manusia
-    signal = np.convolve(signal, np.ones(3)/3.0, mode='same')
+    # Low-Pass Filter sederhana (Moving Average) untuk melembutkan noise frekuensi tinggi
+    signal = np.convolve(signal, np.ones(5)/5.0, mode='same')
         
     corr = np.correlate(signal, signal, mode='full')
     corr = corr[len(corr)//2:]
     
-    # Range of interest (80 Hz to 1200 Hz)
+    # Range frekuensi vokal manusia (80 Hz hingga 1200 Hz)
     min_lag = int(sr / 1200)
     max_lag = int(sr / 80)
     
@@ -149,12 +147,28 @@ def detect_pitch(signal, sr):
         
     peak = np.argmax(search_segment) + min_lag
     
-    # Thresholding to reject noisy frames (diperketat ke 0.35)
-    # Semakin tinggi nilainya, semakin sistem menolak suara 'bising' yang tidak memiliki nada pasti (seperti suara "S" atau "Sy")
-    if corr[peak] < 0.30 * corr[0]:
+    # Threshold kejelasan nada (periodisitas). > 0.40 menolak noise tak bernada & desahan
+    if corr[0] == 0 or corr[peak] < 0.40 * corr[0]:
         return 0.0
         
-    freq = sr / peak
+    # Interpolasi Parabolik untuk akurasi frekuensi tinggi
+    if 0 < peak < len(corr) - 1:
+        alpha = corr[peak - 1]
+        beta = corr[peak]
+        gamma = corr[peak + 1]
+        denom = (alpha - 2 * beta + gamma)
+        if denom != 0:
+            p = 0.5 * (alpha - gamma) / denom
+            refined_peak = peak + p
+        else:
+            refined_peak = float(peak)
+    else:
+        refined_peak = float(peak)
+
+    if refined_peak <= 0:
+        return 0.0
+
+    freq = sr / refined_peak
     return freq
 
 def preprocess_audio_data(y):

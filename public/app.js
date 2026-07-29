@@ -715,7 +715,7 @@ function triggerKeyOn(keyElement) {
 }
 
 // Programmatic key highlight (for repeater incoming feedback & song playbacks)
-function highlightKeyProgrammatic(noteNum, angklungId = 3, playSound = true) {
+function highlightKeyProgrammatic(noteNum, angklungId = 3, playSound = true, durationMs = 250) {
   const key = document.querySelector(`.key[data-note="${noteNum}"][data-angklung="${angklungId}"]`);
   if (key) {
     key.classList.add('active');
@@ -725,13 +725,13 @@ function highlightKeyProgrammatic(noteNum, angklungId = 3, playSound = true) {
     if (playSound) {
       const freqMap = NOTE_FREQUENCIES[angklungId];
       if (freqMap && freqMap[noteNum]) {
-        playClientSynthSound(freqMap[noteNum]);
+        playSustainedSynthSound(freqMap[noteNum], durationMs);
       }
     }
     
     setTimeout(() => {
       key.classList.remove('active');
-    }, 200);
+    }, Math.max(150, durationMs));
   }
 }
 // Map pitch names to physical hardware positions
@@ -1442,7 +1442,7 @@ async function toggleRepeaterListening() {
   }
 }
 
-// Post-Processing Sequence Cleaner to Filter Noise & Preserve Fast Melodic Notes
+// Post-Processing Sequence Cleaner to Filter Noise & Preserve Exact Melodic Note Durations
 function cleanRepeaterSequence(rawSequence) {
   if (!rawSequence || rawSequence.length === 0) return [];
 
@@ -1457,8 +1457,7 @@ function cleanRepeaterSequence(rawSequence) {
     }
   }
 
-  // Step 2: Filter out transient noise spikes (< 120ms surrounded by silence/glitches)
-  // Preserve fast notes (>= 90ms) if connected in a valid note sequence (e.g. Do -> Re -> Mi)
+  // Step 2: Remove isolated noise transients (< 80ms surrounded by silence/glitches)
   let filtered = [];
   for (let i = 0; i < merged.length; i++) {
     const item = merged[i];
@@ -1470,13 +1469,11 @@ function cleanRepeaterSequence(rawSequence) {
       continue;
     }
 
-    if (item.duration < 120) {
+    if (item.duration < 80) {
       const isConnectedMelody = (prev && prev.note !== null) && (next && next.note !== null);
-      if (isConnectedMelody && item.duration >= 90) {
-        // Fast intentional note in a sequence -> KEEP IT!
+      if (isConnectedMelody && item.duration >= 40) {
         filtered.push(item);
       } else {
-        // Isolated noise glitch -> absorb into surrounding silence/note
         if (prev) {
           prev.duration += item.duration;
         } else if (next) {
@@ -1498,26 +1495,15 @@ function cleanRepeaterSequence(rawSequence) {
     }
   }
 
-  // Step 4: Absorb micro-silence gaps (< 100ms) to keep melody continuous
-  let continuous = [];
-  for (let i = 0; i < reMerged.length; i++) {
-    const item = reMerged[i];
-    if (item.note === null && item.duration < 100 && continuous.length > 0 && i < reMerged.length - 1) {
-      continuous[continuous.length - 1].duration += item.duration;
-    } else {
-      continuous.push(item);
-    }
+  // Step 4: Trim leading and trailing silence
+  while (reMerged.length > 0 && reMerged[0].note === null) {
+    reMerged.shift();
+  }
+  while (reMerged.length > 0 && reMerged[reMerged.length - 1].note === null) {
+    reMerged.pop();
   }
 
-  // Step 5: Trim leading and trailing silence
-  while (continuous.length > 0 && continuous[0].note === null) {
-    continuous.shift();
-  }
-  while (continuous.length > 0 && continuous[continuous.length - 1].note === null) {
-    continuous.pop();
-  }
-
-  return continuous;
+  return reMerged;
 }
 
 // Render cleaned note chips on UI
@@ -1544,7 +1530,7 @@ function renderRepeaterNoteChips(sequence) {
   });
 }
 
-// Playback Repeater Sequence (Continuous Legato Playback, Non-Staccato)
+// Playback Repeater Sequence (Sustains Tone & Shakes Angklung for EXACT Duration)
 async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
   const sequence = cleanRepeaterSequence(rawSequence);
 
@@ -1563,7 +1549,7 @@ async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
   micBtn.classList.add('active');
   micBtn.classList.add('mic-playing');
   sonar.classList.add('active');
-  statusText.textContent = 'Memainkan nada (Legato / Kontinu)...';
+  statusText.textContent = 'Memainkan urutan nada persis durasi rekaman vokal...';
   
   for (let item of sequence) {
     if (repeaterState !== 'playing') break;
@@ -1572,14 +1558,16 @@ async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
     if (hw) {
       document.getElementById('repeater-note').textContent = item.note;
       
-      // Trigger note ONCE per note item for continuous legato playback (no staccato interval hits!)
-      highlightKeyProgrammatic(hw.note, hw.angklung, true);
-      playChordForNoteNum(hw.note, hw.angklung);
+      // Highlight visual key and sustain audio synth for EXACT item.duration
+      highlightKeyProgrammatic(hw.note, hw.angklung, true, item.duration);
       
-      // Hold note continuously for the exact length of the note
+      // Sustain physical hardware angklung shaking throughout item.duration
+      playChordForNoteNumSustained(hw.note, hw.angklung, item.duration);
+      
+      // Hold playback execution for exact duration of note
       await new Promise(r => setTimeout(r, item.duration));
     } else {
-      // Silence gap
+      // Silence gap between notes
       document.getElementById('repeater-note').textContent = '---';
       await new Promise(r => setTimeout(r, item.duration));
     }
@@ -1591,6 +1579,18 @@ async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
     micBtn.classList.remove('mic-playing');
     sonar.classList.remove('active');
     statusText.textContent = 'Ketuk mikrofon untuk merekam nada';
+  }
+}
+
+function playChordForNoteNumSustained(note, angklung, durationMs) {
+  playChordForNoteNum(note, angklung);
+  if (durationMs > 160) {
+    const pulseInterval = setInterval(() => {
+      playChordForNoteNum(note, angklung);
+    }, 130);
+    setTimeout(() => {
+      clearInterval(pulseInterval);
+    }, durationMs - 20);
   }
 }
 

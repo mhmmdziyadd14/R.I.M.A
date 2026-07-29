@@ -131,6 +131,46 @@ function playClientSynthSound(frequency) {
   }
 }
 
+function playSustainedSynthSound(frequency, durationMs = 300) {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const durSec = Math.max(0.1, durationMs / 1000.0);
+
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.0001, now);
+    masterGain.gain.linearRampToValueAtTime(0.7, now + 0.02);
+    
+    const sustainEnd = Math.max(now + 0.03, now + durSec - 0.04);
+    masterGain.gain.setValueAtTime(0.65, sustainEnd);
+    masterGain.gain.linearRampToValueAtTime(0.0001, now + durSec);
+    masterGain.connect(ctx.destination);
+
+    // Fundamental
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(frequency, now);
+    osc1.connect(masterGain);
+
+    // Octave harmonic
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(frequency * 2.0, now);
+    const gain2 = ctx.createGain();
+    gain2.gain.setValueAtTime(0.3, now);
+    osc2.connect(gain2);
+    gain2.connect(masterGain);
+
+    osc1.start(now);
+    osc2.start(now);
+
+    osc1.stop(now + durSec);
+    osc2.stop(now + durSec);
+  } catch (e) {
+    console.error("Gagal memutar sustained synth sound:", e);
+  }
+}
+
 let activeSongInterval = null;
 let repeaterSocket = null;
 let repeaterState = 'idle'; // 'idle', 'recording', 'playing'

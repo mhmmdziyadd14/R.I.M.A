@@ -120,26 +120,32 @@ def frequency_to_note(freq):
     return f"{pitch_name}{octave}"
 
 def detect_pitch(signal, sr):
-    """Autocorrelation Pitch Detector with Noise Filtering and Parabolic Interpolation."""
+    """Low-Frequency Sensitive Autocorrelation Pitch Detector with Noise Rejection."""
     if len(signal) == 0:
         return 0.0
     signal = signal - np.mean(signal)
     
-    # Hitung volume (Root Mean Square)
+    # Hitung volume RMS (Sensitivitas diperlunak ke 0.015 untuk nada rendah/vokal lembut)
     rms = np.sqrt(np.mean(signal**2))
-    # Threshold volume minimum untuk menolak noise ruangan & desahan napas
-    if rms < 0.035:
+    if rms < 0.015:
         return 0.0
         
-    # Low-Pass Filter sederhana (Moving Average) untuk melembutkan noise frekuensi tinggi
-    signal = np.convolve(signal, np.ones(5)/5.0, mode='same')
+    # Normalisasi amplitude untuk sensitivitas vokal rendah
+    max_val = np.max(np.abs(signal))
+    if max_val > 0:
+        norm_signal = signal / max_val
+    else:
+        norm_signal = signal
+
+    # Low-pass filter ringan (Moving average 3-point)
+    smoothed = np.convolve(norm_signal, np.ones(3)/3.0, mode='same')
         
-    corr = np.correlate(signal, signal, mode='full')
+    corr = np.correlate(smoothed, smoothed, mode='full')
     corr = corr[len(corr)//2:]
     
-    # Range frekuensi vokal manusia (80 Hz hingga 1200 Hz)
+    # Range frekuensi vokal manusia (75 Hz hingga 1200 Hz)
     min_lag = int(sr / 1200)
-    max_lag = int(sr / 80)
+    max_lag = int(sr / 75)
     
     if max_lag >= len(corr) or min_lag >= len(corr):
         return 0.0
@@ -150,11 +156,16 @@ def detect_pitch(signal, sr):
         
     peak = np.argmax(search_segment) + min_lag
     
-    # Threshold kejelasan nada (periodisitas). > 0.40 menolak noise tak bernada & desahan
-    if corr[0] == 0 or corr[peak] < 0.40 * corr[0]:
+    # Adaptive Periodicity Threshold:
+    # Untuk nada rendah (lag > 60 samples / freq < 260Hz), ambang disesuaikan ke 0.24 
+    # Karena nada rendah memiliki jumlah siklus gelombang lebih sedikit dalam satu chunk audio.
+    # Untuk nada tinggi (lag <= 60 / freq >= 260Hz), ambang 0.35 untuk menolak noise/desisan.
+    required_ratio = 0.24 if peak > 60 else 0.35
+    
+    if corr[0] == 0 or (corr[peak] / corr[0]) < required_ratio:
         return 0.0
         
-    # Interpolasi Parabolik untuk akurasi frekuensi tinggi
+    # Interpolasi Parabolik untuk presisi frekuensi
     if 0 < peak < len(corr) - 1:
         alpha = corr[peak - 1]
         beta = corr[peak]

@@ -138,6 +138,7 @@ let repeaterPlaybackInterval = null;
 let recordedSequence = [];
 let currentRecNote = null;
 let currentRecStart = 0;
+let currentRecDuration = 0;
 let keyIntervals = new Map();
 let chordIntervals = new Map();
 
@@ -1349,12 +1350,12 @@ async function toggleRepeaterListening() {
     sonar.classList.remove('active');
     statusText.textContent = 'Memproses & memainkan urutan nada...';
     
-    // Finalize the last note if exists
-    const dur = Date.now() - currentRecStart;
-    if (dur >= 80) {
-      recordedSequence.push({ note: currentRecNote, duration: dur });
+    // Finalize the active note if exists
+    if (currentRecDuration > 0) {
+      recordedSequence.push({ note: currentRecNote, duration: Math.round(currentRecDuration) });
     }
     currentRecNote = null;
+    currentRecDuration = 0;
     
     playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
     return;
@@ -1364,14 +1365,14 @@ async function toggleRepeaterListening() {
   repeaterState = 'recording';
   recordedSequence = [];
   currentRecNote = null;
-  currentRecStart = Date.now();
-  let noteHistory = []; // Buffer 5 frame untuk menghaluskan perpindahan nada (glissando/noise filter)
+  currentRecDuration = 0;
+  let noteHistory = []; // Buffer 5 frame untuk menghaluskan nada
   
   micBtn.classList.add('active');
   sonar.classList.add('active');
-  statusText.textContent = 'Merekam nada... Tekan lagi untuk putar ulang!';
+  statusText.textContent = 'Merekam nada vokal... Tekan lagi untuk putar ulang!';
 
-  // Clear sequence
+  // Clear sequence UI
   const sequenceContainer = document.getElementById('repeater-note-sequence');
   if (sequenceContainer) sequenceContainer.innerHTML = '';
   window.lastRepeaterNote = null;
@@ -1385,10 +1386,10 @@ async function toggleRepeaterListening() {
       const data = JSON.parse(event.data);
       if (repeaterState !== 'recording') return;
       
-      const now = Date.now();
+      const frameDur = data.frame_duration_ms || 64.0;
       let rawNote = (data.frequency > 0 && data.note) ? data.note : null;
       
-      // Mode Filter 5 Frame (Mencari nada dominan stabil untuk menapis noise transient)
+      // Smoothing Buffer 5 Frame
       noteHistory.push(rawNote);
       if (noteHistory.length > 5) noteHistory.shift();
       
@@ -1403,29 +1404,20 @@ async function toggleRepeaterListening() {
             detectedNote = n;
           }
         }
-        // Jika tidak ada suara mayoritas stabil (kurang dari 2 frame sama), anggap hening/noise
         if (maxCount < 2) {
           detectedNote = null;
         }
       }
       
-      // State change in recorded note
-      if (detectedNote !== currentRecNote) {
-        const dur = now - currentRecStart;
-        
-        if (dur >= 80) {
-          if (currentRecNote !== null || recordedSequence.length > 0) {
-            recordedSequence.push({ note: currentRecNote, duration: dur });
-          }
-        } else {
-          // Glitch sangat pendek, sambungkan ke durasi sebelumnya
-          if (recordedSequence.length > 0) {
-            recordedSequence[recordedSequence.length - 1].duration += dur;
-          }
+      // Accumulate audio duration per frame (64ms per audio chunk)
+      if (detectedNote === currentRecNote) {
+        currentRecDuration += frameDur;
+      } else {
+        if (currentRecDuration > 0) {
+          recordedSequence.push({ note: currentRecNote, duration: Math.round(currentRecDuration) });
         }
-        
         currentRecNote = detectedNote;
-        currentRecStart = now;
+        currentRecDuration = frameDur;
       }
 
       // UI Update

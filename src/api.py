@@ -98,14 +98,17 @@ def frequency_to_note(freq):
         return None
     import math
     
-    # 1. Hitung MIDI note terdekat (Auto-tune snapping ke nada paling dekat)
-    midi_note = round(69 + 12 * math.log2(freq / 440.0))
+    # 1. Hitung MIDI note terdekat dari frekuensi vokal asli
+    raw_midi = int(round(69 + 12 * math.log2(freq / 440.0)))
     
-    # 2. Transpose +1 Oktaf secara keseluruhan (+12 semitones)
-    # Ini mencegah melodi rusak (karena folding dinamis) dan menyesuaikan vokal manusia (E2-C6) ke Angklung (E3-C7)
-    transposed_midi = midi_note + 12
+    # 2. Sesuaikan ke rentang instrumen Angklung (E3 = 52 hingga C7 = 96)
+    # Jika nada vokal sudah berada di rentang 52..96, gunakan pitch asli tanpa transpose!
+    transposed_midi = raw_midi
+    while transposed_midi < 52:
+        transposed_midi += 12
+    while transposed_midi > 96:
+        transposed_midi -= 12
         
-    # Validasi apakah hasil transpose masuk ke rentang Angklung (E3=52 hingga C7=96)
     if transposed_midi > 96 or transposed_midi < 52:
         return None
         
@@ -1598,9 +1601,10 @@ async def pitch_websocket(websocket: WebSocket):
     await websocket.accept()
     print("[WS] Klien terhubung ke WebSocket Pitch.")
     
-    # Audio settings for streaming
-    chunk_size = 2048
+    # Audio settings for streaming (1024 samples @ 16kHz = 64ms per frame)
+    chunk_size = 1024
     sample_rate = 16000
+    frame_dur_ms = round((chunk_size / sample_rate) * 1000.0, 1)
     
     loop = asyncio.get_event_loop()
     
@@ -1635,7 +1639,8 @@ async def pitch_websocket(websocket: WebSocket):
             # Send results back
             payload = {
                 "frequency": float(freq),
-                "note": note
+                "note": note,
+                "frame_duration_ms": frame_dur_ms
             }
             await websocket.send_json(payload)
             

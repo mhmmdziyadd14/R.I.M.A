@@ -743,12 +743,15 @@ for (const [pitch, hw] of Object.entries(PITCH_TO_HARDWARE)) {
 
 function frequencyToNote(freq) {
   if (freq < 150 || freq > 1700) return null; // Angklung range: 164Hz - 1661Hz
+  
   let closestNote = null;
-  let minDiff = Infinity;
+  let minCentsDiff = Infinity;
+  
   for (const [note, noteFreq] of Object.entries(NOTE_FREQS)) {
-    const diff = Math.abs(freq - noteFreq);
-    if (diff < minDiff && diff < 20) { // allow max 20hz deviation
-      minDiff = diff;
+    // Hitung perbedaan dalam satuan Cents (logaritmik) agar akurat di frekuensi tinggi maupun rendah
+    const centsDiff = Math.abs(1200 * Math.log2(freq / noteFreq));
+    if (centsDiff < minCentsDiff && centsDiff < 50) { // toleransi max 50 cents (setengah semitone)
+      minCentsDiff = centsDiff;
       closestNote = note;
     }
   }
@@ -760,29 +763,71 @@ function detectPitch(buffer, sampleRate) {
   let rms = 0;
   for (let i = 0; i < size; i++) rms += buffer[i] * buffer[i];
   rms = Math.sqrt(rms / size);
-  if (rms < 0.01) return 0; // noise gate
+  if (rms < 0.015) return 0; // noise gate
 
   // Angklung bounds: ~150Hz to ~1700Hz
   let minLag = Math.floor(sampleRate / 1700);
   let maxLag = Math.ceil(sampleRate / 150);
   
-  let maxval = -1;
-  let maxpos = -1;
-  
-  for (let i = minLag; i <= maxLag; i++) {
-    let sum = 0;
-    for (let j = 0; j < size - i; j++) {
-      sum += buffer[j] * buffer[j + i];
-    }
-    if (sum > maxval) {
-      maxval = sum;
-      maxpos = i;
+  // 1. Squared Difference Function
+  let diff = new Float32Array(maxLag + 1);
+  for (let tau = minLag; tau <= maxLag; tau++) {
+    for (let j = 0; j < size - tau; j++) {
+      let delta = buffer[j] - buffer[j + tau];
+      diff[tau] += delta * delta;
     }
   }
+  
+  // 2. Cumulative Mean Normalized Difference Function
+  let yin = new Float32Array(maxLag + 1);
+  yin[minLag] = 1;
+  let runningSum = 0;
+  // We use (tau - minLag + 1) to approximate the running mean starting from minLag
+  for (let tau = minLag + 1; tau <= maxLag; tau++) {
+    runningSum += diff[tau];
+    yin[tau] = diff[tau] * (tau - minLag) / (runningSum || 1);
+  }
+  
+  // 3. Absolute Threshold (Mencegah octave jump / melompat ke nada oktaf atas)
+  let threshold = 0.25;
+  let tauEstimate = -1;
+  
+  for (let tau = minLag; tau <= maxLag; tau++) {
+    if (yin[tau] < threshold) {
+      // Cari lembah (minimum) lokal di sekitar sini
+      while (tau + 1 <= maxLag && yin[tau + 1] < yin[tau]) {
+        tau++;
+      }
+      tauEstimate = tau;
+      break;
+    }
+  }
+  
+  // Jika tidak ada yang lewat batas, cari minimum global
+  if (tauEstimate === -1) {
+    let minval = Infinity;
+    for (let tau = minLag; tau <= maxLag; tau++) {
+      if (yin[tau] < minval) {
+        minval = yin[tau];
+        tauEstimate = tau;
+      }
+    }
+    // Jika minimum globalnya juga masih jelek, berarti noise/tidak bernada
+    if (minval > 0.5) return 0;
+  }
 
-  let T0 = maxpos;
-  if (T0 === -1) return 0;
-  return sampleRate / T0;
+  // 4. Parabolic interpolation
+  let t0 = tauEstimate;
+  if (tauEstimate > minLag && tauEstimate < maxLag) {
+    let y1 = yin[tauEstimate - 1];
+    let y2 = yin[tauEstimate];
+    let y3 = yin[tauEstimate + 1];
+    let a = (y1 + y3 - 2 * y2) / 2;
+    let b = (y3 - y1) / 2;
+    if (a !== 0) t0 = tauEstimate - b / (2 * a);
+  }
+
+  return sampleRate / t0;
 }
 async function playRepeaterSequence(sequence, statusText, micBtn, sonar) {
   if (sequence.length === 0) {
@@ -850,8 +895,8 @@ async function toggleRepeaterListening() {
 
   if (repeaterState === 'recording') {
     // Stop recording, start playback
-    repeaterState = 'playing';
-    statusText.textContent = `Memutar ulang...`;
+    repeaterState = 'processing';
+    statusText.textContent = `Memproses audio ke AI Python...`;
     
     if (micStream) {
       micStream.getTracks().forEach(track => track.stop());
@@ -866,45 +911,88 @@ async function toggleRepeaterListening() {
       audioContext = null;
     }
     
-    playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+    // Kemas audio menjadi WAV
+    if (repeaterRecordingLength > 0) {
+      const result = new Float32Array(repeaterRecordingLength);
+      let offset = 0;
+      for (let i = 0; i < repeaterRecordedBuffers.length; i++) {
+        result.set(repeaterRecordedBuffers[i], offset);
+        offset += repeaterRecordedBuffers[i].length;
+      }
+      
+      const wavBlob = encodeWAV(result, 44100); // sampleRate default AudioContext web biasanya 44.1kHz atau 48kHz, kita bisa bypass karena encodeWAV menerima custom sampleRate. Namun untuk presisi, kita asumsikan 44100.
+      
+      const formData = new FormData();
+      formData.append("file", wavBlob, "repeater.wav");
+      
+      try {
+          const response = await fetch(`${settings.aiApi}/api/repeater-audio`, {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            recordedSequence = data.sequence;
+            repeaterState = 'playing';
+            statusText.textContent = `Memutar ulang...`;
+            playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+          } else {
+            throw new Error("Gagal merespon dari server");
+          }
+      } catch (e) {
+          console.error(e);
+          statusText.textContent = 'Gagal terhubung ke API Python.';
+          repeaterState = 'idle';
+          micBtn.classList.remove('active');
+          sonar.classList.remove('active');
+      }
+    } else {
+      statusText.textContent = 'Rekaman kosong.';
+      repeaterState = 'idle';
+      micBtn.classList.remove('active');
+      sonar.classList.remove('active');
+    }
     return;
   }
 
   // Start recording
   repeaterState = 'recording';
   recordedSequence = [];
+  repeaterRecordedBuffers = [];
+  repeaterRecordingLength = 0;
+  
   micBtn.classList.add('active');
   sonar.classList.add('active');
   statusText.textContent = 'Meminta izin mikrofon...';
   
-  getAudioContext();
-
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    statusText.textContent = 'Merekam nada... Tekan mic lagi untuk memutar ulang!';
+    micStream = await navigator.mediaDevices.getUserMedia({ 
+      audio: { 
+        noiseSuppression: true, 
+        echoCancellation: true, 
+        autoGainControl: false 
+      }, 
+      video: false 
+    });
+    statusText.textContent = 'Merekam nada (AI Python)... Tekan mic lagi untuk memutar ulang!';
     
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const source = audioContext.createMediaStreamSource(micStream);
     
-    scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+    scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
     source.connect(scriptProcessor);
     scriptProcessor.connect(audioContext.destination);
     
     scriptProcessor.onaudioprocess = (e) => {
       if (repeaterState !== 'recording') return;
-      const inputData = e.inputBuffer.getChannelData(0);
-      const freq = detectPitch(inputData, audioContext.sampleRate);
+      const input = e.inputBuffer.getChannelData(0);
+      repeaterRecordedBuffers.push(new Float32Array(input));
+      repeaterRecordingLength += input.length;
       
-      let note = null;
-      if (freq > 0) {
-        note = frequencyToNote(freq);
-      }
-      recordedSequence.push(note);
-      
-      if (note) {
-        document.getElementById('repeater-note').textContent = note;
-        document.getElementById('repeater-freq').textContent = `${freq.toFixed(1)} Hz`;
-      }
+      // Animasi visual (hanya menampilkan indikator merekam)
+      document.getElementById('repeater-note').textContent = "REC";
+      document.getElementById('repeater-freq').textContent = "...";
     };
 
   } catch (e) {
@@ -914,6 +1002,10 @@ async function toggleRepeaterListening() {
     stopAllPlaybacks();
   }
 }
+
+// Menampung variabel audio repeater di scope global agar tidak undefined
+let repeaterRecordedBuffers = [];
+let repeaterRecordingLength = 0;
 // Simple WAV Encoder
 function encodeWAV(samples, sampleRate) {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
@@ -1014,7 +1106,13 @@ async function startLanguageClassification(event) {
     // Mode Lokal
     statusText.textContent = 'Merekam (Lokal)... Ketuk lagi untuk memproses.';
     try {
-      localMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localMediaStream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          noiseSuppression: true, 
+          echoCancellation: true, 
+          autoGainControl: false 
+        } 
+      });
       localAudioContext = new (window.AudioContext || window.webkitAudioContext)();
       const source = localAudioContext.createMediaStreamSource(localMediaStream);
       localScriptProcessor = localAudioContext.createScriptProcessor(4096, 1, 1);

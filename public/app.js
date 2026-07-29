@@ -1429,11 +1429,11 @@ async function toggleRepeaterListening() {
       const frameDur = data.frame_duration_ms || 64.0;
       let rawNote = (data.frequency > 0 && data.note) ? data.note : null;
       
-      // Smoothing Buffer 5 Frame
+      // Smoothing Buffer 4 Frame
       noteHistory.push(rawNote);
-      if (noteHistory.length > 5) noteHistory.shift();
+      if (noteHistory.length > 4) noteHistory.shift();
       
-      let detectedNote = rawNote;
+      let candidateNote = rawNote;
       if (noteHistory.length >= 3) {
         let noteCounts = {};
         let maxCount = 0;
@@ -1441,31 +1441,33 @@ async function toggleRepeaterListening() {
           noteCounts[n] = (noteCounts[n] || 0) + 1;
           if (noteCounts[n] > maxCount) {
             maxCount = noteCounts[n];
-            detectedNote = n;
+            candidateNote = n;
           }
         }
         if (maxCount < 2) {
-          detectedNote = null;
+          candidateNote = null;
         }
       }
+
+      let activeNote = candidateNote;
       
-      // Accumulate audio duration per frame (64ms per audio chunk)
-      if (detectedNote === currentRecNote) {
+      // Accumulate exact audio duration per note/silence segment (64ms per frame)
+      if (activeNote === currentRecNote) {
         currentRecDuration += frameDur;
       } else {
         if (currentRecDuration > 0) {
           recordedSequence.push({ note: currentRecNote, duration: Math.round(currentRecDuration) });
         }
-        currentRecNote = detectedNote;
+        currentRecNote = activeNote;
         currentRecDuration = frameDur;
       }
 
       // UI Update
       if (data.frequency > 0) {
         document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
-        document.getElementById('repeater-note').textContent = detectedNote || '---';
-        if (detectedNote) {
-          const hw = mapPitchNameToNoteNumber(detectedNote);
+        document.getElementById('repeater-note').textContent = activeNote || '---';
+        if (activeNote) {
+          const hw = mapPitchNameToNoteNumber(activeNote);
           if (hw) {
             highlightKeyProgrammatic(hw.note, hw.angklung, false);
           }
@@ -1482,7 +1484,7 @@ async function toggleRepeaterListening() {
   }
 }
 
-// Post-Processing Sequence Cleaner to Filter Noise & Preserve Exact Melodic Note Durations
+// Exact Vocal Pattern Cleaner (Filters Noise & Preserves Note Lengths + Rest Pauses)
 function cleanRepeaterSequence(rawSequence) {
   if (!rawSequence || rawSequence.length === 0) return [];
 
@@ -1497,12 +1499,36 @@ function cleanRepeaterSequence(rawSequence) {
     }
   }
 
-  // Step 2: Remove isolated noise transients (< 80ms surrounded by silence/glitches)
-  let filtered = [];
+  // Step 2: Pitch Wobble Smoothing (Absorb brief pitch wavers < 80ms into surrounding sustained note)
+  let smoothed = [];
   for (let i = 0; i < merged.length; i++) {
     const item = merged[i];
     const prev = i > 0 ? merged[i - 1] : null;
     const next = i < merged.length - 1 ? merged[i + 1] : null;
+
+    if (item.note !== null && item.duration <= 80 && prev && next && prev.note === next.note && prev.note !== null) {
+      prev.duration += item.duration;
+    } else {
+      smoothed.push(item);
+    }
+  }
+
+  // Step 3: Re-merge consecutive identical notes
+  let reMerged = [];
+  for (let item of smoothed) {
+    if (reMerged.length > 0 && reMerged[reMerged.length - 1].note === item.note) {
+      reMerged[reMerged.length - 1].duration += item.duration;
+    } else {
+      reMerged.push({ note: item.note, duration: item.duration });
+    }
+  }
+
+  // Step 4: Remove isolated noise transients (< 80ms isolated pitch spikes)
+  let filtered = [];
+  for (let i = 0; i < reMerged.length; i++) {
+    const item = reMerged[i];
+    const prev = i > 0 ? reMerged[i - 1] : null;
+    const next = i < reMerged.length - 1 ? reMerged[i + 1] : null;
 
     if (item.note === null) {
       filtered.push(item);
@@ -1514,36 +1540,23 @@ function cleanRepeaterSequence(rawSequence) {
       if (isConnectedMelody && item.duration >= 40) {
         filtered.push(item);
       } else {
-        if (prev) {
-          prev.duration += item.duration;
-        } else if (next) {
-          next.duration += item.duration;
-        }
+        if (prev) prev.duration += item.duration;
+        else if (next) next.duration += item.duration;
       }
     } else {
       filtered.push(item);
     }
   }
 
-  // Step 3: Re-merge consecutive identical notes/silences
-  let reMerged = [];
-  for (let item of filtered) {
-    if (reMerged.length > 0 && reMerged[reMerged.length - 1].note === item.note) {
-      reMerged[reMerged.length - 1].duration += item.duration;
-    } else {
-      reMerged.push({ note: item.note, duration: item.duration });
-    }
+  // Step 5: Trim leading and trailing silence
+  while (filtered.length > 0 && filtered[0].note === null) {
+    filtered.shift();
+  }
+  while (filtered.length > 0 && filtered[filtered.length - 1].note === null) {
+    filtered.pop();
   }
 
-  // Step 4: Trim leading and trailing silence
-  while (reMerged.length > 0 && reMerged[0].note === null) {
-    reMerged.shift();
-  }
-  while (reMerged.length > 0 && reMerged[reMerged.length - 1].note === null) {
-    reMerged.pop();
-  }
-
-  return reMerged;
+  return filtered;
 }
 
 // Render cleaned note chips on UI
@@ -1570,7 +1583,7 @@ function renderRepeaterNoteChips(sequence) {
   });
 }
 
-// Playback Repeater Sequence (Sustains Tone & Shakes Angklung for EXACT Duration)
+// Playback Repeater Sequence (Plays Exact Recorded Pattern: Notes + Durations + Rest Pauses)
 async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
   const sequence = cleanRepeaterSequence(rawSequence);
 
@@ -1589,25 +1602,29 @@ async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
   micBtn.classList.add('active');
   micBtn.classList.add('mic-playing');
   sonar.classList.add('active');
-  statusText.textContent = 'Memainkan urutan nada persis durasi rekaman vokal...';
+  statusText.textContent = 'Memainkan pola rekaman vokal persis asli...';
   
   for (let item of sequence) {
     if (repeaterState !== 'playing') break;
     
-    let hw = mapPitchNameToNoteNumber(item.note);
-    if (hw) {
-      document.getElementById('repeater-note').textContent = item.note;
-      
-      // Highlight visual key and sustain audio synth for EXACT item.duration
-      highlightKeyProgrammatic(hw.note, hw.angklung, true, item.duration);
-      
-      // Sustain physical hardware angklung shaking throughout item.duration
-      playChordForNoteNumSustained(hw.note, hw.angklung, item.duration);
-      
-      // Hold playback execution for exact duration of note
-      await new Promise(r => setTimeout(r, item.duration));
+    if (item.note !== null) {
+      let hw = mapPitchNameToNoteNumber(item.note);
+      if (hw) {
+        document.getElementById('repeater-note').textContent = item.note;
+        
+        // Highlight visual key and sustain Web Audio synth for EXACT item.duration
+        highlightKeyProgrammatic(hw.note, hw.angklung, true, item.duration);
+        
+        // Sustain physical hardware angklung shaking throughout item.duration
+        playChordForNoteNumSustained(hw.note, hw.angklung, item.duration);
+        
+        // Hold playback execution for exact duration of note
+        await new Promise(r => setTimeout(r, item.duration));
+      } else {
+        await new Promise(r => setTimeout(r, item.duration));
+      }
     } else {
-      // Silence gap between notes
+      // Rest/Silence pause between notes
       document.getElementById('repeater-note').textContent = '---';
       await new Promise(r => setTimeout(r, item.duration));
     }

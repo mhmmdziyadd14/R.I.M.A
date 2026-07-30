@@ -283,9 +283,9 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
             # 1. Pitch Step Delta > 50 Cents from current stable note
             pitch_jump = cents_distance(freq, current_median) > 50.0
 
-            # 2. Energy Onset Jump (>= 2.5x RMS jump indicating new syllable start)
+            # Energy Onset Jump (>= 3.0x RMS jump with pitch step > 30 cents, preventing note splitting on volume wobbles)
             prev_rms = current_segment[-1].get('rms', 0.001)
-            energy_jump = (rms / max(0.001, prev_rms)) >= 2.5 and len(current_segment) >= 5
+            energy_jump = (rms / max(0.001, prev_rms)) >= 3.0 and cents_distance(freq, current_median) > 30.0 and len(current_segment) >= 8
 
             if pitch_jump or energy_jump:
                 segments.append(current_segment)
@@ -297,7 +297,7 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
         segments.append(current_segment)
 
     # Process each segment into a structured Note Event object with exact recorded timing
-    note_events = []
+    raw_note_events = []
     for idx, seg in enumerate(segments):
         if len(seg) == 0:
             continue
@@ -315,10 +315,10 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
         median_hz = float(np.median(freqs))
         avg_conf = float(np.mean(confs))
 
-        last_midi = note_events[-1]["midi"] if len(note_events) > 0 else None
+        last_midi = raw_note_events[-1]["midi"] if len(raw_note_events) > 0 else None
         note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz, prev_midi=last_midi)
 
-        note_events.append({
+        raw_note_events.append({
             "id": idx + 1,
             "start_ms": seg[0]['time_ms'],
             "end_ms": seg[-1]['time_ms'] + 10,
@@ -330,7 +330,19 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
             "confidence": round(avg_conf, 2)
         })
 
-    return note_events
+    # Same-Pitch Merger: Merge adjacent identical notes into ONE single continuous note!
+    merged_note_events = []
+    for ev in raw_note_events:
+        if len(merged_note_events) > 0 and merged_note_events[-1]["note"] == ev["note"]:
+            # Merge into single continuous sustained note
+            merged_note_events[-1]["end_ms"] = ev["end_ms"]
+            merged_note_events[-1]["duration_ms"] += ev["duration_ms"]
+            merged_note_events[-1]["confidence"] = round((merged_note_events[-1]["confidence"] + ev["confidence"]) / 2.0, 2)
+        else:
+            ev["id"] = len(merged_note_events) + 1
+            merged_note_events.append(ev)
+
+    return merged_note_events
 
 def preprocess_audio_data(y):
     """Extracts Mel-Spectrogram features for CRNN model inference."""

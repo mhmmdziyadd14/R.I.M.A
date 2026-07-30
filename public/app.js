@@ -1559,6 +1559,128 @@ function cleanRepeaterSequence(rawSequence) {
   return filtered;
 }
 
+// =========================================================================
+// Musical Auto-Tune & Harmonic Pitch Quantizer Engine
+// Automatically corrects off-key ("fals") vocal notes to nearest scale degree
+// =========================================================================
+const PITCH_CLASS_NAMES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
+
+const HARMONIC_SCALES = {
+  "c_major":     [0, 2, 4, 5, 7, 9, 11], // C, D, E, F, G, A, B
+  "g_major":     [7, 9, 11, 0, 2, 4, 6], // G, A, B, C, D, E, F#
+  "f_major":     [5, 7, 9, 10, 0, 2, 4], // F, G, A, A#, C, D, E
+  "d_major":     [2, 4, 6, 7, 9, 11, 1], // D, E, F#, G, A, B, C#
+  "a_minor":     [9, 11, 0, 2, 4, 5, 7], // A, B, C, D, E, F, G
+  "e_minor":     [4, 6, 7, 9, 11, 0, 2], // E, F#, G, A, B, C, D
+  "pelog_sunda": [0, 1, 5, 7, 8],        // C, C#, F, G, G#
+  "slendro":     [0, 2, 5, 7, 9]         // C, D, F, G, A
+};
+
+function parsePitchNote(noteStr) {
+  if (!noteStr) return null;
+  const clean = noteStr.toLowerCase().replace('_bass', '');
+  const match = clean.match(/^([a-g]#?)(\d+)$/);
+  if (!match) return null;
+  const name = match[1];
+  const octave = parseInt(match[2], 10);
+  const pc = PITCH_CLASS_NAMES.indexOf(name);
+  if (pc === -1) return null;
+  const midi = (octave + 1) * 12 + pc;
+  return { name, octave, pitchClass: pc, midi, isBass: noteStr.toLowerCase().includes('_bass') };
+}
+
+function midiToPitchNameString(midi, isBass = false) {
+  const pc = midi % 12;
+  const octave = Math.floor(midi / 12) - 1;
+  let name = PITCH_CLASS_NAMES[pc].toUpperCase();
+  let result = `${name}${octave}`;
+  if (isBass && (result === "F4" || result === "F#4" || result === "G4")) {
+    result += "_bass";
+  }
+  return result;
+}
+
+function detectBestHarmonicScale(sequence) {
+  let pcWeights = new Array(12).fill(0);
+  for (let item of sequence) {
+    if (!item.note) continue;
+    const parsed = parsePitchNote(item.note);
+    if (parsed) {
+      pcWeights[parsed.pitchClass] += item.duration;
+    }
+  }
+
+  let bestScaleKey = "c_major";
+  let maxScore = -1;
+
+  for (let scaleKey in HARMONIC_SCALES) {
+    const scaleClasses = HARMONIC_SCALES[scaleKey];
+    let score = 0;
+    for (let pc of scaleClasses) {
+      score += pcWeights[pc];
+    }
+    if (score > maxScore) {
+      maxScore = score;
+      bestScaleKey = scaleKey;
+    }
+  }
+
+  return HARMONIC_SCALES[bestScaleKey] || HARMONIC_SCALES["c_major"];
+}
+
+function snapNoteToHarmonicScale(noteStr, scaleClasses) {
+  if (!noteStr) return null;
+  const parsed = parsePitchNote(noteStr);
+  if (!parsed) return noteStr;
+
+  if (scaleClasses.includes(parsed.pitchClass)) {
+    return noteStr; // Already in scale -> keep exact note!
+  }
+
+  // Find nearest note in scale (closest MIDI distance)
+  let bestMidi = parsed.midi;
+  let minDiff = 999;
+
+  for (let delta = -2; delta <= 2; delta++) {
+    if (delta === 0) continue;
+    const candidateMidi = parsed.midi + delta;
+    const candidatePc = (candidateMidi % 12 + 12) % 12;
+    if (scaleClasses.includes(candidatePc)) {
+      const diff = Math.abs(delta);
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestMidi = candidateMidi;
+      }
+    }
+  }
+
+  bestMidi = Math.max(52, Math.min(96, bestMidi));
+  return midiToPitchNameString(bestMidi, parsed.isBass);
+}
+
+function autoTuneHarmonicSequence(sequence) {
+  if (!sequence || sequence.length === 0) return [];
+
+  const targetScale = detectBestHarmonicScale(sequence);
+
+  let tunedSequence = sequence.map(item => {
+    if (!item.note) return { note: null, duration: item.duration };
+    const tunedNote = snapNoteToHarmonicScale(item.note, targetScale);
+    return { note: tunedNote, duration: item.duration };
+  });
+
+  let merged = [];
+  for (let item of tunedSequence) {
+    if (merged.length > 0 && merged[merged.length - 1].note === item.note) {
+      merged[merged.length - 1].duration += item.duration;
+    } else {
+      merged.push({ note: item.note, duration: item.duration });
+    }
+  }
+
+  return merged;
+}
+
 // Render cleaned note chips on UI
 function renderRepeaterNoteChips(sequence) {
   const sequenceContainer = document.getElementById('repeater-note-sequence');
@@ -1583,9 +1705,10 @@ function renderRepeaterNoteChips(sequence) {
   });
 }
 
-// Playback Repeater Sequence (Plays Exact Recorded Pattern: Notes + Durations + Rest Pauses)
+// Playback Repeater Sequence (Plays Exact Recorded Pattern Harmonized by Auto-Tune)
 async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
-  const sequence = cleanRepeaterSequence(rawSequence);
+  const cleaned = cleanRepeaterSequence(rawSequence);
+  const sequence = autoTuneHarmonicSequence(cleaned);
 
   renderRepeaterNoteChips(sequence);
 
@@ -1602,7 +1725,7 @@ async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
   micBtn.classList.add('active');
   micBtn.classList.add('mic-playing');
   sonar.classList.add('active');
-  statusText.textContent = 'Memainkan pola rekaman vokal persis asli...';
+  statusText.textContent = '✨ Memainkan melodi harmonis (Auto-Tune Harmonizer)...';
   
   for (let item of sequence) {
     if (repeaterState !== 'playing') break;

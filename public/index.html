@@ -401,10 +401,20 @@
             
             <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 40px;">
               <!-- Header dan Instruksi -->
-              <div style="margin-bottom: 24px; text-align: center;">
+              <div style="margin-bottom: 24px; text-align: center; display: flex; flex-direction: column; align-items: center;">
+                <!-- Mode Repeater Toggle Switch -->
+                <div class="repeater-mode-toggle" style="display: inline-flex; background: #E8F5E9; padding: 4px; border-radius: 30px; margin-bottom: 16px; border: 1px solid #C8E6C9; box-shadow: 0 2px 8px rgba(76,175,80,0.12);">
+                  <button id="mode-song-btn" class="repeater-mode-btn active-mode" onclick="setRepeaterMode('song')" style="padding: 8px 20px; border-radius: 25px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.25s ease; background: #2E7D32; color: #FFFFFF; box-shadow: 0 2px 6px rgba(46,125,50,0.3);">
+                    🎵 Rekam Lagu (Presisi)
+                  </button>
+                  <button id="mode-autotune-btn" class="repeater-mode-btn" onclick="setRepeaterMode('autotune')" style="padding: 8px 20px; border-radius: 25px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.25s ease; background: transparent; color: #2E7D32;">
+                    🎤 Koreksi Vokal (Auto-Tune)
+                  </button>
+                </div>
+
                 <span style="font-size: 14px; font-weight: 700; color: #4caf50; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; display: block;">Repeater Nada</span>
                 <h1 style="font-family: var(--font-header); font-size: 38px; font-weight: 800; color: #1A1A1A; margin: 0 0 12px 0; line-height: 1.3;">Mainkan Nada Anda!</h1>
-                <p style="font-size: 16px; color: #666; margin: 0;">Urutan nada yang Anda mainkan akan tercatat di bawah ini.</p>
+                <p style="font-size: 16px; color: #666; margin: 0;" id="repeater-mode-desc">Mode Presisi: Merekam nada lagu asli 100% akurat tanpa koreksi pitch.</p>
               </div>
               
               <!-- Container untuk urutan nada -->

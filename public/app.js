@@ -185,6 +185,7 @@ function playSustainedSynthSound(frequency, durationMs = 300) {
 let activeSongInterval = null;
 let repeaterSocket = null;
 let repeaterState = 'idle'; // 'idle', 'recording', 'playing'
+let repeaterProcessingMode = 'song'; // 'song' (Presisi) or 'autotune' (Auto-Tune)
 let repeaterPlaybackInterval = null;
 let recordedSequence = [];
 let currentRecNote = null;
@@ -192,6 +193,39 @@ let currentRecStart = 0;
 let currentRecDuration = 0;
 let keyIntervals = new Map();
 let chordIntervals = new Map();
+
+function setRepeaterMode(mode) {
+  repeaterProcessingMode = mode;
+  const songBtn = document.getElementById('mode-song-btn');
+  const autotuneBtn = document.getElementById('mode-autotune-btn');
+  const desc = document.getElementById('repeater-mode-desc');
+
+  if (mode === 'song') {
+    if (songBtn) {
+      songBtn.style.background = '#2E7D32';
+      songBtn.style.color = '#FFFFFF';
+      songBtn.style.boxShadow = '0 2px 6px rgba(46,125,50,0.3)';
+    }
+    if (autotuneBtn) {
+      autotuneBtn.style.background = 'transparent';
+      autotuneBtn.style.color = '#2E7D32';
+      autotuneBtn.style.boxShadow = 'none';
+    }
+    if (desc) desc.textContent = 'Mode Presisi: Merekam nada lagu asli 100% akurat tanpa koreksi pitch.';
+  } else {
+    if (autotuneBtn) {
+      autotuneBtn.style.background = '#2E7D32';
+      autotuneBtn.style.color = '#FFFFFF';
+      autotuneBtn.style.boxShadow = '0 2px 6px rgba(46,125,50,0.3)';
+    }
+    if (songBtn) {
+      songBtn.style.background = 'transparent';
+      songBtn.style.color = '#2E7D32';
+      songBtn.style.boxShadow = 'none';
+    }
+    if (desc) desc.textContent = 'Mode Auto-Tune: Mengoreksi nada fals vokal awam secara otomatis ke tangga nada terdekat.';
+  }
+}
 
 function startKeyTrigger(keyElement) {
   const noteId = `${keyElement.getAttribute('data-angklung')}-${keyElement.getAttribute('data-note')}`;
@@ -1810,10 +1844,14 @@ function renderRepeaterNoteChips(sequence) {
   sequenceContainer.appendChild(chipsWrapper);
 }
 
-// Playback Repeater Sequence (Smart Auto-Tuned & Transient Noise Suppressed)
+// Playback Repeater Sequence (Smart Dual-Mode Playback)
 async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
   const cleaned = cleanRepeaterSequence(rawSequence);
-  const sequence = applySmartAutoTune(cleaned);
+  let sequence = cleaned;
+
+  if (repeaterProcessingMode === 'autotune') {
+    sequence = applySmartAutoTune(cleaned);
+  }
 
   renderRepeaterNoteChips(sequence);
 

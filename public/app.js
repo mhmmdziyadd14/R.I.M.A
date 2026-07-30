@@ -1723,10 +1723,10 @@ function snapNoteToHarmonicScale(noteStr, scaleClasses) {
     }
   }
 
-  // Fold into Lead Vocal Range [C4 = 60 to C5 = 72 / Range 1 to 8/1']
-  while (bestMidi < 60) bestMidi += 12;
-  while (bestMidi > 72) bestMidi -= 12;
-  bestMidi = Math.max(60, Math.min(72, bestMidi));
+  // Support Expressive 2-Octave Range [G3=55 to G5=79]
+  while (bestMidi < 55) bestMidi += 12;
+  while (bestMidi > 79) bestMidi -= 12;
+  bestMidi = Math.max(52, Math.min(96, bestMidi));
   return midiToPitchNameString(bestMidi, parsed.isBass);
 }
 
@@ -1753,43 +1753,39 @@ function autoTuneHarmonicSequence(sequence) {
   return merged;
 }
 
-// Tiered Cents Autotune & Quantizer Engine (Off / Soft / Hard)
+// 100% Diatonic Scale Auto-Tune & Harmonics Quantizer (Eliminates all fals chromatic accidentals)
 function applyTieredAutotune(sequence, mode = 'soft') {
-  if (!sequence || sequence.length === 0 || mode === 'off') return sequence;
+  if (!sequence || sequence.length === 0) return sequence;
 
+  // Detect dominant harmonic key scale of the recorded song melody
   const targetScale = detectBestHarmonicScale(sequence);
 
-  return sequence.map(item => {
+  let tunedSequence = sequence.map(item => {
     if (!item.note) return item;
     const parsed = parsePitchNote(item.note);
     if (!parsed) return item;
 
-    if (mode === 'hard') {
-      // Full Snap ke nada angklung terdekat dalam skala
-      const snapped = snapNoteToHarmonicScale(item.note, targetScale);
-      return { note: snapped, duration: item.duration, centsDev: item.centsDev };
-    } else if (mode === 'soft') {
-      // Toleransi Cents Bertingkat:
-      // Deviasi kecil (< 35 cents) -> Snap Penuh
-      // Deviasi sedang (35..70 cents) -> Snap jika di luar tangga nada
-      // Deviasi besar (> 70 cents) -> Jaga nada asli (jangan dipaksa snap yang salah)
-      const cents = item.centsDev ? Math.abs(item.centsDev) : 0;
-      if (cents < 35) {
-        const snapped = snapNoteToHarmonicScale(item.note, targetScale);
-        return { note: snapped, duration: item.duration, centsDev: item.centsDev };
-      } else if (cents <= 70) {
-        if (targetScale.includes(parsed.pitchClass)) {
-          return item; // Nada sudah sesuai tangga nada -> Pertahankan!
-        } else {
-          const snapped = snapNoteToHarmonicScale(item.note, targetScale);
-          return { note: snapped, duration: item.duration, centsDev: item.centsDev };
-        }
-      } else {
-        return item; // Deviasi besar -> Pertahankan nada asli
-      }
-    }
-    return item;
+    // 100% Quantize note to clean harmonic scale to eliminate all off-key ("fals") accidentals
+    const snapped = snapNoteToHarmonicScale(item.note, targetScale);
+    return { 
+      note: snapped, 
+      duration: item.duration, 
+      centsDev: item.centsDev,
+      scaleDegree: item.scaleDegree 
+    };
   });
+
+  // Re-merge adjacent notes that snapped to the same pitch
+  let merged = [];
+  for (let item of tunedSequence) {
+    if (merged.length > 0 && merged[merged.length - 1].note === item.note) {
+      merged[merged.length - 1].duration += item.duration;
+    } else {
+      merged.push(item);
+    }
+  }
+
+  return merged;
 }
 
 function applySmartAutoTune(sequence) {

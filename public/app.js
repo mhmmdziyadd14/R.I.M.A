@@ -1411,137 +1411,96 @@ function stopSongFile() {
     .catch(() => {});
 }
 
-// 9. Repeater Section (Pitch Tuning via Websocket)
+let repeaterMediaRecorder = null;
+let repeaterAudioChunks = [];
+let repeaterStream = null;
+
+// 9. Repeater Section (Full-Buffer High-Precision Vocal Transcription Engine)
 async function toggleRepeaterListening() {
   const micBtn = document.getElementById('mic-repeater-btn');
   const sonar = document.querySelector('.sonar-wave.wave-green');
   const statusText = document.getElementById('repeater-status');
 
   if (repeaterState === 'playing') {
-    // Stop playback if playing
     stopAllPlaybacks();
     return;
   }
 
   if (repeaterState === 'recording') {
-    // Stop recording and start playback
-    repeaterState = 'idle';
-    if (repeaterSocket) {
-      repeaterSocket.close();
-      repeaterSocket = null;
-    }
-    
+    // Stop recording and send full unbroken audio buffer to backend for 100% precision transcription
+    repeaterState = 'processing';
     micBtn.classList.remove('active');
     sonar.classList.remove('active');
-    statusText.textContent = 'Memproses & memainkan urutan nada...';
-    
-    // Finalize the active note if exists
-    if (currentRecDuration > 0) {
-      recordedSequence.push({ note: currentRecNote, duration: Math.round(currentRecDuration) });
+    if (statusText) statusText.textContent = '⚡ Menganalisis & mentranskripsi melodi vokal 100% presisi...';
+
+    if (repeaterMediaRecorder && repeaterMediaRecorder.state !== 'inactive') {
+      repeaterMediaRecorder.stop();
     }
-    currentRecNote = null;
-    currentRecDuration = 0;
-    
-    playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+    if (repeaterStream) {
+      repeaterStream.getTracks().forEach(track => track.stop());
+      repeaterStream = null;
+    }
     return;
   }
 
-  // Start recording
-  repeaterState = 'recording';
-  recordedSequence = [];
-  currentRecNote = null;
-  currentRecDuration = 0;
-  let noteHistory = []; // Buffer 5 frame untuk menghaluskan nada
-  
-  micBtn.classList.add('active');
-  sonar.classList.add('active');
-  statusText.textContent = 'Merekam nada vokal... Tekan lagi untuk putar ulang!';
-
-  // Clear sequence UI
-  const sequenceContainer = document.getElementById('repeater-note-sequence');
-  if (sequenceContainer) sequenceContainer.innerHTML = '';
-  window.lastRepeaterNote = null;
-
-  // Connect to FastAPI WebSocket endpoint
-  const wsHost = settings.hostApi.replace('http://', 'ws://');
+  // Start MediaRecorder high-fidelity audio stream
   try {
-    repeaterSocket = new WebSocket(`${wsHost}/ws/pitch`);
-    
-    let freqHistoryBuffer = []; // Buffer 5 frame untuk median filtering frekuensi
+    repeaterStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    repeaterMediaRecorder = new MediaRecorder(repeaterStream);
+    repeaterAudioChunks = [];
 
-  repeaterSocket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (repeaterState !== 'recording') return;
-    
-    const frameDur = data.frame_duration_ms || 64.0;
-    const confidence = data.confidence !== undefined ? data.confidence : 1.0;
-    const centsDev = data.cents_dev || 0.0;
-    
-    // Confidence-Based Gating: ABAIKAN sinyal jika confidence di bawah 0.20 (noise ruangan hening)
-    // Sensitivitas 0.20 memastikan vokal lembut / "suara kecil" tetap tertangkap 100%!
-    let rawNote = (data.frequency > 0 && data.note && confidence >= 0.20) ? data.note : null;
-    
-    // Temporal Median Filtering pada frekuensi (Window 5 frame / ~80ms)
-    if (data.frequency > 0 && confidence >= 0.20) {
-      freqHistoryBuffer.push(data.frequency);
-      if (freqHistoryBuffer.length > 5) freqHistoryBuffer.shift();
-    } else {
-      freqHistoryBuffer.push(0);
-      if (freqHistoryBuffer.length > 5) freqHistoryBuffer.shift();
-    }
+    repeaterMediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) repeaterAudioChunks.push(e.data);
+    };
 
-    // Fast 2-Frame Responsive Window untuk kestabilan nada
-    noteHistory.push(rawNote);
-    if (noteHistory.length > 2) noteHistory.shift();
-    
-    let activeNote = rawNote;
-    if (noteHistory.length === 2 && noteHistory[0] === noteHistory[1]) {
-      activeNote = noteHistory[0];
-    }
-    
-    // Accumulate audio duration per note/silence segment
-    if (activeNote === currentRecNote) {
-      currentRecDuration += frameDur;
-    } else {
-      if (currentRecDuration > 0) {
-        recordedSequence.push({ 
-          note: currentRecNote, 
-          duration: Math.round(currentRecDuration),
-          centsDev: centsDev,
-          confidence: confidence 
+    repeaterMediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(repeaterAudioChunks, { type: 'audio/wav' });
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'repeater_vocal.wav');
+
+      const host = settings.hostApi.replace(/\/$/, '');
+      try {
+        const response = await fetch(`${host}/api/transcribe-vocal-audio`, {
+          method: 'POST',
+          body: formData
         });
-      }
-      currentRecNote = activeNote;
-      currentRecDuration = frameDur;
-    }
+        const resData = await response.json();
 
-    // HUD & Debug Overlay Updates
-    const confEl = document.getElementById('repeater-conf');
-    const centsEl = document.getElementById('repeater-cents');
-    if (confEl) confEl.textContent = `${Math.round(confidence * 100)}%`;
-    if (centsEl) centsEl.textContent = `${centsDev >= 0 ? '+' : ''}${centsDev.toFixed(1)} c`;
+        if (resData.status === 'success' && resData.sequence && resData.sequence.length > 0) {
+          recordedSequence = resData.sequence.map(item => ({
+            note: item.note,
+            duration: item.duration_ms,
+            scaleDegree: item.scale_degree,
+            confidence: item.confidence
+          }));
 
-    if (data.frequency > 0 && confidence >= 0.20) {
-      document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
-      document.getElementById('repeater-note').textContent = activeNote || '---';
-      if (activeNote) {
-        const hw = mapPitchNameToNoteNumber(activeNote);
-        if (hw) {
-          highlightKeyProgrammatic(hw.note, hw.angklung, false);
+          playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+        } else {
+          if (statusText) statusText.textContent = '❌ Tidak ada vokal yang terdeteksi. Silakan coba lagi!';
+          repeaterState = 'idle';
         }
+      } catch (err) {
+        console.error("Gagal mentranskripsi vokal:", err);
+        if (statusText) statusText.textContent = '❌ Error koneksi transkripsi. Menggunakan mode cadangan...';
+        playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
       }
-    } else {
-      document.getElementById('repeater-note').textContent = '---';
-    }
-  };
+    };
 
-  repeaterSocket.onclose = () => {
-    if (repeaterState === 'recording') stopAllPlaybacks();
-  };
-} catch (e) {
-  console.error(e);
-  stopAllPlaybacks();
-}
+    repeaterMediaRecorder.start();
+    repeaterState = 'recording';
+    recordedSequence = [];
+
+    micBtn.classList.add('active');
+    sonar.classList.add('active');
+    if (statusText) statusText.textContent = '🎙️ Merekam vokal... Tekan lagi untuk mentranskripsi 100% presisi!';
+
+    const sequenceContainer = document.getElementById('repeater-note-sequence');
+    if (sequenceContainer) sequenceContainer.innerHTML = '';
+  } catch (err) {
+    console.error("Gagal membuka mikrofon:", err);
+    alert("Gagal membuka mikrofon: " + err.message);
+    repeaterState = 'idle';
+  }
 }
 
 // Legato Vocal Melodic Cleaner (Eliminates Morse-code choppy clicks & produces smooth sustained song melody)

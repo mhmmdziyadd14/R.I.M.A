@@ -1544,51 +1544,51 @@ async function toggleRepeaterListening() {
 }
 }
 
-// Fast Melodic Sequence Cleaner & Abrupt Jump Corrector
+// Legato Vocal Melodic Cleaner (Eliminates Morse-code choppy clicks & produces smooth sustained song melody)
 function cleanRepeaterSequence(rawSequence) {
   if (!rawSequence || rawSequence.length === 0) return [];
 
-  // Step 1: Merge consecutive identical notes or consecutive silences
+  // Step 1: Merge consecutive identical or near-identical notes (<= 1 semitone difference)
   let merged = [];
   for (let item of rawSequence) {
     let note = item.note || null;
-    if (merged.length > 0 && merged[merged.length - 1].note === note) {
-      merged[merged.length - 1].duration += item.duration;
-    } else {
-      merged.push({ note: note, duration: item.duration });
+    if (merged.length > 0) {
+      const last = merged[merged.length - 1];
+      if (last.note === note) {
+        last.duration += item.duration;
+        continue;
+      }
+      // If adjacent notes are identical or micro-variations of same pitch, merge into one continuous note!
+      if (last.note !== null && note !== null) {
+        const p1 = parsePitchNote(last.note);
+        const p2 = parsePitchNote(note);
+        if (p1 && p2 && Math.abs(p1.midi - p2.midi) <= 1 && item.duration < 150) {
+          last.duration += item.duration;
+          continue;
+        }
+      }
     }
+    merged.push({ note: note, duration: item.duration });
   }
 
-  // Step 2: Preserve fast scalar runs (>= 60ms) while eliminating abrupt "jomplang" jumps (>= 4 semitones jump < 250ms)
-  let smoothMelody = [];
+  // Step 2: Micro-Gap Filler (Fill tiny silence gaps < 200ms between notes to create smooth Legato)
+  let legato = [];
   for (let i = 0; i < merged.length; i++) {
     const item = merged[i];
     const prev = i > 0 ? merged[i - 1] : null;
     const next = i < merged.length - 1 ? merged[i + 1] : null;
 
-    if (item.note !== null && item.duration < 250 && prev && prev.note !== null && next && next.note !== null) {
-      const pCurrent = parsePitchNote(item.note);
-      const pPrev = parsePitchNote(prev.note);
-      const pNext = parsePitchNote(next.note);
-
-      if (pCurrent && pPrev && pNext) {
-        const diffPrev = Math.abs(pCurrent.midi - pPrev.midi);
-        const diffNext = Math.abs(pCurrent.midi - pNext.midi);
-
-        // If this transition is an abrupt distant jump (>= 4 semitones jump from both neighbours)
-        if (diffPrev >= 4 && diffNext >= 4) {
-          // Absorb duration into previous note to prevent abrupt "jomplang" pitch jump
-          prev.duration += item.duration;
-          continue;
-        }
-      }
+    if (item.note === null && item.duration < 200 && prev && next && prev.note !== null && next.note !== null) {
+      // Micro-silence gap -> Extend previous note over the gap so notes connect smoothly in Legato!
+      prev.duration += item.duration;
+      continue;
     }
-    smoothMelody.push(item);
+    legato.push(item);
   }
 
   // Step 3: Re-merge consecutive identical notes
   let reMerged = [];
-  for (let item of smoothMelody) {
+  for (let item of legato) {
     if (reMerged.length > 0 && reMerged[reMerged.length - 1].note === item.note) {
       reMerged[reMerged.length - 1].duration += item.duration;
     } else {
@@ -1596,7 +1596,7 @@ function cleanRepeaterSequence(rawSequence) {
     }
   }
 
-  // Step 4: Strict Transient Noise Rejection (Discard/Absorb all short noise chirps <= 150ms / 0.15s)
+  // Step 4: Strict Transient Click Suppression & Minimum 250ms Legato Note Duration
   let filtered = [];
   for (let i = 0; i < reMerged.length; i++) {
     const item = reMerged[i];
@@ -1608,11 +1608,13 @@ function cleanRepeaterSequence(rawSequence) {
       continue;
     }
 
-    // Ignore/absorb short noise clicks <= 150ms (0.15s) so noise is never recorded as a note
-    if (item.duration <= 150) {
+    // If note is too short (< 200ms), absorb into adjacent note to prevent Morse-code clicks!
+    if (item.duration < 200) {
       if (prev && prev.note !== null) prev.duration += item.duration;
       else if (next && next.note !== null) next.duration += item.duration;
     } else {
+      // Ensure minimum note duration of 250ms for rich musical sustain
+      item.duration = Math.max(250, item.duration);
       filtered.push(item);
     }
   }
@@ -1723,10 +1725,10 @@ function snapNoteToHarmonicScale(noteStr, scaleClasses) {
     }
   }
 
-  // Fold into Expressive Vocal Range [G3 = 55 to G5 = 79 / Octave 3, 4, 5]
-  while (bestMidi < 55) bestMidi += 12;
-  while (bestMidi > 79) bestMidi -= 12;
-  bestMidi = Math.max(55, Math.min(79, bestMidi));
+  // Fold into Lead Vocal Range [C4 = 60 to C5 = 72 / Range 1 to 8/1']
+  while (bestMidi < 60) bestMidi += 12;
+  while (bestMidi > 72) bestMidi -= 12;
+  bestMidi = Math.max(60, Math.min(72, bestMidi));
   return midiToPitchNameString(bestMidi, parsed.isBass);
 }
 

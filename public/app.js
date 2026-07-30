@@ -1435,8 +1435,13 @@ async function toggleRepeaterListening() {
     sonar.classList.remove('active');
     statusText.textContent = 'Memproses & memainkan urutan nada...';
     
-    // Server-side segmentation already produced clean note events
-    // Just play the recorded sequence directly
+    // Finalize the active note if exists
+    if (currentRecDuration > 0) {
+      recordedSequence.push({ note: currentRecNote, duration: Math.round(currentRecDuration) });
+    }
+    currentRecNote = null;
+    currentRecDuration = 0;
+    
     playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
     return;
   }
@@ -1444,6 +1449,9 @@ async function toggleRepeaterListening() {
   // Start recording
   repeaterState = 'recording';
   recordedSequence = [];
+  currentRecNote = null;
+  currentRecDuration = 0;
+  let noteHistory = []; // Buffer 5 frame untuk menghaluskan nada
   
   micBtn.classList.add('active');
   sonar.classList.add('active');
@@ -1452,66 +1460,78 @@ async function toggleRepeaterListening() {
   // Clear sequence UI
   const sequenceContainer = document.getElementById('repeater-note-sequence');
   if (sequenceContainer) sequenceContainer.innerHTML = '';
+  window.lastRepeaterNote = null;
 
   // Connect to FastAPI WebSocket endpoint
   const wsHost = settings.hostApi.replace('http://', 'ws://');
   try {
     repeaterSocket = new WebSocket(`${wsHost}/ws/pitch`);
+    
+    let freqHistoryBuffer = []; // Buffer 5 frame untuk median filtering frekuensi
 
   repeaterSocket.onmessage = (event) => {
     const data = JSON.parse(event.data);
     if (repeaterState !== 'recording') return;
     
-    const msgType = data.type || 'hud';
+    const frameDur = data.frame_duration_ms || 64.0;
+    const confidence = data.confidence !== undefined ? data.confidence : 1.0;
+    const centsDev = data.cents_dev || 0.0;
     
-    // ── HUD messages: update live display only (no recording) ──
-    if (msgType === 'hud') {
-      const confEl = document.getElementById('repeater-conf');
-      const centsEl = document.getElementById('repeater-cents');
-      const confidence = data.confidence || 0;
-      const centsDev = data.cents_dev || 0;
-      
-      if (confEl) confEl.textContent = `${Math.round(confidence * 100)}%`;
-      if (centsEl) centsEl.textContent = `${centsDev >= 0 ? '+' : ''}${centsDev.toFixed(1)} c`;
+    // Confidence-Based Gating: ABAIKAN sinyal jika confidence di bawah 0.20 (noise ruangan hening)
+    // Sensitivitas 0.20 memastikan vokal lembut / "suara kecil" tetap tertangkap 100%!
+    let rawNote = (data.frequency > 0 && data.note && confidence >= 0.20) ? data.note : null;
+    
+    // Temporal Median Filtering pada frekuensi (Window 5 frame / ~80ms)
+    if (data.frequency > 0 && confidence >= 0.20) {
+      freqHistoryBuffer.push(data.frequency);
+      if (freqHistoryBuffer.length > 5) freqHistoryBuffer.shift();
+    } else {
+      freqHistoryBuffer.push(0);
+      if (freqHistoryBuffer.length > 5) freqHistoryBuffer.shift();
+    }
 
-      if (data.note) {
-        document.getElementById('repeater-freq').textContent = `${(data.frequency || 0).toFixed(1)} Hz`;
-        document.getElementById('repeater-note').textContent = data.note;
-        
-        // Live highlight on angklung keyboard
-        const hw = mapPitchNameToNoteNumber(data.note);
+    // Fast 2-Frame Responsive Window untuk kestabilan nada
+    noteHistory.push(rawNote);
+    if (noteHistory.length > 2) noteHistory.shift();
+    
+    let activeNote = rawNote;
+    if (noteHistory.length === 2 && noteHistory[0] === noteHistory[1]) {
+      activeNote = noteHistory[0];
+    }
+    
+    // Accumulate audio duration per note/silence segment
+    if (activeNote === currentRecNote) {
+      currentRecDuration += frameDur;
+    } else {
+      if (currentRecDuration > 0) {
+        recordedSequence.push({ 
+          note: currentRecNote, 
+          duration: Math.round(currentRecDuration),
+          centsDev: centsDev,
+          confidence: confidence 
+        });
+      }
+      currentRecNote = activeNote;
+      currentRecDuration = frameDur;
+    }
+
+    // HUD & Debug Overlay Updates
+    const confEl = document.getElementById('repeater-conf');
+    const centsEl = document.getElementById('repeater-cents');
+    if (confEl) confEl.textContent = `${Math.round(confidence * 100)}%`;
+    if (centsEl) centsEl.textContent = `${centsDev >= 0 ? '+' : ''}${centsDev.toFixed(1)} c`;
+
+    if (data.frequency > 0 && confidence >= 0.20) {
+      document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
+      document.getElementById('repeater-note').textContent = activeNote || '---';
+      if (activeNote) {
+        const hw = mapPitchNameToNoteNumber(activeNote);
         if (hw) {
           highlightKeyProgrammatic(hw.note, hw.angklung, false);
         }
-      } else if (!data.voiced) {
-        document.getElementById('repeater-note').textContent = '---';
       }
-      return;
-    }
-    
-    // ── NOTE messages: server already segmented a clean stable note ──
-    if (msgType === 'note') {
-      console.log(`[Repeater] NOTE: ${data.note} (${data.scale_degree}) dur=${data.duration_ms}ms conf=${data.confidence} freq=${data.freq_hz}Hz`);
-      recordedSequence.push({
-        note: data.note,
-        duration: data.duration_ms,
-        scaleDegree: data.scale_degree,
-        confidence: data.confidence,
-        freqHz: data.freq_hz
-      });
-      return;
-    }
-    
-    // ── SILENCE messages: record a gap/rest ──
-    if (msgType === 'silence') {
-      // Only record silence if we already have notes (ignore leading silence)
-      if (recordedSequence.length > 0) {
-        recordedSequence.push({
-          note: null,
-          duration: data.duration_ms
-        });
-      }
-      return;
+    } else {
+      document.getElementById('repeater-note').textContent = '---';
     }
   };
 
@@ -1576,7 +1596,7 @@ function cleanRepeaterSequence(rawSequence) {
     }
   }
 
-  // Step 4: Strict Transient Click Suppression & Minimum 250ms Legato Note Duration
+  // Step 4: Preserve exact recorded note duration matching singer's actual timing 1-to-1
   let filtered = [];
   for (let i = 0; i < reMerged.length; i++) {
     const item = reMerged[i];
@@ -1588,13 +1608,11 @@ function cleanRepeaterSequence(rawSequence) {
       continue;
     }
 
-    // If note is too short (< 200ms), absorb into adjacent note to prevent Morse-code clicks!
-    if (item.duration < 200) {
+    // Preserve exact duration down to 100ms (so short 0.1s notes stay short and long 1.5s notes stay long!)
+    if (item.duration < 90) {
       if (prev && prev.note !== null) prev.duration += item.duration;
       else if (next && next.note !== null) next.duration += item.duration;
     } else {
-      // Ensure minimum note duration of 250ms for rich musical sustain
-      item.duration = Math.max(250, item.duration);
       filtered.push(item);
     }
   }
@@ -1877,32 +1895,10 @@ function renderRepeaterNoteChips(sequence) {
   sequenceContainer.appendChild(chipsWrapper);
 }
 
-// Playback Repeater Sequence (Server-Segmented Melody)
+// Playback Repeater Sequence (3-Mode Tiered Playback: Off, Soft, Hard)
 async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
-  // Server already produced clean note segments. Only apply mode-specific processing:
-  // - 'soft' mode: play exactly as detected (presisi lagu asli)
-  // - 'hard' mode: snap to harmonic scale (auto-tune vokal awam)
-  let sequence = rawSequence.filter(item => item.note !== null || item.duration > 50);
-  
-  if (repeaterProcessingMode === 'hard') {
-    sequence = applyTieredAutotune(sequence, 'hard');
-  }
-  
-  // Merge consecutive identical notes into one longer sustained note
-  let merged = [];
-  for (let item of sequence) {
-    if (merged.length > 0 && merged[merged.length - 1].note === item.note) {
-      merged[merged.length - 1].duration += item.duration;
-    } else {
-      merged.push({ ...item });
-    }
-  }
-  sequence = merged;
-
-  // Debug log the final sequence
-  console.log('[Repeater] Final melody sequence:', sequence.map(s => 
-    s.note ? `${s.note}(${s.scaleDegree || ''}) ${s.duration}ms` : `rest ${s.duration}ms`
-  ).join(' → '));
+  const cleaned = cleanRepeaterSequence(rawSequence);
+  const sequence = applyTieredAutotune(cleaned, repeaterProcessingMode);
 
   renderRepeaterNoteChips(sequence);
 

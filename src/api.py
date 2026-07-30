@@ -192,23 +192,35 @@ def detect_pitch(signal, sr):
     freq, _ = detect_pitch_with_confidence(signal, sr)
     return freq
 
-def pitch_hz_to_scale_degree(freq_hz, root_midi=60):
+def pitch_hz_to_scale_degree(freq_hz, root_midi=60, prev_midi=None):
     """Maps pitch frequency Hz to Note Name, Scale Degree (Do, Re, Mi, Fa, Sol, La, Si), and Angklung MIDI note.
-    Guarantees all notes sit in Lead Vocal Range 1 to 8/1' (C4 = 60 to C5 = 72).
+    Prevents 1-octave boundary jumps by relative proximity folding to prev_midi.
     """
     if freq_hz <= 0:
         return None, None, None
     import math
     exact_midi = 69.0 + 12.0 * math.log2(freq_hz / 440.0)
-    nearest_midi = int(round(exact_midi))
+    raw_midi = int(round(exact_midi))
     
-    # Octave Folding into Lead Vocal Melody Range [C4 = 60 to C5 = 72 / Range 1 to 8/1']
-    transposed_midi = nearest_midi
-    while transposed_midi < 60:
-        transposed_midi += 12
-    while transposed_midi > 72:
-        transposed_midi -= 12
-    transposed_midi = max(60, min(72, transposed_midi))
+    # Proximity-Based Octave Folding relative to prev_midi to eliminate 1-octave jumps!
+    if prev_midi is None:
+        transposed_midi = raw_midi
+        while transposed_midi < 60:
+            transposed_midi += 12
+        while transposed_midi > 72:
+            transposed_midi -= 12
+        transposed_midi = max(52, min(96, transposed_midi))
+    else:
+        best_midi = raw_midi
+        min_dist = 999
+        for shift in [-24, -12, 0, 12, 24]:
+            cand = raw_midi + shift
+            if 52 <= cand <= 96:
+                dist = abs(cand - prev_midi)
+                if dist < min_dist:
+                    min_dist = dist
+                    best_midi = cand
+        transposed_midi = best_midi
 
     pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     doremi_labels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)']
@@ -222,7 +234,7 @@ def pitch_hz_to_scale_degree(freq_hz, root_midi=60):
 
     return note_str, scale_deg, transposed_midi
 
-def segment_vocal_melody_frames(frame_list, min_note_dur_ms=100):
+def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
     """Monophonic Onset-Based Vocal Note Segmentation Engine (Hop size 10ms).
     Splits continuous vocal pitch stream into distinct Note Event segments using:
     (a) Pitch Delta > 50 Cents step
@@ -250,7 +262,7 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=100):
         time_ms = frame.get('time_ms', 0)
         rms = frame.get('rms', 0.0)
 
-        if not voiced or freq <= 0 or confidence < 0.25:
+        if not voiced or freq <= 0 or confidence < 0.22:
             # Unvoiced / Silence -> Close active note segment
             if len(current_segment) > 0:
                 segments.append(current_segment)
@@ -281,7 +293,7 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=100):
     if len(current_segment) > 0:
         segments.append(current_segment)
 
-    # Process each segment into a structured Note Event object
+    # Process each segment into a structured Note Event object with exact recorded timing
     note_events = []
     for idx, seg in enumerate(segments):
         if len(seg) == 0:
@@ -289,7 +301,7 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=100):
         
         dur_ms = seg[-1]['time_ms'] - seg[0]['time_ms'] + 10
         if dur_ms < min_note_dur_ms:
-            continue # Ignore short noise transient < 100ms
+            continue # Ignore noise clicks < 80ms
 
         freqs = [f['freq'] for f in seg if f['freq'] > 0]
         confs = [f['confidence'] for f in seg]
@@ -297,11 +309,11 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=100):
         if len(freqs) == 0:
             continue
 
-        # Representative Median Pitch Frequency for immunity against vibrato & transient spikes
         median_hz = float(np.median(freqs))
         avg_conf = float(np.mean(confs))
 
-        note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz)
+        last_midi = note_events[-1]["midi"] if len(note_events) > 0 else None
+        note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz, prev_midi=last_midi)
 
         note_events.append({
             "id": idx + 1,
@@ -1755,230 +1767,80 @@ async def classify_audio(file: UploadFile = File(...)):
 
 @app.websocket("/ws/pitch")
 async def pitch_websocket(websocket: WebSocket):
-    """Monophonic Vocal Melody Transcription WebSocket.
-    
-    Accumulates audio in a server-side ring buffer and performs real-time
-    onset-based note segmentation. Only sends clean note events to the client,
-    not raw per-frame pitch fragments.
-    
-    Pipeline:
-    1. Capture audio in 10ms hops (160 samples @ 16kHz)
-    2. Detect pitch + voiced/unvoiced + confidence per hop
-    3. Accumulate voiced frames into note segments
-    4. Detect note boundaries via pitch jump (>80 cents) or silence gap
-    5. Send completed note events: {note, duration_ms, scale_degree, confidence}
-    6. Also stream live HUD data for real-time display
-    """
+    """Streams real-time pitch detection from the server's microphone to the client."""
     if not HAS_AI:
         await websocket.accept()
         await websocket.send_json({"error": "Pitch streaming is disabled on this machine (missing PyTorch/SoundDevice)"})
         await websocket.close()
         return
     await websocket.accept()
-    print("[WS] Klien terhubung ke WebSocket Pitch (Monophonic Melody Engine).")
+    print("[WS] Klien terhubung ke WebSocket Pitch.")
     
-    import math
-    
-    # Audio capture: 1024 samples @ 16kHz but we process in 10ms sub-frames
-    capture_chunk = 1024
+    # Audio settings for streaming (1024 samples @ 16kHz = 64ms per frame)
+    chunk_size = 1024
     sample_rate = 16000
-    hop_samples = 160  # 10ms hop
+    frame_dur_ms = round((chunk_size / sample_rate) * 1000.0, 1)
     
     loop = asyncio.get_event_loop()
+    
+    # Queue for passing audio blocks from the sounddevice thread
     audio_queue = asyncio.Queue()
     
     def audio_callback(indata, frames, time_info, status):
         if status:
             print(f"[WS-Audio] Status error: {status}")
+        # Put raw audio data into the queue
         loop.call_soon_threadsafe(audio_queue.put_nowait, indata.copy())
 
+    # Start sounddevice input stream
     stream = sd.InputStream(
         channels=1,
         samplerate=sample_rate,
-        blocksize=capture_chunk,
+        blocksize=chunk_size,
         callback=audio_callback
     )
+    
     stream.start()
-    
-    # ── Note Segmentation State ──
-    # We accumulate pitch readings into "the current note" and emit it
-    # when we detect a boundary (pitch jump, silence, etc.)
-    current_note_freqs = []      # Hz readings for current note segment
-    current_note_confs = []      # confidence readings
-    current_note_start_ms = 0.0  # when current note started
-    current_note_dur_ms = 0.0    # accumulated duration
-    elapsed_ms = 0.0             # total elapsed time
-    silence_streak_ms = 0.0      # how long we've been unvoiced/silent
-    last_stable_note = None      # last emitted note name for HUD
-    
-    # Ring buffer for overlapping analysis (3x hop for better autocorrelation)
-    ring_buffer = np.zeros(hop_samples * 3, dtype=np.float32)
-
-    MIN_NOTE_DUR_MS = 120.0      # minimum note duration to emit (ignore shorter)
-    PITCH_JUMP_CENTS = 80.0      # pitch change threshold to trigger new note
-    SILENCE_TIMEOUT_MS = 100.0   # silence gap to close current note
-
-    def cents_between(f1, f2):
-        if f1 <= 0 or f2 <= 0:
-            return 9999.0
-        return abs(1200.0 * math.log2(f1 / f2))
-
-    def finalize_note():
-        """Process accumulated frames into a single clean note event."""
-        nonlocal current_note_freqs, current_note_confs, current_note_start_ms, current_note_dur_ms
-        
-        if len(current_note_freqs) == 0 or current_note_dur_ms < MIN_NOTE_DUR_MS:
-            current_note_freqs = []
-            current_note_confs = []
-            current_note_dur_ms = 0.0
-            return None
-        
-        # Use MEDIAN frequency for robustness against vibrato & transients
-        median_hz = float(np.median(current_note_freqs))
-        avg_conf = float(np.mean(current_note_confs))
-        dur = current_note_dur_ms
-        
-        note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz)
-        
-        # Reset accumulator
-        current_note_freqs = []
-        current_note_confs = []
-        current_note_dur_ms = 0.0
-        
-        if note_str is None:
-            return None
-        
-        return {
-            "type": "note",
-            "note": note_str,
-            "scale_degree": scale_deg,
-            "duration_ms": round(dur),
-            "freq_hz": round(median_hz, 1),
-            "confidence": round(avg_conf, 2),
-            "midi": midi_num
-        }
     
     try:
         while True:
+            # Get block from queue
             indata = await audio_queue.get()
+            
+            # Detect pitch with confidence score & voiced flag
             sig = indata.flatten()
+            rms_val = float(np.sqrt(np.mean(sig**2)))
+            freq, confidence = detect_pitch_with_confidence(sig, sample_rate)
+            voiced = confidence >= 0.25 and freq >= 75.0 and freq <= 850.0
             
-            # Process in 10ms sub-frames for fine temporal resolution
-            num_hops = len(sig) // hop_samples
+            note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(freq) if voiced else (None, None, None)
             
-            for h in range(num_hops):
-                hop_start = h * hop_samples
-                hop_end = hop_start + hop_samples
-                hop_signal = sig[hop_start:hop_end]
-                
-                # Shift ring buffer and append new hop
-                ring_buffer[:-hop_samples] = ring_buffer[hop_samples:]
-                ring_buffer[-hop_samples:] = hop_signal
-                
-                elapsed_ms += 10.0  # 10ms per hop
-                
-                # Pitch detection on the ring buffer (480 samples = 30ms context)
-                rms_val = float(np.sqrt(np.mean(ring_buffer**2)))
-                freq, confidence = detect_pitch_with_confidence(ring_buffer, sample_rate)
-                voiced = confidence >= 0.25 and 75.0 <= freq <= 850.0
+            # Cents deviation calculation relative to 440Hz A4
+            cents_dev = 0.0
+            if freq > 0:
+                import math
+                exact_midi = 69.0 + 12.0 * math.log2(freq / 440.0)
+                nearest_midi = round(exact_midi)
+                cents_dev = round((exact_midi - nearest_midi) * 100.0, 1)
 
-                # ── Live HUD update (throttled: every 4th hop = ~40ms) ──
-                if h % 4 == 0:
-                    hud_note = None
-                    hud_scale = None
-                    if voiced:
-                        hud_note, hud_scale, _ = pitch_hz_to_scale_degree(freq)
-                    
-                    cents_dev = 0.0
-                    if freq > 0:
-                        em = 69.0 + 12.0 * math.log2(freq / 440.0)
-                        cents_dev = round((em - round(em)) * 100.0, 1)
-                    
-                    await websocket.send_json({
-                        "type": "hud",
-                        "frequency": round(freq, 1),
-                        "confidence": round(confidence, 2),
-                        "voiced": voiced,
-                        "rms": round(rms_val, 4),
-                        "cents_dev": cents_dev,
-                        "note": hud_note or last_stable_note,
-                        "scale_degree": hud_scale
-                    })
-
-                # ── Note Segmentation Logic ──
-                if voiced:
-                    if len(current_note_freqs) == 0:
-                        # Starting a brand new note
-                        current_note_freqs.append(freq)
-                        current_note_confs.append(confidence)
-                        current_note_start_ms = elapsed_ms
-                        current_note_dur_ms = 10.0
-                        silence_streak_ms = 0.0
-                    elif silence_streak_ms > 0 and silence_streak_ms < 80.0:
-                        # Short unvoiced gap < 80ms (consonant like T/K/P between syllables)
-                        # Bridge it: include gap time in note duration, keep singing
-                        current_note_dur_ms += silence_streak_ms + 10.0
-                        current_note_freqs.append(freq)
-                        current_note_confs.append(confidence)
-                        silence_streak_ms = 0.0
-                    elif silence_streak_ms >= 80.0:
-                        # Real gap ended, voice came back — finalize previous note first
-                        note_event = finalize_note()
-                        if note_event:
-                            last_stable_note = note_event["note"]
-                            await websocket.send_json(note_event)
-                        # Send the full silence/rest duration
-                        await websocket.send_json({
-                            "type": "silence",
-                            "duration_ms": round(silence_streak_ms)
-                        })
-                        silence_streak_ms = 0.0
-                        # Start new note
-                        current_note_freqs = [freq]
-                        current_note_confs = [confidence]
-                        current_note_start_ms = elapsed_ms
-                        current_note_dur_ms = 10.0
-                    else:
-                        # Normal voiced continuation — check for pitch jump
-                        current_median = float(np.median(current_note_freqs))
-                        jump = cents_between(freq, current_median)
-                        
-                        if jump > PITCH_JUMP_CENTS:
-                            # Pitch jumped! Finalize previous note, start new one
-                            note_event = finalize_note()
-                            if note_event:
-                                last_stable_note = note_event["note"]
-                                await websocket.send_json(note_event)
-                            
-                            current_note_freqs = [freq]
-                            current_note_confs = [confidence]
-                            current_note_start_ms = elapsed_ms
-                            current_note_dur_ms = 10.0
-                        else:
-                            # Same note continues, accumulate
-                            current_note_freqs.append(freq)
-                            current_note_confs.append(confidence)
-                            current_note_dur_ms += 10.0
-                        silence_streak_ms = 0.0
-                else:
-                    # Unvoiced / silence — just count, don't finalize yet
-                    silence_streak_ms += 10.0
+            # Send enriched payload for Monophonic Vocal Transcription
+            payload = {
+                "frequency": float(round(freq, 2)),
+                "confidence": float(confidence),
+                "voiced": voiced,
+                "rms": round(rms_val, 4),
+                "cents_dev": float(cents_dev),
+                "note": note_str,
+                "scale_degree": scale_deg,
+                "frame_duration_ms": frame_dur_ms
+            }
+            await websocket.send_json(payload)
             
     except WebSocketDisconnect:
         print("[WS] Klien terputus dari WebSocket Pitch.")
     except Exception as e:
         print(f"[WS] Error di WebSocket: {e}")
-        import traceback
-        traceback.print_exc()
     finally:
-        # Emit any remaining note before closing
-        if len(current_note_freqs) > 0:
-            note_event = finalize_note()
-            if note_event:
-                try:
-                    await websocket.send_json(note_event)
-                except:
-                    pass
         stream.stop()
         stream.close()
 # MIDI Global State

@@ -149,21 +149,24 @@ def detect_pitch_with_confidence(signal, sr):
     if len(search_segment) == 0:
         return 0.0, 0.0
         
-    peak = np.argmax(search_segment) + min_lag
-    
-    # Prioritaskan nada fundamental utama (mencegah overtone nada tinggi kecil terbaca)
-    half_peak = peak // 2
-    if half_peak >= min_lag and corr[half_peak] >= 0.60 * corr[peak]:
-        peak = half_peak
-    else:
-        third_peak = peak // 3
-        if third_peak >= min_lag and corr[third_peak] >= 0.60 * corr[peak]:
-            peak = third_peak
-
-    # Adaptive Voice Activity Detector (VAD):
-    # Suara manusia memiliki autokorelasi tinggi (>= 0.28), sedangkan noise desisan bersifat acak (< 0.20)
-    if corr[0] == 0 or (corr[peak] / corr[0]) < 0.28:
+    global_max = np.max(search_segment)
+    if global_max <= 0 or corr[0] == 0 or (global_max / corr[0]) < 0.25:
         return 0.0, 0.0
+
+    # First Fundamental Peak Selection:
+    # Cari puncak pertama yang melepasi ambang 45% dari global_max.
+    # Ini MENJAMIN pitch fundamental asli terpilih secara konsisten (rendah tetap rendah, tinggi tetap tinggi!)
+    threshold = 0.45 * global_max
+    peak = None
+
+    for i in range(1, len(search_segment) - 1):
+        if search_segment[i] > search_segment[i - 1] and search_segment[i] >= search_segment[i + 1]:
+            if search_segment[i] >= threshold:
+                peak = i + min_lag
+                break
+
+    if peak is None:
+        peak = np.argmax(search_segment) + min_lag
 
     peak_ratio = float(corr[peak] / corr[0])
     rms_weight = min(1.0, float(rms / 0.05))

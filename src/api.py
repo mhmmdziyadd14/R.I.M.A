@@ -197,7 +197,7 @@ def detect_pitch(signal, sr):
 
 def pitch_hz_to_scale_degree(freq_hz, root_midi=60, prev_midi=None):
     """Maps pitch frequency Hz to Note Name, Scale Degree (Do, Re, Mi, Fa, Sol, La, Si), and Angklung MIDI note.
-    Prevents 1-octave boundary jumps by relative proximity folding to prev_midi.
+    Supports Expressive 2-Octave Vocal Range (G3=55 to G5=79) with Proximity Octave Tracking.
     """
     if freq_hz <= 0:
         return None, None, None
@@ -205,12 +205,12 @@ def pitch_hz_to_scale_degree(freq_hz, root_midi=60, prev_midi=None):
     exact_midi = 69.0 + 12.0 * math.log2(freq_hz / 440.0)
     raw_midi = int(round(exact_midi))
     
-    # Proximity-Based Octave Folding relative to prev_midi to eliminate 1-octave jumps!
+    # Proximity-Based Octave Tracking relative to prev_midi for rich variety without jumps!
     if prev_midi is None:
         transposed_midi = raw_midi
-        while transposed_midi < 60:
+        while transposed_midi < 55:  # G3 (Sol rendah)
             transposed_midi += 12
-        while transposed_midi > 72:
+        while transposed_midi > 79:  # G5 (Sol tinggi)
             transposed_midi -= 12
         transposed_midi = max(52, min(96, transposed_midi))
     else:

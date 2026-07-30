@@ -192,23 +192,28 @@ def detect_pitch(signal, sr):
     freq, _ = detect_pitch_with_confidence(signal, sr)
     return freq
 
-def pitch_hz_to_scale_degree(freq_hz, root_midi=60):
+def pitch_hz_to_scale_degree(freq_hz, root_midi=60, anchor_midi=60):
     """Maps pitch frequency Hz to Note Name, Scale Degree (Do, Re, Mi, Fa, Sol, La, Si), and Angklung MIDI note.
-    Guarantees 100% octave consistency in Lead Vocal Range 1 to 8/1' (C4 = 60 to C5 = 72).
+    Uses Anchor Octave Hysteresis to guarantee octave consistency without abrupt mid-phrase octave flips.
     """
     if freq_hz <= 0:
         return None, None, None
     import math
     exact_midi = 69.0 + 12.0 * math.log2(freq_hz / 440.0)
-    nearest_midi = int(round(exact_midi))
+    raw_midi = int(round(exact_midi))
     
-    # Octave Folding strictly into Lead Vocal Range [C4 = 60 to C5 = 72 / Range 1 to 8/1']
-    transposed_midi = nearest_midi
-    while transposed_midi < 60:
-        transposed_midi += 12
-    while transposed_midi > 72:
-        transposed_midi -= 12
-    transposed_midi = max(60, min(72, transposed_midi))
+    # Octave Hysteresis Folding: Pick octave closest to active anchor_midi (within +/- 6 semitones)
+    best_midi = raw_midi
+    min_dist = abs(raw_midi - anchor_midi)
+
+    for octave_shift in [-24, -12, 12, 24]:
+        candidate = raw_midi + octave_shift
+        dist = abs(candidate - anchor_midi)
+        if dist < min_dist:
+            min_dist = dist
+            best_midi = candidate
+
+    transposed_midi = max(55, min(79, best_midi))
 
     pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     doremi_labels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)']
@@ -251,7 +256,6 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=90):
         rms = frame.get('rms', 0.0)
 
         if not voiced or freq <= 0 or confidence < 0.22:
-            # Unvoiced / Silence -> Close active note segment
             if len(current_segment) > 0:
                 segments.append(current_segment)
                 current_segment = []
@@ -260,15 +264,11 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=90):
         if len(current_segment) == 0:
             current_segment.append(frame)
         else:
-            # Calculate current segment median pitch
             seg_freqs = [f['freq'] for f in current_segment if f['freq'] > 0]
             current_median = float(np.median(seg_freqs)) if len(seg_freqs) > 0 else current_segment[0]['freq']
 
-            # Check Onset Triggers:
-            # 1. Pitch Step Delta > 50 Cents from current stable note
             pitch_jump = cents_distance(freq, current_median) > 50.0
 
-            # 2. Syllable Attack Energy Re-articulation (New note pulse on same pitch: RMS rise >= 1.6x after 4+ frames)
             prev_rms = current_segment[-1].get('rms', 0.001)
             energy_jump = (rms / max(0.001, prev_rms)) >= 1.6 and len(current_segment) >= 4
 
@@ -281,15 +281,17 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=90):
     if len(current_segment) > 0:
         segments.append(current_segment)
 
-    # Process each segment into a structured Note Event object
+    # Process each segment into a structured Note Event object with Anchor Octave Hysteresis
     note_events = []
+    active_anchor_midi = 60 # Default C4
+
     for idx, seg in enumerate(segments):
         if len(seg) == 0:
             continue
         
         dur_ms = seg[-1]['time_ms'] - seg[0]['time_ms'] + 10
         if dur_ms < min_note_dur_ms:
-            continue # Ignore short noise transient < 100ms
+            continue # Ignore short noise transient < 90ms
 
         freqs = [f['freq'] for f in seg if f['freq'] > 0]
         confs = [f['confidence'] for f in seg]
@@ -297,11 +299,14 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=90):
         if len(freqs) == 0:
             continue
 
-        # Representative Median Pitch Frequency for immunity against vibrato & transient spikes
         median_hz = float(np.median(freqs))
         avg_conf = float(np.mean(confs))
 
-        note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz)
+        note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz, root_midi=60, anchor_midi=active_anchor_midi)
+
+        # Smoothly update anchor_midi to maintain octave consistency across the phrase
+        if midi_num is not None:
+            active_anchor_midi = int(round(0.6 * active_anchor_midi + 0.4 * midi_num))
 
         note_events.append({
             "id": idx + 1,

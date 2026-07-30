@@ -139,33 +139,44 @@ function playSustainedSynthSound(frequency, durationMs = 300) {
 
     const masterGain = ctx.createGain();
     masterGain.gain.setValueAtTime(0.0001, now);
-    masterGain.gain.linearRampToValueAtTime(0.7, now + 0.02);
+    masterGain.gain.linearRampToValueAtTime(0.75, now + 0.025);
     
     const sustainEnd = Math.max(now + 0.03, now + durSec - 0.04);
-    masterGain.gain.setValueAtTime(0.65, sustainEnd);
+    masterGain.gain.setValueAtTime(0.70, sustainEnd);
     masterGain.gain.linearRampToValueAtTime(0.0001, now + durSec);
     masterGain.connect(ctx.destination);
 
-    // Fundamental
+    // V1 Lead Vocal Fundamental (f1)
     const osc1 = ctx.createOscillator();
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(frequency, now);
     osc1.connect(masterGain);
 
-    // Octave harmonic
+    // V1 Octave Resonance (2f)
     const osc2 = ctx.createOscillator();
     osc2.type = 'sine';
     osc2.frequency.setValueAtTime(frequency * 2.0, now);
     const gain2 = ctx.createGain();
-    gain2.gain.setValueAtTime(0.3, now);
+    gain2.gain.setValueAtTime(0.35, now);
     osc2.connect(gain2);
     gain2.connect(masterGain);
 
+    // V1 Warm Vocal Overtone (3f)
+    const osc3 = ctx.createOscillator();
+    osc3.type = 'triangle';
+    osc3.frequency.setValueAtTime(frequency * 3.0, now);
+    const gain3 = ctx.createGain();
+    gain3.gain.setValueAtTime(0.18, now);
+    osc3.connect(gain3);
+    gain3.connect(masterGain);
+
     osc1.start(now);
     osc2.start(now);
+    osc3.start(now);
 
     osc1.stop(now + durSec);
     osc2.stop(now + durSec);
+    osc3.stop(now + durSec);
   } catch (e) {
     console.error("Gagal memutar sustained synth sound:", e);
   }
@@ -1708,11 +1719,100 @@ function autoTuneHarmonicSequence(sequence) {
   return merged;
 }
 
-// Render cleaned note chips on UI
+// Convert recorded pitch sequence to official .123 V1 Lead Vocal Melody notation string
+function convertSequenceTo123V1(sequence) {
+  if (!sequence || sequence.length === 0) return "V1: | 0 |";
+
+  const doremiMap = { 'c': '1', 'c#': '1/', 'd': '2', 'd#': '2/', 'e': '3', 'f': '4', 'f#': '4/', 'g': '5', 'g#': '5/', 'a': '6', 'a#': '6/', 'b': '7' };
+
+  let tokens = [];
+  for (let item of sequence) {
+    if (!item.note) {
+      tokens.push("0");
+      continue;
+    }
+
+    const parsed = parsePitchNote(item.note);
+    if (!parsed) continue;
+
+    let baseNum = doremiMap[parsed.name] || '1';
+    let formattedNum = baseNum;
+
+    if (parsed.octave <= 3) {
+      formattedNum += ',';
+    } else if (parsed.octave >= 5) {
+      formattedNum += "'".repeat(parsed.octave - 4);
+    }
+
+    const beats = Math.round(item.duration / 350);
+    if (beats <= 1) {
+      if (item.duration <= 220) {
+        formattedNum += '-';
+      }
+      tokens.push(formattedNum);
+    } else {
+      tokens.push(formattedNum);
+      for (let b = 1; b < Math.min(6, beats); b++) {
+        tokens.push(".");
+      }
+    }
+  }
+
+  let v1Bars = [];
+  let currentMeasure = [];
+
+  for (let tok of tokens) {
+    currentMeasure.push(tok);
+    if (currentMeasure.length >= 4) {
+      v1Bars.push(currentMeasure.join(" "));
+      currentMeasure = [];
+    }
+  }
+  if (currentMeasure.length > 0) {
+    v1Bars.push(currentMeasure.join(" "));
+  }
+
+  return `V1: | ${v1Bars.join(" | ")} |`;
+}
+
+// Render cleaned note chips & .123 V1 Lead Vocal Melody notation on UI
 function renderRepeaterNoteChips(sequence) {
   const sequenceContainer = document.getElementById('repeater-note-sequence');
   if (!sequenceContainer) return;
   sequenceContainer.innerHTML = '';
+
+  // 1. Render V1 Lead Vocal Melody Card (.123 Song Format)
+  const v1String = convertSequenceTo123V1(sequence);
+  const v1Card = document.createElement('div');
+  v1Card.style.width = '100%';
+  v1Card.style.background = 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)';
+  v1Card.style.color = '#F3F4F6';
+  v1Card.style.borderRadius = '16px';
+  v1Card.style.padding = '16px 20px';
+  v1Card.style.marginBottom = '14px';
+  v1Card.style.boxShadow = '0 10px 25px -5px rgba(49, 46, 129, 0.4)';
+  v1Card.style.border = '1px solid rgba(129, 140, 248, 0.3)';
+  v1Card.innerHTML = `
+    <div style="display: flex; align-items: center; justify-space-between; margin-bottom: 8px;">
+      <span style="font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #818CF8; display: flex; align-items: center; gap: 6px;">
+        <span>🎤</span> MELODI VOKAL V1 (.123 SONG FORMAT)
+      </span>
+      <span style="font-size: 11px; background: rgba(129, 140, 248, 0.2); border: 1px solid rgba(129, 140, 248, 0.4); padding: 3px 8px; border-radius: 12px; color: #A5B4FC; font-weight: 700;">
+        Vocal Melody Track
+      </span>
+    </div>
+    <div style="font-family: 'Courier New', monospace; font-size: 16px; font-weight: 700; color: #FDE047; letter-spacing: 1.5px; word-break: break-all; background: rgba(0,0,0,0.25); padding: 10px 14px; border-radius: 10px; border-left: 4px solid #FDE047;">
+      ${v1String}
+    </div>
+  `;
+  sequenceContainer.appendChild(v1Card);
+
+  // 2. Render Note Pitch Chips
+  const chipsWrapper = document.createElement('div');
+  chipsWrapper.style.display = 'flex';
+  chipsWrapper.style.flexWrap = 'wrap';
+  chipsWrapper.style.gap = '8px';
+  chipsWrapper.style.width = '100%';
 
   sequence.forEach((item) => {
     if (!item.note) return;
@@ -1728,8 +1828,10 @@ function renderRepeaterNoteChips(sequence) {
     chip.style.alignItems = 'center';
     chip.style.gap = '6px';
     chip.innerHTML = `<span>🎵 ${item.note}</span> <span style="font-size: 11px; opacity: 0.85; font-weight: 600;">(${(item.duration / 1000).toFixed(1)}s)</span>`;
-    sequenceContainer.appendChild(chip);
+    chipsWrapper.appendChild(chip);
   });
+
+  sequenceContainer.appendChild(chipsWrapper);
 }
 
 // Playback Repeater Sequence (Plays Exact Recorded Pattern Harmonized by Auto-Tune)

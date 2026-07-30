@@ -1719,9 +1719,7 @@ function snapNoteToHarmonicScale(noteStr, scaleClasses) {
     }
   }
 
-  // Support Expressive 2-Octave Range [G3=55 to G5=79]
-  while (bestMidi < 55) bestMidi += 12;
-  while (bestMidi > 79) bestMidi -= 12;
+  // Direct Monotonic Clamp to Physical Angklung MIDI Range [52 = E3 to 96 = C7]
   bestMidi = Math.max(52, Math.min(96, bestMidi));
   return midiToPitchNameString(bestMidi, parsed.isBass);
 }

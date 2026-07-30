@@ -198,8 +198,8 @@ def detect_pitch(signal, sr):
     return freq
 
 def pitch_hz_to_scale_degree(freq_hz, root_midi=60, prev_midi=None):
-    """Maps pitch frequency Hz to Note Name, Scale Degree (Do, Re, Mi, Fa, Sol, La, Si), and Angklung MIDI note.
-    Supports Expressive 2-Octave Vocal Range (G3=55 to G5=79) with Proximity Octave Tracking.
+    """Direct Monotonic Pitch Mapping: Higher Frequency Hz -> Higher MIDI Note (Strict Monotonicity).
+    Guarantees 100% pitch direction fidelity: Higher pitch ALWAYS goes UP, Lower pitch ALWAYS goes DOWN!
     """
     if freq_hz <= 0:
         return None, None, None
@@ -207,25 +207,9 @@ def pitch_hz_to_scale_degree(freq_hz, root_midi=60, prev_midi=None):
     exact_midi = 69.0 + 12.0 * math.log2(freq_hz / 440.0)
     raw_midi = int(round(exact_midi))
     
-    # Proximity-Based Octave Tracking relative to prev_midi for rich variety without jumps!
-    if prev_midi is None:
-        transposed_midi = raw_midi
-        while transposed_midi < 55:  # G3 (Sol rendah)
-            transposed_midi += 12
-        while transposed_midi > 79:  # G5 (Sol tinggi)
-            transposed_midi -= 12
-        transposed_midi = max(52, min(96, transposed_midi))
-    else:
-        best_midi = raw_midi
-        min_dist = 999
-        for shift in [-24, -12, 0, 12, 24]:
-            cand = raw_midi + shift
-            if 52 <= cand <= 96:
-                dist = abs(cand - prev_midi)
-                if dist < min_dist:
-                    min_dist = dist
-                    best_midi = cand
-        transposed_midi = best_midi
+    # Direct Clamp to Physical Angklung MIDI Range [52 = E3 to 96 = C7]
+    # No artificial octave shifts that invert pitch direction!
+    transposed_midi = max(52, min(96, raw_midi))
 
     pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     doremi_labels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)']

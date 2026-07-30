@@ -194,7 +194,7 @@ def detect_pitch(signal, sr):
 
 def pitch_hz_to_scale_degree(freq_hz, root_midi=60):
     """Maps pitch frequency Hz to Note Name, Scale Degree (Do, Re, Mi, Fa, Sol, La, Si), and Angklung MIDI note.
-    Expressive Vocal Range G3 to G5 (MIDI 55 to 79 / Octave 3, 4, 5).
+    Guarantees 100% octave consistency in Lead Vocal Range 1 to 8/1' (C4 = 60 to C5 = 72).
     """
     if freq_hz <= 0:
         return None, None, None
@@ -202,13 +202,13 @@ def pitch_hz_to_scale_degree(freq_hz, root_midi=60):
     exact_midi = 69.0 + 12.0 * math.log2(freq_hz / 440.0)
     nearest_midi = int(round(exact_midi))
     
-    # Octave Folding into Expressive Vocal Range [G3 = 55 to G5 = 79 / Octave 3, 4, 5]
+    # Octave Folding strictly into Lead Vocal Range [C4 = 60 to C5 = 72 / Range 1 to 8/1']
     transposed_midi = nearest_midi
-    while transposed_midi < 55:
+    while transposed_midi < 60:
         transposed_midi += 12
-    while transposed_midi > 79:
+    while transposed_midi > 72:
         transposed_midi -= 12
-    transposed_midi = max(55, min(79, transposed_midi))
+    transposed_midi = max(60, min(72, transposed_midi))
 
     pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     doremi_labels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)']

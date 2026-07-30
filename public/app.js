@@ -1775,39 +1775,12 @@ function convertSequenceTo123V1(sequence) {
   return `V1: | ${v1Bars.join(" | ")} |`;
 }
 
-// Render cleaned note chips & .123 V1 Lead Vocal Melody notation on UI
+// Render cleaned note chips on UI
 function renderRepeaterNoteChips(sequence) {
   const sequenceContainer = document.getElementById('repeater-note-sequence');
   if (!sequenceContainer) return;
   sequenceContainer.innerHTML = '';
 
-  // 1. Render V1 Lead Vocal Melody Card (.123 Song Format)
-  const v1String = convertSequenceTo123V1(sequence);
-  const v1Card = document.createElement('div');
-  v1Card.style.width = '100%';
-  v1Card.style.background = 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)';
-  v1Card.style.color = '#F3F4F6';
-  v1Card.style.borderRadius = '16px';
-  v1Card.style.padding = '16px 20px';
-  v1Card.style.marginBottom = '14px';
-  v1Card.style.boxShadow = '0 10px 25px -5px rgba(49, 46, 129, 0.4)';
-  v1Card.style.border = '1px solid rgba(129, 140, 248, 0.3)';
-  v1Card.innerHTML = `
-    <div style="display: flex; align-items: center; justify-space-between; margin-bottom: 8px;">
-      <span style="font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #818CF8; display: flex; align-items: center; gap: 6px;">
-        <span>🎤</span> MELODI VOKAL V1 (.123 SONG FORMAT)
-      </span>
-      <span style="font-size: 11px; background: rgba(129, 140, 248, 0.2); border: 1px solid rgba(129, 140, 248, 0.4); padding: 3px 8px; border-radius: 12px; color: #A5B4FC; font-weight: 700;">
-        Vocal Melody Track
-      </span>
-    </div>
-    <div style="font-family: 'Courier New', monospace; font-size: 16px; font-weight: 700; color: #FDE047; letter-spacing: 1.5px; word-break: break-all; background: rgba(0,0,0,0.25); padding: 10px 14px; border-radius: 10px; border-left: 4px solid #FDE047;">
-      ${v1String}
-    </div>
-  `;
-  sequenceContainer.appendChild(v1Card);
-
-  // 2. Render Note Pitch Chips
   const chipsWrapper = document.createElement('div');
   chipsWrapper.style.display = 'flex';
   chipsWrapper.style.flexWrap = 'wrap';
@@ -1834,10 +1807,9 @@ function renderRepeaterNoteChips(sequence) {
   sequenceContainer.appendChild(chipsWrapper);
 }
 
-// Playback Repeater Sequence (Plays Exact Recorded Pattern Harmonized by Auto-Tune)
+// Playback Repeater Sequence (Plays Exact Recorded Chromatic Pattern 100% Accurately)
 async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
-  const cleaned = cleanRepeaterSequence(rawSequence);
-  const sequence = autoTuneHarmonicSequence(cleaned);
+  const sequence = cleanRepeaterSequence(rawSequence);
 
   renderRepeaterNoteChips(sequence);
 
@@ -1854,7 +1826,7 @@ async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
   micBtn.classList.add('active');
   micBtn.classList.add('mic-playing');
   sonar.classList.add('active');
-  statusText.textContent = '✨ Memainkan melodi harmonis (Auto-Tune Harmonizer)...';
+  statusText.textContent = 'Memainkan melodi persis hasil rekaman vokal...';
   
   for (let item of sequence) {
     if (repeaterState !== 'playing') break;

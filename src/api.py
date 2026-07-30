@@ -1800,54 +1800,40 @@ async def pitch_websocket(websocket: WebSocket):
     )
     stream.start()
     
-    # ── Note Segmentation State ──
-    # We accumulate pitch readings into "the current note" and emit it
-    # when we detect a boundary (pitch jump, silence, etc.)
-    current_note_freqs = []      # Hz readings for current note segment
-    current_note_confs = []      # confidence readings
-    current_note_start_ms = 0.0  # when current note started
-    current_note_dur_ms = 0.0    # accumulated duration
-    elapsed_ms = 0.0             # total elapsed time
-    silence_streak_ms = 0.0      # how long we've been unvoiced/silent
-    last_stable_note = None      # last emitted note name for HUD
+    # ── Note Segmentation State Machine ──
+    # States: IDLE (no note active), SINGING (accumulating voiced frames), SILENT (gap after note)
+    state = 'IDLE'                  # current state
+    current_note_freqs = []         # Hz readings for current note segment
+    current_note_confs = []         # confidence readings
+    current_note_start_ms = 0.0    # timestamp when current note started
+    elapsed_ms = 0.0               # total elapsed time since recording began
+    silence_start_ms = 0.0         # timestamp when silence started
+    last_stable_note = None        # last emitted note name for HUD
     
     # Ring buffer for overlapping analysis (3x hop for better autocorrelation)
     ring_buffer = np.zeros(hop_samples * 3, dtype=np.float32)
 
-    MIN_NOTE_DUR_MS = 120.0      # minimum note duration to emit (ignore shorter)
-    PITCH_JUMP_CENTS = 80.0      # pitch change threshold to trigger new note
-    SILENCE_TIMEOUT_MS = 100.0   # silence gap to close current note
+    MIN_NOTE_DUR_MS = 80.0        # minimum note duration to emit
+    PITCH_JUMP_CENTS = 80.0       # pitch change threshold to trigger new note
+    SILENCE_COMMIT_MS = 80.0      # silence length to confirm note ended
 
     def cents_between(f1, f2):
         if f1 <= 0 or f2 <= 0:
             return 9999.0
         return abs(1200.0 * math.log2(f1 / f2))
 
-    def finalize_note():
-        """Process accumulated frames into a single clean note event."""
-        nonlocal current_note_freqs, current_note_confs, current_note_start_ms, current_note_dur_ms
-        
-        if len(current_note_freqs) == 0 or current_note_dur_ms < MIN_NOTE_DUR_MS:
-            current_note_freqs = []
-            current_note_confs = []
-            current_note_dur_ms = 0.0
+    def make_note_event():
+        """Build a note event from accumulated frames. Does NOT reset state."""
+        if len(current_note_freqs) == 0:
             return None
-        
-        # Use MEDIAN frequency for robustness against vibrato & transients
+        dur = elapsed_ms - current_note_start_ms
+        if dur < MIN_NOTE_DUR_MS:
+            return None
         median_hz = float(np.median(current_note_freqs))
         avg_conf = float(np.mean(current_note_confs))
-        dur = current_note_dur_ms
-        
         note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz)
-        
-        # Reset accumulator
-        current_note_freqs = []
-        current_note_confs = []
-        current_note_dur_ms = 0.0
-        
         if note_str is None:
             return None
-        
         return {
             "type": "note",
             "note": note_str,
@@ -1857,13 +1843,18 @@ async def pitch_websocket(websocket: WebSocket):
             "confidence": round(avg_conf, 2),
             "midi": midi_num
         }
+
+    def reset_note():
+        nonlocal current_note_freqs, current_note_confs, current_note_start_ms
+        current_note_freqs = []
+        current_note_confs = []
+        current_note_start_ms = elapsed_ms
     
     try:
         while True:
             indata = await audio_queue.get()
             sig = indata.flatten()
             
-            # Process in 10ms sub-frames for fine temporal resolution
             num_hops = len(sig) // hop_samples
             
             for h in range(num_hops):
@@ -1875,10 +1866,9 @@ async def pitch_websocket(websocket: WebSocket):
                 ring_buffer[:-hop_samples] = ring_buffer[hop_samples:]
                 ring_buffer[-hop_samples:] = hop_signal
                 
-                elapsed_ms += 10.0  # 10ms per hop
+                elapsed_ms += 10.0
                 
-                # Pitch detection on the ring buffer (480 samples = 30ms context)
-                rms_val = float(np.sqrt(np.mean(ring_buffer**2)))
+                # Pitch detection on ring buffer
                 freq, confidence = detect_pitch_with_confidence(ring_buffer, sample_rate)
                 voiced = confidence >= 0.25 and 75.0 <= freq <= 850.0
 
@@ -1894,6 +1884,7 @@ async def pitch_websocket(websocket: WebSocket):
                         em = 69.0 + 12.0 * math.log2(freq / 440.0)
                         cents_dev = round((em - round(em)) * 100.0, 1)
                     
+                    rms_val = float(np.sqrt(np.mean(ring_buffer**2)))
                     await websocket.send_json({
                         "type": "hud",
                         "frequency": round(freq, 1),
@@ -1905,24 +1896,24 @@ async def pitch_websocket(websocket: WebSocket):
                         "scale_degree": hud_scale
                     })
 
-                # ── Note Segmentation Logic ──
-                if voiced:
-                    silence_streak_ms = 0.0
-                    
-                    if len(current_note_freqs) == 0:
-                        # Starting a brand new note
-                        current_note_freqs.append(freq)
-                        current_note_confs.append(confidence)
+                # ── State Machine ──
+                if state == 'IDLE':
+                    if voiced:
+                        # Start a new note
+                        state = 'SINGING'
+                        current_note_freqs = [freq]
+                        current_note_confs = [confidence]
                         current_note_start_ms = elapsed_ms
-                        current_note_dur_ms = 10.0
-                    else:
-                        # Check if pitch jumped significantly from current note
-                        current_median = float(np.median(current_note_freqs))
+                
+                elif state == 'SINGING':
+                    if voiced:
+                        # Check for pitch jump
+                        current_median = float(np.median(current_note_freqs[-20:]))  # last 200ms for stability
                         jump = cents_between(freq, current_median)
                         
                         if jump > PITCH_JUMP_CENTS:
-                            # Pitch jumped! Finalize previous note, start new one
-                            note_event = finalize_note()
+                            # Pitch changed! Emit current note, start new one
+                            note_event = make_note_event()
                             if note_event:
                                 last_stable_note = note_event["note"]
                                 await websocket.send_json(note_event)
@@ -1930,28 +1921,57 @@ async def pitch_websocket(websocket: WebSocket):
                             current_note_freqs = [freq]
                             current_note_confs = [confidence]
                             current_note_start_ms = elapsed_ms
-                            current_note_dur_ms = 10.0
                         else:
-                            # Same note continues, accumulate
+                            # Same note, keep accumulating
                             current_note_freqs.append(freq)
                             current_note_confs.append(confidence)
-                            current_note_dur_ms += 10.0
-                else:
-                    # Unvoiced / silence
-                    silence_streak_ms += 10.0
+                    else:
+                        # Voice stopped — transition to SILENT, start silence timer
+                        state = 'SILENT'
+                        silence_start_ms = elapsed_ms
+                
+                elif state == 'SILENT':
+                    silence_dur = elapsed_ms - silence_start_ms
                     
-                    if silence_streak_ms >= SILENCE_TIMEOUT_MS and len(current_note_freqs) > 0:
-                        # Silence gap detected, finalize the current note
-                        note_event = finalize_note()
-                        if note_event:
-                            last_stable_note = note_event["note"]
-                            await websocket.send_json(note_event)
-                        
-                        # Also send a silence event so frontend knows about the gap
-                        await websocket.send_json({
-                            "type": "silence",
-                            "duration_ms": round(silence_streak_ms)
-                        })
+                    if voiced:
+                        # Voice came back!
+                        if silence_dur < SILENCE_COMMIT_MS:
+                            # Very short gap (< 80ms) — probably just a consonant or breath
+                            # Continue the current note as if uninterrupted
+                            state = 'SINGING'
+                            current_note_freqs.append(freq)
+                            current_note_confs.append(confidence)
+                        else:
+                            # Real gap — emit the previous note + silence, start new note
+                            note_event = make_note_event()
+                            if note_event:
+                                last_stable_note = note_event["note"]
+                                await websocket.send_json(note_event)
+                            
+                            # Emit the silence/rest between notes
+                            await websocket.send_json({
+                                "type": "silence",
+                                "duration_ms": round(silence_dur)
+                            })
+                            
+                            state = 'SINGING'
+                            current_note_freqs = [freq]
+                            current_note_confs = [confidence]
+                            current_note_start_ms = elapsed_ms
+                    else:
+                        # Still silent — check if we've been silent long enough to commit
+                        if silence_dur >= 2000.0:
+                            # 2 seconds of silence — emit note + silence and go IDLE
+                            note_event = make_note_event()
+                            if note_event:
+                                last_stable_note = note_event["note"]
+                                await websocket.send_json(note_event)
+                            await websocket.send_json({
+                                "type": "silence",
+                                "duration_ms": round(silence_dur)
+                            })
+                            reset_note()
+                            state = 'IDLE'
             
     except WebSocketDisconnect:
         print("[WS] Klien terputus dari WebSocket Pitch.")
@@ -1960,9 +1980,9 @@ async def pitch_websocket(websocket: WebSocket):
         import traceback
         traceback.print_exc()
     finally:
-        # Emit any remaining note before closing
-        if len(current_note_freqs) > 0:
-            note_event = finalize_note()
+        # Emit the last note that was being sung when recording stopped
+        if state in ('SINGING', 'SILENT') and len(current_note_freqs) > 0:
+            note_event = make_note_event()
             if note_event:
                 try:
                     await websocket.send_json(note_event)

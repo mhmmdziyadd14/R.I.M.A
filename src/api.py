@@ -1907,16 +1907,39 @@ async def pitch_websocket(websocket: WebSocket):
 
                 # ── Note Segmentation Logic ──
                 if voiced:
-                    silence_streak_ms = 0.0
-                    
                     if len(current_note_freqs) == 0:
                         # Starting a brand new note
                         current_note_freqs.append(freq)
                         current_note_confs.append(confidence)
                         current_note_start_ms = elapsed_ms
                         current_note_dur_ms = 10.0
+                        silence_streak_ms = 0.0
+                    elif silence_streak_ms > 0 and silence_streak_ms < 80.0:
+                        # Short unvoiced gap < 80ms (consonant like T/K/P between syllables)
+                        # Bridge it: include gap time in note duration, keep singing
+                        current_note_dur_ms += silence_streak_ms + 10.0
+                        current_note_freqs.append(freq)
+                        current_note_confs.append(confidence)
+                        silence_streak_ms = 0.0
+                    elif silence_streak_ms >= 80.0:
+                        # Real gap ended, voice came back — finalize previous note first
+                        note_event = finalize_note()
+                        if note_event:
+                            last_stable_note = note_event["note"]
+                            await websocket.send_json(note_event)
+                        # Send the full silence/rest duration
+                        await websocket.send_json({
+                            "type": "silence",
+                            "duration_ms": round(silence_streak_ms)
+                        })
+                        silence_streak_ms = 0.0
+                        # Start new note
+                        current_note_freqs = [freq]
+                        current_note_confs = [confidence]
+                        current_note_start_ms = elapsed_ms
+                        current_note_dur_ms = 10.0
                     else:
-                        # Check if pitch jumped significantly from current note
+                        # Normal voiced continuation — check for pitch jump
                         current_median = float(np.median(current_note_freqs))
                         jump = cents_between(freq, current_median)
                         
@@ -1936,22 +1959,10 @@ async def pitch_websocket(websocket: WebSocket):
                             current_note_freqs.append(freq)
                             current_note_confs.append(confidence)
                             current_note_dur_ms += 10.0
+                        silence_streak_ms = 0.0
                 else:
-                    # Unvoiced / silence
+                    # Unvoiced / silence — just count, don't finalize yet
                     silence_streak_ms += 10.0
-                    
-                    if silence_streak_ms >= SILENCE_TIMEOUT_MS and len(current_note_freqs) > 0:
-                        # Silence gap detected, finalize the current note
-                        note_event = finalize_note()
-                        if note_event:
-                            last_stable_note = note_event["note"]
-                            await websocket.send_json(note_event)
-                        
-                        # Also send a silence event so frontend knows about the gap
-                        await websocket.send_json({
-                            "type": "silence",
-                            "duration_ms": round(silence_streak_ms)
-                        })
             
     except WebSocketDisconnect:
         print("[WS] Klien terputus dari WebSocket Pitch.")

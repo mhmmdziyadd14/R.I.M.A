@@ -1663,6 +1663,9 @@ async def pitch_websocket(websocket: WebSocket):
     
     try:
         while True:
+            # Get block from queue
+            indata = await audio_queue.get()
+            
             # Detect pitch with confidence score
             freq, confidence = detect_pitch_with_confidence(indata.flatten(), sample_rate)
             note = frequency_to_note(freq) if freq > 0 and confidence >= 0.25 else None

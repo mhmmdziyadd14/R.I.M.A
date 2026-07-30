@@ -185,7 +185,7 @@ function playSustainedSynthSound(frequency, durationMs = 300) {
 let activeSongInterval = null;
 let repeaterSocket = null;
 let repeaterState = 'idle'; // 'idle', 'recording', 'playing'
-let repeaterProcessingMode = 'song'; // 'song' (Presisi) or 'autotune' (Auto-Tune)
+let repeaterProcessingMode = 'soft'; // 'off', 'soft', 'hard'
 let repeaterPlaybackInterval = null;
 let recordedSequence = [];
 let currentRecNote = null;
@@ -196,34 +196,39 @@ let chordIntervals = new Map();
 
 function setRepeaterMode(mode) {
   repeaterProcessingMode = mode;
-  const songBtn = document.getElementById('mode-song-btn');
-  const autotuneBtn = document.getElementById('mode-autotune-btn');
+  const offBtn = document.getElementById('mode-off-btn');
+  const softBtn = document.getElementById('mode-soft-btn');
+  const hardBtn = document.getElementById('mode-hard-btn');
   const desc = document.getElementById('repeater-mode-desc');
 
-  if (mode === 'song') {
-    if (songBtn) {
-      songBtn.style.background = '#2E7D32';
-      songBtn.style.color = '#FFFFFF';
-      songBtn.style.boxShadow = '0 2px 6px rgba(46,125,50,0.3)';
+  const btnReset = (btn) => {
+    if (btn) {
+      btn.style.background = 'transparent';
+      btn.style.color = '#2E7D32';
+      btn.style.boxShadow = 'none';
     }
-    if (autotuneBtn) {
-      autotuneBtn.style.background = 'transparent';
-      autotuneBtn.style.color = '#2E7D32';
-      autotuneBtn.style.boxShadow = 'none';
+  };
+  const btnActive = (btn) => {
+    if (btn) {
+      btn.style.background = '#2E7D32';
+      btn.style.color = '#FFFFFF';
+      btn.style.boxShadow = '0 2px 6px rgba(46,125,50,0.3)';
     }
-    if (desc) desc.textContent = 'Mode Presisi: Merekam nada lagu asli 100% akurat tanpa koreksi pitch.';
-  } else {
-    if (autotuneBtn) {
-      autotuneBtn.style.background = '#2E7D32';
-      autotuneBtn.style.color = '#FFFFFF';
-      autotuneBtn.style.boxShadow = '0 2px 6px rgba(46,125,50,0.3)';
-    }
-    if (songBtn) {
-      songBtn.style.background = 'transparent';
-      songBtn.style.color = '#2E7D32';
-      songBtn.style.boxShadow = 'none';
-    }
-    if (desc) desc.textContent = 'Mode Auto-Tune: Mengoreksi nada fals vokal awam secara otomatis ke tangga nada terdekat.';
+  };
+
+  btnReset(offBtn);
+  btnReset(softBtn);
+  btnReset(hardBtn);
+
+  if (mode === 'off') {
+    btnActive(offBtn);
+    if (desc) desc.textContent = 'Mode Off (Bypass): Memutar pitch vokal asli 100% tanpa snapping/koreksi.';
+  } else if (mode === 'soft') {
+    btnActive(softBtn);
+    if (desc) desc.textContent = 'Mode Soft (Lagu Asli): Presisi nada lagu asli dengan toleransi koreksi bertingkat (< 35 cents).';
+  } else if (mode === 'hard') {
+    btnActive(hardBtn);
+    if (desc) desc.textContent = 'Mode Hard (Auto-Tune): Mengoreksi tegas 100% vokal awam ke nada terkalibrasi Angklung terdekat.';
   }
 }
 
@@ -1467,53 +1472,80 @@ async function toggleRepeaterListening() {
   try {
     repeaterSocket = new WebSocket(`${wsHost}/ws/pitch`);
     
-    repeaterSocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (repeaterState !== 'recording') return;
-      
-      const frameDur = data.frame_duration_ms || 64.0;
-      let rawNote = (data.frequency > 0 && data.note) ? data.note : null;
-      
-      // Fast 2-Frame Responsive Window (Captures fast melodic runs instantly)
-      noteHistory.push(rawNote);
-      if (noteHistory.length > 2) noteHistory.shift();
-      
-      let activeNote = rawNote;
-      if (noteHistory.length === 2 && noteHistory[0] === noteHistory[1]) {
-        activeNote = noteHistory[0];
-      }
-      
-      // Accumulate audio duration per note/silence segment
-      if (activeNote === currentRecNote) {
-        currentRecDuration += frameDur;
-      } else {
-        if (currentRecDuration > 0) {
-          recordedSequence.push({ note: currentRecNote, duration: Math.round(currentRecDuration) });
-        }
-        currentRecNote = activeNote;
-        currentRecDuration = frameDur;
-      }
+    let freqHistoryBuffer = []; // Buffer 5 frame untuk median filtering frekuensi
 
-      // UI Update
-      if (data.frequency > 0) {
-        document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
-        document.getElementById('repeater-note').textContent = activeNote || '---';
-        if (activeNote) {
-          const hw = mapPitchNameToNoteNumber(activeNote);
-          if (hw) {
-            highlightKeyProgrammatic(hw.note, hw.angklung, false);
-          }
+  repeaterSocket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (repeaterState !== 'recording') return;
+    
+    const frameDur = data.frame_duration_ms || 64.0;
+    const confidence = data.confidence !== undefined ? data.confidence : 1.0;
+    const centsDev = data.cents_dev || 0.0;
+    
+    // Confidence-Based Gating: ABAIKAN sinyal jika confidence di bawah 0.30 (noise ruangan/hening)
+    let rawNote = (data.frequency > 0 && data.note && confidence >= 0.30) ? data.note : null;
+    
+    // Temporal Median Filtering pada frekuensi (Window 5 frame / ~80ms)
+    if (data.frequency > 0 && confidence >= 0.30) {
+      freqHistoryBuffer.push(data.frequency);
+      if (freqHistoryBuffer.length > 5) freqHistoryBuffer.shift();
+    } else {
+      freqHistoryBuffer.push(0);
+      if (freqHistoryBuffer.length > 5) freqHistoryBuffer.shift();
+    }
+
+    // Fast 2-Frame Responsive Window untuk kestabilan nada
+    noteHistory.push(rawNote);
+    if (noteHistory.length > 2) noteHistory.shift();
+    
+    let activeNote = rawNote;
+    if (noteHistory.length === 2 && noteHistory[0] === noteHistory[1]) {
+      activeNote = noteHistory[0];
+    }
+    
+    // Accumulate audio duration per note/silence segment
+    if (activeNote === currentRecNote) {
+      currentRecDuration += frameDur;
+    } else {
+      if (currentRecDuration > 0) {
+        recordedSequence.push({ 
+          note: currentRecNote, 
+          duration: Math.round(currentRecDuration),
+          centsDev: centsDev,
+          confidence: confidence 
+        });
+      }
+      currentRecNote = activeNote;
+      currentRecDuration = frameDur;
+    }
+
+    // HUD & Debug Overlay Updates
+    const confEl = document.getElementById('repeater-conf');
+    const centsEl = document.getElementById('repeater-cents');
+    if (confEl) confEl.textContent = `${Math.round(confidence * 100)}%`;
+    if (centsEl) centsEl.textContent = `${centsDev >= 0 ? '+' : ''}${centsDev.toFixed(1)} c`;
+
+    if (data.frequency > 0 && confidence >= 0.30) {
+      document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
+      document.getElementById('repeater-note').textContent = activeNote || '---';
+      if (activeNote) {
+        const hw = mapPitchNameToNoteNumber(activeNote);
+        if (hw) {
+          highlightKeyProgrammatic(hw.note, hw.angklung, false);
         }
       }
-    };
+    } else {
+      document.getElementById('repeater-note').textContent = '---';
+    }
+  };
 
-    repeaterSocket.onclose = () => {
-      if (repeaterState === 'recording') stopAllPlaybacks();
-    };
-  } catch (e) {
-    console.error(e);
-    stopAllPlaybacks();
-  }
+  repeaterSocket.onclose = () => {
+    if (repeaterState === 'recording') stopAllPlaybacks();
+  };
+} catch (e) {
+  console.error(e);
+  stopAllPlaybacks();
+}
 }
 
 // Fast Melodic Sequence Cleaner & Abrupt Jump Corrector
@@ -1722,9 +1754,47 @@ function autoTuneHarmonicSequence(sequence) {
   return merged;
 }
 
-// Auto-Tune Mode Quantizer Engine (Snaps 100% of off-key pitches for amateur singers)
+// Tiered Cents Autotune & Quantizer Engine (Off / Soft / Hard)
+function applyTieredAutotune(sequence, mode = 'soft') {
+  if (!sequence || sequence.length === 0 || mode === 'off') return sequence;
+
+  const targetScale = detectBestHarmonicScale(sequence);
+
+  return sequence.map(item => {
+    if (!item.note) return item;
+    const parsed = parsePitchNote(item.note);
+    if (!parsed) return item;
+
+    if (mode === 'hard') {
+      // Full Snap ke nada angklung terdekat dalam skala
+      const snapped = snapNoteToHarmonicScale(item.note, targetScale);
+      return { note: snapped, duration: item.duration, centsDev: item.centsDev };
+    } else if (mode === 'soft') {
+      // Toleransi Cents Bertingkat:
+      // Deviasi kecil (< 35 cents) -> Snap Penuh
+      // Deviasi sedang (35..70 cents) -> Snap jika di luar tangga nada
+      // Deviasi besar (> 70 cents) -> Jaga nada asli (jangan dipaksa snap yang salah)
+      const cents = item.centsDev ? Math.abs(item.centsDev) : 0;
+      if (cents < 35) {
+        const snapped = snapNoteToHarmonicScale(item.note, targetScale);
+        return { note: snapped, duration: item.duration, centsDev: item.centsDev };
+      } else if (cents <= 70) {
+        if (targetScale.includes(parsed.pitchClass)) {
+          return item; // Nada sudah sesuai tangga nada -> Pertahankan!
+        } else {
+          const snapped = snapNoteToHarmonicScale(item.note, targetScale);
+          return { note: snapped, duration: item.duration, centsDev: item.centsDev };
+        }
+      } else {
+        return item; // Deviasi besar -> Pertahankan nada asli
+      }
+    }
+    return item;
+  });
+}
+
 function applySmartAutoTune(sequence) {
-  return autoTuneHarmonicSequence(sequence);
+  return applyTieredAutotune(sequence, repeaterProcessingMode);
 }
 
 // Convert recorded pitch sequence to official .123 V1 Lead Vocal Melody notation string
@@ -1815,14 +1885,10 @@ function renderRepeaterNoteChips(sequence) {
   sequenceContainer.appendChild(chipsWrapper);
 }
 
-// Playback Repeater Sequence (Smart Dual-Mode Playback)
+// Playback Repeater Sequence (3-Mode Tiered Playback: Off, Soft, Hard)
 async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
   const cleaned = cleanRepeaterSequence(rawSequence);
-  let sequence = cleaned;
-
-  if (repeaterProcessingMode === 'autotune') {
-    sequence = applySmartAutoTune(cleaned);
-  }
+  const sequence = applyTieredAutotune(cleaned, repeaterProcessingMode);
 
   renderRepeaterNoteChips(sequence);
 

@@ -101,18 +101,15 @@ def frequency_to_note(freq):
         return None
     import math
     
-    # Hitung MIDI note terdekat secara kontinyu menggunakan batas rentang frekuensi (Frequency Range Bins)
     exact_midi = 69.0 + 12.0 * math.log2(freq / 440.0)
     raw_midi = int(round(exact_midi))
     
-    # Sesuaikan ke rentang instrumen Angklung (E3 = 52 hingga C7 = 96) via octave folding
     transposed_midi = raw_midi
     while transposed_midi < 52:
         transposed_midi += 12
     while transposed_midi > 96:
         transposed_midi -= 12
         
-    # Garansi 100% terklasifikasi ke rentang nada Angklung terdekat (tanpa ada nada yang terlewat)
     transposed_midi = max(52, min(96, transposed_midi))
         
     pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -121,45 +118,36 @@ def frequency_to_note(freq):
     
     return f"{pitch_name}{octave}"
 
-def detect_pitch(signal, sr):
-    """Low-Frequency Sensitive Autocorrelation Pitch Detector with Noise Rejection."""
+def detect_pitch_with_confidence(signal, sr):
+    """Low-Frequency Sensitive Autocorrelation Pitch Detector returning (frequency, confidence_score)."""
     if len(signal) == 0:
-        return 0.0
+        return 0.0, 0.0
     signal = signal - np.mean(signal)
     
-    # Hitung volume RMS (Sensitivitas 0.010 untuk menangkap 100% vokal manusia lembut)
     rms = np.sqrt(np.mean(signal**2))
     if rms < 0.010:
-        return 0.0
+        return 0.0, 0.0
         
-    # Normalisasi amplitude untuk sensitivitas vokal rendah
     max_val = np.max(np.abs(signal))
-    if max_val > 0:
-        norm_signal = signal / max_val
-    else:
-        norm_signal = signal
+    norm_signal = signal / max_val if max_val > 0 else signal
 
-    # Low-pass filter ringan (Moving average 3-point)
     smoothed = np.convolve(norm_signal, np.ones(3)/3.0, mode='same')
         
     corr = np.correlate(smoothed, smoothed, mode='full')
     corr = corr[len(corr)//2:]
     
-    # Range frekuensi vokal manusia (75 Hz hingga 1200 Hz)
     min_lag = int(sr / 1200)
     max_lag = int(sr / 75)
     
     if max_lag >= len(corr) or min_lag >= len(corr):
-        return 0.0
+        return 0.0, 0.0
         
     search_segment = corr[min_lag:max_lag]
     if len(search_segment) == 0:
-        return 0.0
+        return 0.0, 0.0
         
     peak = np.argmax(search_segment) + min_lag
     
-    # Sub-harmonic Check (Pencegah nada mendadak anjlok ke oktaf lebih rendah):
-    # Jika peak berada di kelipatan lag (oktaf rendah), periksa apakah lag awal (setengahnya) memiliki puncak kuat.
     half_peak = peak // 2
     if half_peak >= min_lag and corr[half_peak] >= 0.70 * corr[peak]:
         peak = half_peak
@@ -168,15 +156,15 @@ def detect_pitch(signal, sr):
         if third_peak >= min_lag and corr[third_peak] >= 0.70 * corr[peak]:
             peak = third_peak
 
-    # Adaptive Periodicity Threshold:
-    # Untuk nada rendah (lag > 60 samples / freq < 260Hz), ambang disesuaikan ke 0.24 
-    # Untuk nada tinggi (lag <= 60 / freq >= 260Hz), ambang 0.35 untuk menolak noise/desisan.
     required_ratio = 0.24 if peak > 60 else 0.35
     
     if corr[0] == 0 or (corr[peak] / corr[0]) < required_ratio:
-        return 0.0
+        return 0.0, 0.0
+
+    peak_ratio = float(corr[peak] / corr[0])
+    rms_weight = min(1.0, float(rms / 0.08))
+    confidence = min(1.0, max(0.0, peak_ratio * 0.7 + rms_weight * 0.3))
         
-    # Interpolasi Parabolik untuk presisi frekuensi
     if 0 < peak < len(corr) - 1:
         alpha = corr[peak - 1]
         beta = corr[peak]
@@ -191,9 +179,13 @@ def detect_pitch(signal, sr):
         refined_peak = float(peak)
 
     if refined_peak <= 0:
-        return 0.0
+        return 0.0, 0.0
 
     freq = sr / refined_peak
+    return float(freq), float(round(confidence, 3))
+
+def detect_pitch(signal, sr):
+    freq, _ = detect_pitch_with_confidence(signal, sr)
     return freq
 
 def preprocess_audio_data(y):
@@ -222,6 +214,26 @@ NOTE_FREQUENCIES = {
     },
     3: { # Angklung 3 (Bass/Blue)
         1: 164.81, 2: 174.61, 3: 185.00, 4: 196.00, 5: 207.65, 6: 220.00, 7: 233.08, 8: 246.94,
+        9: 261.63, 10: 277.18, 11: 293.66, 12: 311.13, 13: 329.63, 14: 349.23, 15: 369.99, 16: 392.00
+    }
+}
+
+# =========================================================================
+# [TODO: MANUAL CALIBRATION NEEDED]
+# Tabel frekuensi hasil kalibrasi pengukuran langsung dari bilah angklung fisik nyata.
+# Diisi dengan frekuensi acuan fisik per-channel untuk presisi snapping hardware.
+# =========================================================================
+ANGKLUNG_CALIBRATED_FREQUENCIES = {
+    1: { # Angklung 1 (High/Yellow)
+        1: 392.00,  2: 440.00,  3: 466.16,  4: 493.88,  5: 523.25,  6: 587.33,  7: 659.25,  8: 698.46,
+        9: 739.99, 10: 783.99, 11: 880.00, 12: 932.33, 13: 987.77, 14: 1046.50, 15: 1174.66, 16: 1318.51
+    },
+    2: { # Angklung 2 (Medium/Green)
+        1: 349.23,  2: 369.99,  3: 415.30,  4: 554.37,  5: 622.25,  6: 830.61,  7: 1109.73,  8: 1244.51,
+        9: 1396.91, 10: 1479.98, 11: 1567.98, 12: 1661.22, 13: 1760.00, 14: 1864.66, 15: 1975.53, 16: 2093.00
+    },
+    3: { # Angklung 3 (Bass/Blue)
+        1: 164.81,  2: 174.61,  3: 185.00,  4: 196.00,  5: 207.65,  6: 220.00,  7: 233.08,  8: 246.94,
         9: 261.63, 10: 277.18, 11: 293.66, 12: 311.13, 13: 329.63, 14: 349.23, 15: 369.99, 16: 392.00
     }
 }
@@ -1651,16 +1663,23 @@ async def pitch_websocket(websocket: WebSocket):
     
     try:
         while True:
-            # Get block from queue
-            indata = await audio_queue.get()
+            # Detect pitch with confidence score
+            freq, confidence = detect_pitch_with_confidence(indata.flatten(), sample_rate)
+            note = frequency_to_note(freq) if freq > 0 and confidence >= 0.25 else None
             
-            # Detect pitch
-            freq = detect_pitch(indata.flatten(), sample_rate)
-            note = frequency_to_note(freq) if freq > 0 else None
-            
-            # Send results back
+            # Cents deviation calculation relative to 440Hz A4
+            cents_dev = 0.0
+            if freq > 0:
+                import math
+                exact_midi = 69.0 + 12.0 * math.log2(freq / 440.0)
+                nearest_midi = round(exact_midi)
+                cents_dev = round((exact_midi - nearest_midi) * 100.0, 1)
+
+            # Send enriched payload
             payload = {
-                "frequency": float(freq),
+                "frequency": float(round(freq, 2)),
+                "confidence": float(confidence),
+                "cents_dev": float(cents_dev),
                 "note": note,
                 "frame_duration_ms": frame_dur_ms
             }

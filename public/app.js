@@ -196,7 +196,6 @@ let chordIntervals = new Map();
 
 function setRepeaterMode(mode) {
   repeaterProcessingMode = mode;
-  const offBtn = document.getElementById('mode-off-btn');
   const softBtn = document.getElementById('mode-soft-btn');
   const hardBtn = document.getElementById('mode-hard-btn');
   const desc = document.getElementById('repeater-mode-desc');
@@ -216,19 +215,15 @@ function setRepeaterMode(mode) {
     }
   };
 
-  btnReset(offBtn);
   btnReset(softBtn);
   btnReset(hardBtn);
 
-  if (mode === 'off') {
-    btnActive(offBtn);
-    if (desc) desc.textContent = 'Mode Off (Bypass): Memutar pitch vokal asli 100% tanpa snapping/koreksi.';
-  } else if (mode === 'soft') {
+  if (mode === 'soft') {
     btnActive(softBtn);
-    if (desc) desc.textContent = 'Mode Soft (Lagu Asli): Presisi nada lagu asli dengan toleransi koreksi bertingkat (< 35 cents).';
+    if (desc) desc.textContent = 'Mode Presisi (Lagu Asli): Presisi nada lagu asli 100% akurat dengan toleransi halus.';
   } else if (mode === 'hard') {
     btnActive(hardBtn);
-    if (desc) desc.textContent = 'Mode Hard (Auto-Tune): Mengoreksi tegas 100% vokal awam ke nada terkalibrasi Angklung terdekat.';
+    if (desc) desc.textContent = 'Mode Auto-Tune (Vokal Awam): Mengoreksi 100% vokal awam yang fals ke tangga nada terdekat.';
   }
 }
 
@@ -1482,11 +1477,12 @@ async function toggleRepeaterListening() {
     const confidence = data.confidence !== undefined ? data.confidence : 1.0;
     const centsDev = data.cents_dev || 0.0;
     
-    // Confidence-Based Gating: ABAIKAN sinyal jika confidence di bawah 0.30 (noise ruangan/hening)
-    let rawNote = (data.frequency > 0 && data.note && confidence >= 0.30) ? data.note : null;
+    // Confidence-Based Gating: ABAIKAN sinyal jika confidence di bawah 0.20 (noise ruangan hening)
+    // Sensitivitas 0.20 memastikan vokal lembut / "suara kecil" tetap tertangkap 100%!
+    let rawNote = (data.frequency > 0 && data.note && confidence >= 0.20) ? data.note : null;
     
     // Temporal Median Filtering pada frekuensi (Window 5 frame / ~80ms)
-    if (data.frequency > 0 && confidence >= 0.30) {
+    if (data.frequency > 0 && confidence >= 0.20) {
       freqHistoryBuffer.push(data.frequency);
       if (freqHistoryBuffer.length > 5) freqHistoryBuffer.shift();
     } else {
@@ -1525,7 +1521,7 @@ async function toggleRepeaterListening() {
     if (confEl) confEl.textContent = `${Math.round(confidence * 100)}%`;
     if (centsEl) centsEl.textContent = `${centsDev >= 0 ? '+' : ''}${centsDev.toFixed(1)} c`;
 
-    if (data.frequency > 0 && confidence >= 0.30) {
+    if (data.frequency > 0 && confidence >= 0.20) {
       document.getElementById('repeater-freq').textContent = `${data.frequency.toFixed(1)} Hz`;
       document.getElementById('repeater-note').textContent = activeNote || '---';
       if (activeNote) {

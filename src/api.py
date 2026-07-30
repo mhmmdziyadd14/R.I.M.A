@@ -119,24 +119,27 @@ def frequency_to_note(freq):
     return f"{pitch_name}{octave}"
 
 def detect_pitch_with_confidence(signal, sr):
-    """Low-Frequency Sensitive Autocorrelation Pitch Detector returning (frequency, confidence_score)."""
+    """Dominant Fundamental Pitch Detector with Soft Voice Sensitivity & Noise Rejection."""
     if len(signal) == 0:
         return 0.0, 0.0
     signal = signal - np.mean(signal)
     
+    # Sensitivitas RMS 0.005 (Menangkap vokal manusia yang sangat lembut / "suara kecil")
     rms = np.sqrt(np.mean(signal**2))
-    if rms < 0.010:
+    if rms < 0.005:
         return 0.0, 0.0
         
     max_val = np.max(np.abs(signal))
     norm_signal = signal / max_val if max_val > 0 else signal
 
-    smoothed = np.convolve(norm_signal, np.ones(3)/3.0, mode='same')
+    # Low-pass filter (Moving average 5-point untuk menapis squeak / nada tinggi kecil berisik)
+    smoothed = np.convolve(norm_signal, np.ones(5)/5.0, mode='same')
         
     corr = np.correlate(smoothed, smoothed, mode='full')
     corr = corr[len(corr)//2:]
     
-    min_lag = int(sr / 1200)
+    # Fokus rentang frekuensi vokal utama (75 Hz hingga 850 Hz untuk nada dominan keras)
+    min_lag = int(sr / 850)
     max_lag = int(sr / 75)
     
     if max_lag >= len(corr) or min_lag >= len(corr):
@@ -148,22 +151,23 @@ def detect_pitch_with_confidence(signal, sr):
         
     peak = np.argmax(search_segment) + min_lag
     
+    # Prioritaskan nada fundamental utama (mencegah overtone nada tinggi kecil terbaca)
     half_peak = peak // 2
-    if half_peak >= min_lag and corr[half_peak] >= 0.70 * corr[peak]:
+    if half_peak >= min_lag and corr[half_peak] >= 0.60 * corr[peak]:
         peak = half_peak
     else:
         third_peak = peak // 3
-        if third_peak >= min_lag and corr[third_peak] >= 0.70 * corr[peak]:
+        if third_peak >= min_lag and corr[third_peak] >= 0.60 * corr[peak]:
             peak = third_peak
 
-    required_ratio = 0.24 if peak > 60 else 0.35
-    
-    if corr[0] == 0 or (corr[peak] / corr[0]) < required_ratio:
+    # Adaptive Voice Activity Detector (VAD):
+    # Suara manusia memiliki autokorelasi tinggi (>= 0.28), sedangkan noise desisan bersifat acak (< 0.20)
+    if corr[0] == 0 or (corr[peak] / corr[0]) < 0.28:
         return 0.0, 0.0
 
     peak_ratio = float(corr[peak] / corr[0])
-    rms_weight = min(1.0, float(rms / 0.08))
-    confidence = min(1.0, max(0.0, peak_ratio * 0.7 + rms_weight * 0.3))
+    rms_weight = min(1.0, float(rms / 0.05))
+    confidence = min(1.0, max(0.0, peak_ratio * 0.75 + rms_weight * 0.25))
         
     if 0 < peak < len(corr) - 1:
         alpha = corr[peak - 1]

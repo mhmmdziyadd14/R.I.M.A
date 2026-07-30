@@ -301,6 +301,21 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
         if len(freqs) == 0:
             continue
 
+        # Filter trailing release pitch dip frames (mencegah nada drop tiba-tiba di akhir nyanyian)
+        if len(seg) >= 4:
+            valid_freqs = []
+            stable_ref = float(np.median(freqs[:3]))
+            seg_max_rms = max(f.get('rms', 0.0) for f in seg)
+            for f in seg:
+                if f['freq'] > 0:
+                    diff_cents = 1200.0 * abs(math.log2(f['freq'] / stable_ref)) if stable_ref > 0 else 0
+                    # Skip frame peluruhan di akhir note jika nada anjlok > 600 cents (6 semiton) saat RMS memelan
+                    if diff_cents > 600.0 and f.get('rms', 0.0) < 0.35 * seg_max_rms:
+                        continue
+                    valid_freqs.append(f['freq'])
+            if len(valid_freqs) > 0:
+                freqs = valid_freqs
+
         median_hz = float(np.median(freqs))
         avg_conf = float(np.mean(confs))
 

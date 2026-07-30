@@ -1435,8 +1435,8 @@ async function toggleRepeaterListening() {
     sonar.classList.remove('active');
     statusText.textContent = 'Memproses & memainkan urutan nada...';
     
-    // Finalize the active note if exists
-    if (currentRecDuration > 0) {
+    // Finalize the active note cleanly if exists (ignore short trailing release drops)
+    if (currentRecDuration >= 100 && currentRecNote !== null) {
       recordedSequence.push({ note: currentRecNote, duration: Math.round(currentRecDuration) });
     }
     currentRecNote = null;

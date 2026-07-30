@@ -1723,7 +1723,10 @@ function snapNoteToHarmonicScale(noteStr, scaleClasses) {
     }
   }
 
-  bestMidi = Math.max(52, Math.min(96, bestMidi));
+  // Fold into Lead Vocal Range [C4 = 60 to C5 = 72 / Range 1 to 8/1']
+  while (bestMidi < 60) bestMidi += 12;
+  while (bestMidi > 72) bestMidi -= 12;
+  bestMidi = Math.max(60, Math.min(72, bestMidi));
   return midiToPitchNameString(bestMidi, parsed.isBass);
 }
 

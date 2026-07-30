@@ -194,7 +194,7 @@ def detect_pitch(signal, sr):
 
 def pitch_hz_to_scale_degree(freq_hz, root_midi=60):
     """Maps pitch frequency Hz to Note Name, Scale Degree (Do, Re, Mi, Fa, Sol, La, Si), and Angklung MIDI note.
-    Guarantees all notes sit in Lead Vocal Range 1 to 8/1' (C4 = 60 to C5 = 72).
+    Expressive Vocal Range G3 to G5 (MIDI 55 to 79 / Octave 3, 4, 5).
     """
     if freq_hz <= 0:
         return None, None, None
@@ -202,13 +202,13 @@ def pitch_hz_to_scale_degree(freq_hz, root_midi=60):
     exact_midi = 69.0 + 12.0 * math.log2(freq_hz / 440.0)
     nearest_midi = int(round(exact_midi))
     
-    # Octave Folding into Lead Vocal Melody Range [C4 = 60 to C5 = 72 / Range 1 to 8/1']
+    # Octave Folding into Expressive Vocal Range [G3 = 55 to G5 = 79 / Octave 3, 4, 5]
     transposed_midi = nearest_midi
-    while transposed_midi < 60:
+    while transposed_midi < 55:
         transposed_midi += 12
-    while transposed_midi > 72:
+    while transposed_midi > 79:
         transposed_midi -= 12
-    transposed_midi = max(60, min(72, transposed_midi))
+    transposed_midi = max(55, min(79, transposed_midi))
 
     pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     doremi_labels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)']
@@ -222,12 +222,12 @@ def pitch_hz_to_scale_degree(freq_hz, root_midi=60):
 
     return note_str, scale_deg, transposed_midi
 
-def segment_vocal_melody_frames(frame_list, min_note_dur_ms=100):
+def segment_vocal_melody_frames(frame_list, min_note_dur_ms=90):
     """Monophonic Onset-Based Vocal Note Segmentation Engine (Hop size 10ms).
     Splits continuous vocal pitch stream into distinct Note Event segments using:
     (a) Pitch Delta > 50 Cents step
     (b) Voiced / Unvoiced onset transition
-    (c) Energy Amplitude Envelope Onset
+    (c) Syllable Attack Energy Re-articulation (New note pulse on same pitch)
     """
     if not frame_list or len(frame_list) == 0:
         return []
@@ -250,7 +250,7 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=100):
         time_ms = frame.get('time_ms', 0)
         rms = frame.get('rms', 0.0)
 
-        if not voiced or freq <= 0 or confidence < 0.25:
+        if not voiced or freq <= 0 or confidence < 0.22:
             # Unvoiced / Silence -> Close active note segment
             if len(current_segment) > 0:
                 segments.append(current_segment)
@@ -268,9 +268,9 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=100):
             # 1. Pitch Step Delta > 50 Cents from current stable note
             pitch_jump = cents_distance(freq, current_median) > 50.0
 
-            # 2. Energy Onset Jump (>= 2.5x RMS jump indicating new syllable start)
+            # 2. Syllable Attack Energy Re-articulation (New note pulse on same pitch: RMS rise >= 1.6x after 4+ frames)
             prev_rms = current_segment[-1].get('rms', 0.001)
-            energy_jump = (rms / max(0.001, prev_rms)) >= 2.5 and len(current_segment) >= 5
+            energy_jump = (rms / max(0.001, prev_rms)) >= 1.6 and len(current_segment) >= 4
 
             if pitch_jump or energy_jump:
                 segments.append(current_segment)

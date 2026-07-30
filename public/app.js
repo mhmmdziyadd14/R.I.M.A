@@ -1440,29 +1440,16 @@ async function toggleRepeaterListening() {
       const frameDur = data.frame_duration_ms || 64.0;
       let rawNote = (data.frequency > 0 && data.note) ? data.note : null;
       
-      // Smoothing Buffer 4 Frame
+      // Fast 2-Frame Responsive Window (Captures fast melodic runs instantly)
       noteHistory.push(rawNote);
-      if (noteHistory.length > 4) noteHistory.shift();
+      if (noteHistory.length > 2) noteHistory.shift();
       
-      let candidateNote = rawNote;
-      if (noteHistory.length >= 3) {
-        let noteCounts = {};
-        let maxCount = 0;
-        for (let n of noteHistory) {
-          noteCounts[n] = (noteCounts[n] || 0) + 1;
-          if (noteCounts[n] > maxCount) {
-            maxCount = noteCounts[n];
-            candidateNote = n;
-          }
-        }
-        if (maxCount < 2) {
-          candidateNote = null;
-        }
+      let activeNote = rawNote;
+      if (noteHistory.length === 2 && noteHistory[0] === noteHistory[1]) {
+        activeNote = noteHistory[0];
       }
-
-      let activeNote = candidateNote;
       
-      // Accumulate exact audio duration per note/silence segment (64ms per frame)
+      // Accumulate audio duration per note/silence segment
       if (activeNote === currentRecNote) {
         currentRecDuration += frameDur;
       } else {
@@ -1495,7 +1482,7 @@ async function toggleRepeaterListening() {
   }
 }
 
-// Exact Vocal Pattern Cleaner (Filters Noise & Preserves Note Lengths + Rest Pauses)
+// Fast Melodic Sequence Cleaner & Abrupt Jump Corrector
 function cleanRepeaterSequence(rawSequence) {
   if (!rawSequence || rawSequence.length === 0) return [];
 
@@ -1510,38 +1497,14 @@ function cleanRepeaterSequence(rawSequence) {
     }
   }
 
-  // Step 2: Pitch Wobble Smoothing (Absorb brief pitch wavers < 80ms into surrounding sustained note)
-  let smoothed = [];
+  // Step 2: Preserve fast scalar runs (>= 60ms) while eliminating abrupt "jomplang" jumps (>= 4 semitones jump < 250ms)
+  let smoothMelody = [];
   for (let i = 0; i < merged.length; i++) {
     const item = merged[i];
     const prev = i > 0 ? merged[i - 1] : null;
     const next = i < merged.length - 1 ? merged[i + 1] : null;
 
-    if (item.note !== null && item.duration <= 80 && prev && next && prev.note === next.note && prev.note !== null) {
-      prev.duration += item.duration;
-    } else {
-      smoothed.push(item);
-    }
-  }
-
-  // Step 3: Re-merge consecutive identical notes
-  let reMerged = [];
-  for (let item of smoothed) {
-    if (reMerged.length > 0 && reMerged[reMerged.length - 1].note === item.note) {
-      reMerged[reMerged.length - 1].duration += item.duration;
-    } else {
-      reMerged.push({ note: item.note, duration: item.duration });
-    }
-  }
-
-  // Step 3.5: Pitch Dip & Spike Anomaly Filter (Eliminates sudden octave/interval dips)
-  let dipFiltered = [];
-  for (let i = 0; i < reMerged.length; i++) {
-    const item = reMerged[i];
-    const prev = i > 0 ? reMerged[i - 1] : null;
-    const next = i < reMerged.length - 1 ? reMerged[i + 1] : null;
-
-    if (item.note !== null && item.duration < 160 && prev && prev.note !== null && next && next.note !== null) {
+    if (item.note !== null && item.duration < 250 && prev && prev.note !== null && next && next.note !== null) {
       const pCurrent = parsePitchNote(item.note);
       const pPrev = parsePitchNote(prev.note);
       const pNext = parsePitchNote(next.note);
@@ -1550,37 +1513,42 @@ function cleanRepeaterSequence(rawSequence) {
         const diffPrev = Math.abs(pCurrent.midi - pPrev.midi);
         const diffNext = Math.abs(pCurrent.midi - pNext.midi);
 
-        // If this short note is a sudden pitch dip/spike (>= 4 semitones jump from both neighbours)
+        // If this transition is an abrupt distant jump (>= 4 semitones jump from both neighbours)
         if (diffPrev >= 4 && diffNext >= 4) {
-          // Absorb duration into previous note!
+          // Absorb duration into previous note to prevent abrupt "jomplang" pitch jump
           prev.duration += item.duration;
           continue;
         }
       }
     }
-    dipFiltered.push(item);
+    smoothMelody.push(item);
   }
 
-  // Step 4: Suppress transient noise chirps & background artifacts (< 120ms)
+  // Step 3: Re-merge consecutive identical notes
+  let reMerged = [];
+  for (let item of smoothMelody) {
+    if (reMerged.length > 0 && reMerged[reMerged.length - 1].note === item.note) {
+      reMerged[reMerged.length - 1].duration += item.duration;
+    } else {
+      reMerged.push({ note: item.note, duration: item.duration });
+    }
+  }
+
+  // Step 4: Suppress transient noise chirps (< 60ms isolated noise spikes)
   let filtered = [];
-  for (let i = 0; i < dipFiltered.length; i++) {
-    const item = dipFiltered[i];
-    const prev = i > 0 ? dipFiltered[i - 1] : null;
-    const next = i < dipFiltered.length - 1 ? dipFiltered[i + 1] : null;
+  for (let i = 0; i < reMerged.length; i++) {
+    const item = reMerged[i];
+    const prev = i > 0 ? reMerged[i - 1] : null;
+    const next = i < reMerged.length - 1 ? reMerged[i + 1] : null;
 
     if (item.note === null) {
       filtered.push(item);
       continue;
     }
 
-    if (item.duration < 120) {
-      const isConnectedMelody = (prev && prev.note !== null) && (next && next.note !== null);
-      if (isConnectedMelody && item.duration >= 60) {
-        filtered.push(item);
-      } else {
-        if (prev) prev.duration += item.duration;
-        else if (next) next.duration += item.duration;
-      }
+    if (item.duration < 60) {
+      if (prev) prev.duration += item.duration;
+      else if (next) next.duration += item.duration;
     } else {
       filtered.push(item);
     }

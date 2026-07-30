@@ -1849,7 +1849,7 @@ function convertSequenceTo123V1(sequence) {
   return `V1: | ${v1Bars.join(" | ")} |`;
 }
 
-// Render cleaned note chips on UI
+// Render transcribed vocal melody note chips with Scale Degree (Do-Re-Mi) badges
 function renderRepeaterNoteChips(sequence) {
   const sequenceContainer = document.getElementById('repeater-note-sequence');
   if (!sequenceContainer) return;
@@ -1863,18 +1863,29 @@ function renderRepeaterNoteChips(sequence) {
 
   sequence.forEach((item) => {
     if (!item.note) return;
+    
+    // Compute scale degree if missing
+    let scaleBadge = item.scaleDegree || '';
+    if (!scaleBadge) {
+      const parsed = parsePitchNote(item.note);
+      if (parsed) {
+        const doremiMap = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)'];
+        scaleBadge = doremiMap[parsed.pitchClass] || '';
+      }
+    }
+
     const chip = document.createElement('div');
-    chip.style.background = '#FFF3E0';
-    chip.style.border = '1px solid #FF8A65';
+    chip.style.background = '#E8F5E9';
+    chip.style.border = '1px solid #81C784';
     chip.style.borderRadius = '20px';
     chip.style.padding = '8px 16px';
     chip.style.fontWeight = '800';
-    chip.style.color = '#E64A19';
-    chip.style.boxShadow = '0 2px 8px rgba(255, 138, 101, 0.2)';
+    chip.style.color = '#1B5E20';
+    chip.style.boxShadow = '0 2px 8px rgba(76, 175, 80, 0.15)';
     chip.style.display = 'flex';
     chip.style.alignItems = 'center';
     chip.style.gap = '6px';
-    chip.innerHTML = `<span>🎵 ${item.note}</span> <span style="font-size: 11px; opacity: 0.85; font-weight: 600;">(${(item.duration / 1000).toFixed(1)}s)</span>`;
+    chip.innerHTML = `<span>🎵 ${item.note}</span> <span style="font-size: 11px; background: #C8E6C9; padding: 2px 8px; border-radius: 10px; color: #2E7D32;">${scaleBadge}</span> <span style="font-size: 11px; opacity: 0.85; font-weight: 600;">(${(item.duration / 1000).toFixed(1)}s)</span>`;
     chipsWrapper.appendChild(chip);
   });
 

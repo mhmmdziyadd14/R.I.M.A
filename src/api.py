@@ -192,6 +192,129 @@ def detect_pitch(signal, sr):
     freq, _ = detect_pitch_with_confidence(signal, sr)
     return freq
 
+def pitch_hz_to_scale_degree(freq_hz, root_midi=60):
+    """Maps pitch frequency Hz to Note Name, Scale Degree (Do, Re, Mi, Fa, Sol, La, Si), and Angklung MIDI note."""
+    if freq_hz <= 0:
+        return None, None, None
+    import math
+    exact_midi = 69.0 + 12.0 * math.log2(freq_hz / 440.0)
+    nearest_midi = int(round(exact_midi))
+    
+    # Transpose into physical Angklung 3-Frame Range [E3 = 52 to C7 = 96]
+    transposed_midi = nearest_midi
+    while transposed_midi < 52:
+        transposed_midi += 12
+    while transposed_midi > 96:
+        transposed_midi -= 12
+    transposed_midi = max(52, min(96, transposed_midi))
+
+    pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    doremi_labels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)']
+    
+    pitch_name = pitch_names[transposed_midi % 12]
+    octave = (transposed_midi // 12) - 1
+    note_str = f"{pitch_name}{octave}"
+    
+    semitones_from_root = (transposed_midi - root_midi) % 12
+    scale_deg = doremi_labels[semitones_from_root]
+
+    return note_str, scale_deg, transposed_midi
+
+def segment_vocal_melody_frames(frame_list, min_note_dur_ms=100):
+    """Monophonic Onset-Based Vocal Note Segmentation Engine (Hop size 10ms).
+    Splits continuous vocal pitch stream into distinct Note Event segments using:
+    (a) Pitch Delta > 50 Cents step
+    (b) Voiced / Unvoiced onset transition
+    (c) Energy Amplitude Envelope Onset
+    """
+    if not frame_list or len(frame_list) == 0:
+        return []
+
+    import math
+    import numpy as np
+
+    segments = []
+    current_segment = []
+
+    def cents_distance(f1, f2):
+        if f1 <= 0 or f2 <= 0:
+            return 9999.0
+        return 1200.0 * abs(math.log2(f1 / f2))
+
+    for frame in frame_list:
+        freq = frame.get('freq', 0.0)
+        voiced = frame.get('voiced', False)
+        confidence = frame.get('confidence', 0.0)
+        time_ms = frame.get('time_ms', 0)
+        rms = frame.get('rms', 0.0)
+
+        if not voiced or freq <= 0 or confidence < 0.25:
+            # Unvoiced / Silence -> Close active note segment
+            if len(current_segment) > 0:
+                segments.append(current_segment)
+                current_segment = []
+            continue
+
+        if len(current_segment) == 0:
+            current_segment.append(frame)
+        else:
+            # Calculate current segment median pitch
+            seg_freqs = [f['freq'] for f in current_segment if f['freq'] > 0]
+            current_median = float(np.median(seg_freqs)) if len(seg_freqs) > 0 else current_segment[0]['freq']
+
+            # Check Onset Triggers:
+            # 1. Pitch Step Delta > 50 Cents from current stable note
+            pitch_jump = cents_distance(freq, current_median) > 50.0
+
+            # 2. Energy Onset Jump (>= 2.5x RMS jump indicating new syllable start)
+            prev_rms = current_segment[-1].get('rms', 0.001)
+            energy_jump = (rms / max(0.001, prev_rms)) >= 2.5 and len(current_segment) >= 5
+
+            if pitch_jump or energy_jump:
+                segments.append(current_segment)
+                current_segment = [frame]
+            else:
+                current_segment.append(frame)
+
+    if len(current_segment) > 0:
+        segments.append(current_segment)
+
+    # Process each segment into a structured Note Event object
+    note_events = []
+    for idx, seg in enumerate(segments):
+        if len(seg) == 0:
+            continue
+        
+        dur_ms = seg[-1]['time_ms'] - seg[0]['time_ms'] + 10
+        if dur_ms < min_note_dur_ms:
+            continue # Ignore short noise transient < 100ms
+
+        freqs = [f['freq'] for f in seg if f['freq'] > 0]
+        confs = [f['confidence'] for f in seg]
+
+        if len(freqs) == 0:
+            continue
+
+        # Representative Median Pitch Frequency for immunity against vibrato & transient spikes
+        median_hz = float(np.median(freqs))
+        avg_conf = float(np.mean(confs))
+
+        note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz)
+
+        note_events.append({
+            "id": idx + 1,
+            "start_ms": seg[0]['time_ms'],
+            "end_ms": seg[-1]['time_ms'] + 10,
+            "duration_ms": dur_ms,
+            "freq_hz": round(median_hz, 1),
+            "note": note_str,
+            "scale_degree": scale_deg,
+            "midi": midi_num,
+            "confidence": round(avg_conf, 2)
+        })
+
+    return note_events
+
 def preprocess_audio_data(y):
     """Extracts Mel-Spectrogram features for CRNN model inference."""
     mel_spec = extract_mel_spectrogram(y, sr=config.SAMPLE_RATE)
@@ -1670,9 +1793,13 @@ async def pitch_websocket(websocket: WebSocket):
             # Get block from queue
             indata = await audio_queue.get()
             
-            # Detect pitch with confidence score
-            freq, confidence = detect_pitch_with_confidence(indata.flatten(), sample_rate)
-            note = frequency_to_note(freq) if freq > 0 and confidence >= 0.25 else None
+            # Detect pitch with confidence score & voiced flag
+            sig = indata.flatten()
+            rms_val = float(np.sqrt(np.mean(sig**2)))
+            freq, confidence = detect_pitch_with_confidence(sig, sample_rate)
+            voiced = confidence >= 0.25 and freq >= 75.0 and freq <= 850.0
+            
+            note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(freq) if voiced else (None, None, None)
             
             # Cents deviation calculation relative to 440Hz A4
             cents_dev = 0.0
@@ -1682,12 +1809,15 @@ async def pitch_websocket(websocket: WebSocket):
                 nearest_midi = round(exact_midi)
                 cents_dev = round((exact_midi - nearest_midi) * 100.0, 1)
 
-            # Send enriched payload
+            # Send enriched payload for Monophonic Vocal Transcription
             payload = {
                 "frequency": float(round(freq, 2)),
                 "confidence": float(confidence),
+                "voiced": voiced,
+                "rms": round(rms_val, 4),
                 "cents_dev": float(cents_dev),
-                "note": note,
+                "note": note_str,
+                "scale_degree": scale_deg,
                 "frame_duration_ms": frame_dur_ms
             }
             await websocket.send_json(payload)

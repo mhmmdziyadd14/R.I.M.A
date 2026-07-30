@@ -1561,7 +1561,7 @@ function cleanRepeaterSequence(rawSequence) {
     dipFiltered.push(item);
   }
 
-  // Step 4: Remove isolated noise transients (< 80ms isolated pitch spikes)
+  // Step 4: Suppress transient noise chirps & background artifacts (< 120ms)
   let filtered = [];
   for (let i = 0; i < dipFiltered.length; i++) {
     const item = dipFiltered[i];
@@ -1573,9 +1573,9 @@ function cleanRepeaterSequence(rawSequence) {
       continue;
     }
 
-    if (item.duration < 80) {
+    if (item.duration < 120) {
       const isConnectedMelody = (prev && prev.note !== null) && (next && next.note !== null);
-      if (isConnectedMelody && item.duration >= 40) {
+      if (isConnectedMelody && item.duration >= 60) {
         filtered.push(item);
       } else {
         if (prev) prev.duration += item.duration;
@@ -1719,6 +1719,41 @@ function autoTuneHarmonicSequence(sequence) {
   return merged;
 }
 
+// Smart Auto-Tune Engine: Gently quantizes off-key pitch drifts (e.g. C# -> C/D)
+// for everyday singers while preserving clean pitch notes for accurate song recordings
+function applySmartAutoTune(sequence) {
+  if (!sequence || sequence.length === 0) return [];
+
+  const targetScale = detectBestHarmonicScale(sequence);
+
+  let tuned = sequence.map(item => {
+    if (!item.note) return { note: null, duration: item.duration };
+    const parsed = parsePitchNote(item.note);
+    if (!parsed) return item;
+
+    const isAccidental = parsed.name.includes('#');
+
+    // If an ordinary singer hits an off-key accidental pitch drift, gently correct it to nearest scale note!
+    if (isAccidental && !targetScale.includes(parsed.pitchClass)) {
+      const correctedNote = snapNoteToHarmonicScale(item.note, targetScale);
+      return { note: correctedNote, duration: item.duration };
+    }
+
+    return { note: item.note, duration: item.duration };
+  });
+
+  let finalSequence = [];
+  for (let item of tuned) {
+    if (finalSequence.length > 0 && finalSequence[finalSequence.length - 1].note === item.note) {
+      finalSequence[finalSequence.length - 1].duration += item.duration;
+    } else {
+      finalSequence.push({ note: item.note, duration: item.duration });
+    }
+  }
+
+  return finalSequence;
+}
+
 // Convert recorded pitch sequence to official .123 V1 Lead Vocal Melody notation string
 function convertSequenceTo123V1(sequence) {
   if (!sequence || sequence.length === 0) return "V1: | 0 |";
@@ -1807,9 +1842,10 @@ function renderRepeaterNoteChips(sequence) {
   sequenceContainer.appendChild(chipsWrapper);
 }
 
-// Playback Repeater Sequence (Plays Exact Recorded Chromatic Pattern 100% Accurately)
+// Playback Repeater Sequence (Smart Auto-Tuned & Transient Noise Suppressed)
 async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
-  const sequence = cleanRepeaterSequence(rawSequence);
+  const cleaned = cleanRepeaterSequence(rawSequence);
+  const sequence = applySmartAutoTune(cleaned);
 
   renderRepeaterNoteChips(sequence);
 

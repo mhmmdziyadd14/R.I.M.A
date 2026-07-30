@@ -1568,7 +1568,7 @@ function cleanRepeaterSequence(rawSequence) {
     }
   }
 
-  // Step 4: Suppress transient noise chirps (< 60ms isolated noise spikes)
+  // Step 4: Strict Transient Noise Rejection (Discard/Absorb all short noise chirps <= 150ms / 0.15s)
   let filtered = [];
   for (let i = 0; i < reMerged.length; i++) {
     const item = reMerged[i];
@@ -1580,9 +1580,10 @@ function cleanRepeaterSequence(rawSequence) {
       continue;
     }
 
-    if (item.duration < 60) {
-      if (prev) prev.duration += item.duration;
-      else if (next) next.duration += item.duration;
+    // Ignore/absorb short noise clicks <= 150ms (0.15s) so noise is never recorded as a note
+    if (item.duration <= 150) {
+      if (prev && prev.note !== null) prev.duration += item.duration;
+      else if (next && next.note !== null) next.duration += item.duration;
     } else {
       filtered.push(item);
     }
@@ -1721,39 +1722,9 @@ function autoTuneHarmonicSequence(sequence) {
   return merged;
 }
 
-// Smart Auto-Tune Engine: Gently quantizes off-key pitch drifts (e.g. C# -> C/D)
-// for everyday singers while preserving clean pitch notes for accurate song recordings
+// Auto-Tune Mode Quantizer Engine (Snaps 100% of off-key pitches for amateur singers)
 function applySmartAutoTune(sequence) {
-  if (!sequence || sequence.length === 0) return [];
-
-  const targetScale = detectBestHarmonicScale(sequence);
-
-  let tuned = sequence.map(item => {
-    if (!item.note) return { note: null, duration: item.duration };
-    const parsed = parsePitchNote(item.note);
-    if (!parsed) return item;
-
-    const isAccidental = parsed.name.includes('#');
-
-    // If an ordinary singer hits an off-key accidental pitch drift, gently correct it to nearest scale note!
-    if (isAccidental && !targetScale.includes(parsed.pitchClass)) {
-      const correctedNote = snapNoteToHarmonicScale(item.note, targetScale);
-      return { note: correctedNote, duration: item.duration };
-    }
-
-    return { note: item.note, duration: item.duration };
-  });
-
-  let finalSequence = [];
-  for (let item of tuned) {
-    if (finalSequence.length > 0 && finalSequence[finalSequence.length - 1].note === item.note) {
-      finalSequence[finalSequence.length - 1].duration += item.duration;
-    } else {
-      finalSequence.push({ note: item.note, duration: item.duration });
-    }
-  }
-
-  return finalSequence;
+  return autoTuneHarmonicSequence(sequence);
 }
 
 // Convert recorded pitch sequence to official .123 V1 Lead Vocal Melody notation string

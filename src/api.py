@@ -156,9 +156,18 @@ def detect_pitch(signal, sr):
         
     peak = np.argmax(search_segment) + min_lag
     
+    # Sub-harmonic Check (Pencegah nada mendadak anjlok ke oktaf lebih rendah):
+    # Jika peak berada di kelipatan lag (oktaf rendah), periksa apakah lag awal (setengahnya) memiliki puncak kuat.
+    half_peak = peak // 2
+    if half_peak >= min_lag and corr[half_peak] >= 0.70 * corr[peak]:
+        peak = half_peak
+    else:
+        third_peak = peak // 3
+        if third_peak >= min_lag and corr[third_peak] >= 0.70 * corr[peak]:
+            peak = third_peak
+
     # Adaptive Periodicity Threshold:
     # Untuk nada rendah (lag > 60 samples / freq < 260Hz), ambang disesuaikan ke 0.24 
-    # Karena nada rendah memiliki jumlah siklus gelombang lebih sedikit dalam satu chunk audio.
     # Untuk nada tinggi (lag <= 60 / freq >= 260Hz), ambang 0.35 untuk menolak noise/desisan.
     required_ratio = 0.24 if peak > 60 else 0.35
     

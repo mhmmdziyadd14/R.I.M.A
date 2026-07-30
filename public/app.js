@@ -1523,12 +1523,39 @@ function cleanRepeaterSequence(rawSequence) {
     }
   }
 
-  // Step 4: Remove isolated noise transients (< 80ms isolated pitch spikes)
-  let filtered = [];
+  // Step 3.5: Pitch Dip & Spike Anomaly Filter (Eliminates sudden octave/interval dips)
+  let dipFiltered = [];
   for (let i = 0; i < reMerged.length; i++) {
     const item = reMerged[i];
     const prev = i > 0 ? reMerged[i - 1] : null;
     const next = i < reMerged.length - 1 ? reMerged[i + 1] : null;
+
+    if (item.note !== null && item.duration < 160 && prev && prev.note !== null && next && next.note !== null) {
+      const pCurrent = parsePitchNote(item.note);
+      const pPrev = parsePitchNote(prev.note);
+      const pNext = parsePitchNote(next.note);
+
+      if (pCurrent && pPrev && pNext) {
+        const diffPrev = Math.abs(pCurrent.midi - pPrev.midi);
+        const diffNext = Math.abs(pCurrent.midi - pNext.midi);
+
+        // If this short note is a sudden pitch dip/spike (>= 4 semitones jump from both neighbours)
+        if (diffPrev >= 4 && diffNext >= 4) {
+          // Absorb duration into previous note!
+          prev.duration += item.duration;
+          continue;
+        }
+      }
+    }
+    dipFiltered.push(item);
+  }
+
+  // Step 4: Remove isolated noise transients (< 80ms isolated pitch spikes)
+  let filtered = [];
+  for (let i = 0; i < dipFiltered.length; i++) {
+    const item = dipFiltered[i];
+    const prev = i > 0 ? dipFiltered[i - 1] : null;
+    const next = i < dipFiltered.length - 1 ? dipFiltered[i + 1] : null;
 
     if (item.note === null) {
       filtered.push(item);

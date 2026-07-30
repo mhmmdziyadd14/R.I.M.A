@@ -119,15 +119,19 @@ def frequency_to_note(freq):
     return f"{pitch_name}{octave}"
 
 def detect_pitch_with_confidence(signal, sr):
-    """Dominant Fundamental Pitch Detector with Soft Voice Sensitivity & Noise Rejection."""
+    """Dominant Fundamental Pitch Detector with AGC Soft Mic Preamplifier & Noise Rejection."""
     if len(signal) == 0:
         return 0.0, 0.0
     signal = signal - np.mean(signal)
     
-    # Sensitivitas RMS 0.005 (Menangkap vokal manusia yang sangat lembut / "suara kecil")
     rms = np.sqrt(np.mean(signal**2))
-    if rms < 0.005:
+    if rms < 0.002:
         return 0.0, 0.0
+
+    # Automatic Gain Control (AGC) Preamplifier: Boost soft mic inputs ("suara kecil") up to 6.0x for clear pitch detection!
+    agc_gain = min(6.0, max(1.0, 0.04 / max(0.0005, rms)))
+    signal = signal * agc_gain
+    rms_boosted = rms * agc_gain
         
     max_val = np.max(np.abs(signal))
     norm_signal = signal / max_val if max_val > 0 else signal
@@ -150,12 +154,10 @@ def detect_pitch_with_confidence(signal, sr):
         return 0.0, 0.0
         
     global_max = np.max(search_segment)
-    if global_max <= 0 or corr[0] == 0 or (global_max / corr[0]) < 0.25:
+    if global_max <= 0 or corr[0] == 0 or (global_max / corr[0]) < 0.22:
         return 0.0, 0.0
 
     # First Fundamental Peak Selection:
-    # Cari puncak pertama yang melepasi ambang 45% dari global_max.
-    # Ini MENJAMIN pitch fundamental asli terpilih secara konsisten (rendah tetap rendah, tinggi tetap tinggi!)
     threshold = 0.45 * global_max
     peak = None
 
@@ -169,7 +171,7 @@ def detect_pitch_with_confidence(signal, sr):
         peak = np.argmax(search_segment) + min_lag
 
     peak_ratio = float(corr[peak] / corr[0])
-    rms_weight = min(1.0, float(rms / 0.05))
+    rms_weight = min(1.0, float(rms_boosted / 0.05))
     confidence = min(1.0, max(0.0, peak_ratio * 0.75 + rms_weight * 0.25))
         
     if 0 < peak < len(corr) - 1:
@@ -242,7 +244,7 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
     Splits continuous vocal pitch stream into distinct Note Event segments using:
     (a) Pitch Delta > 50 Cents step
     (b) Voiced / Unvoiced onset transition
-    (c) Energy Amplitude Envelope Onset
+    (c) Decay Valley Onset ("pas suara mulai pelan -> ketukan baru")
     """
     if not frame_list or len(frame_list) == 0:
         return []
@@ -265,7 +267,7 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
         time_ms = frame.get('time_ms', 0)
         rms = frame.get('rms', 0.0)
 
-        if not voiced or freq <= 0 or confidence < 0.22:
+        if not voiced or freq <= 0 or confidence < 0.20:
             # Unvoiced / Silence -> Close active note segment
             if len(current_segment) > 0:
                 segments.append(current_segment)
@@ -275,7 +277,6 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
         if len(current_segment) == 0:
             current_segment.append(frame)
         else:
-            # Calculate current segment median pitch
             seg_freqs = [f['freq'] for f in current_segment if f['freq'] > 0]
             current_median = float(np.median(seg_freqs)) if len(seg_freqs) > 0 else current_segment[0]['freq']
 
@@ -283,11 +284,15 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
             # 1. Pitch Step Delta > 50 Cents from current stable note
             pitch_jump = cents_distance(freq, current_median) > 50.0
 
-            # Energy Onset Jump (>= 3.0x RMS jump with pitch step > 30 cents, preventing note splitting on volume wobbles)
+            # 2. Envelope Decay Valley Onset ("pas suara mulai pelan -> ketukan baru!")
+            max_seg_rms = max(f.get('rms', 0.0) for f in current_segment)
+            decay_valley = (rms <= 0.35 * max_seg_rms) and len(current_segment) >= 8 and (time_ms - current_segment[0]['time_ms']) >= 120
+
+            # 3. Syllable Attack Onset Jump (>= 3.0x RMS jump with pitch step > 30 cents)
             prev_rms = current_segment[-1].get('rms', 0.001)
             energy_jump = (rms / max(0.001, prev_rms)) >= 3.0 and cents_distance(freq, current_median) > 30.0 and len(current_segment) >= 8
 
-            if pitch_jump or energy_jump:
+            if pitch_jump or decay_valley or energy_jump:
                 segments.append(current_segment)
                 current_segment = [frame]
             else:

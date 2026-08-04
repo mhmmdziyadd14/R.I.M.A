@@ -1486,11 +1486,27 @@ async function toggleRepeaterListening() {
       let rawNote = (data.frequency > 0 && data.note && confidence >= 0.15) ? data.note : null;
       
       noteHistory.push(rawNote);
-      if (noteHistory.length > 2) noteHistory.shift();
+      if (noteHistory.length > 4) noteHistory.shift();
       
-      let activeNote = rawNote;
-      if (noteHistory.length === 2 && noteHistory[0] === noteHistory[1]) {
-        activeNote = noteHistory[0];
+      // Hysteresis Pitch Stabilizer: Require 3-frame majority agreement to switch note (eliminates jittery pitch wobbles)
+      let activeNote = currentRecNote;
+      if (noteHistory.length >= 3) {
+        const counts = {};
+        for (let n of noteHistory) {
+          const key = n === null ? 'NULL_NOTE' : n;
+          counts[key] = (counts[key] || 0) + 1;
+        }
+        let maxCount = 0;
+        let majNote = rawNote;
+        for (let key in counts) {
+          if (counts[key] > maxCount) {
+            maxCount = counts[key];
+            majNote = key === 'NULL_NOTE' ? null : key;
+          }
+        }
+        if (maxCount >= 3) {
+          activeNote = majNote;
+        }
       }
       
       // Accumulate exact measured duration per note/silence segment using high-res performance timestamps

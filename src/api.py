@@ -1794,16 +1794,19 @@ async def transcribe_vocal_audio_file(file: UploadFile = File(...)):
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        data, sr = sf.read(temp_path)
+        # Load audio using librosa (supports MP3, WAV, M4A, OGG, AAC)
+        try:
+            data, sr = librosa.load(temp_path, sr=16000, mono=True)
+        except Exception:
+            data, sr = sf.read(temp_path)
+            if len(data.shape) > 1:
+                data = data.mean(axis=1)
+            if sr != 16000:
+                data = librosa.resample(data, orig_sr=sr, target_sr=16000)
+                sr = 16000
+        
         if os.path.exists(temp_path):
             os.remove(temp_path)
-            
-        if len(data.shape) > 1:
-            data = data.mean(axis=1)
-            
-        if sr != 16000:
-            data = librosa.resample(data, orig_sr=sr, target_sr=16000)
-            sr = 16000
 
         # Run 10ms frame hop pitch detection
         hop_samples = 160 # 10ms hop

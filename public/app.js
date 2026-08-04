@@ -1467,7 +1467,8 @@ async function toggleRepeaterListening() {
   let lastFrameTime = performance.now();
 
   try {
-    repeaterSocket = new WebSocket(`${wsHost}/ws/pitch`);
+    const keySigParam = encodeURIComponent(getBackendKeySig());
+    repeaterSocket = new WebSocket(`${wsHost}/ws/pitch?key=${keySigParam}`);
     
     let freqHistoryBuffer = [];
 
@@ -1652,11 +1653,75 @@ const HARMONIC_SCALES = {
   "g_major":     [7, 9, 11, 0, 2, 4, 6], // G, A, B, C, D, E, F#
   "f_major":     [5, 7, 9, 10, 0, 2, 4], // F, G, A, A#, C, D, E
   "d_major":     [2, 4, 6, 7, 9, 11, 1], // D, E, F#, G, A, B, C#
+  "bb_major":    [10, 0, 2, 3, 5, 7, 9], // Bb, C, D, Eb, F, G, A
   "a_minor":     [9, 11, 0, 2, 4, 5, 7], // A, B, C, D, E, F, G
   "e_minor":     [4, 6, 7, 9, 11, 0, 2], // E, F#, G, A, B, C, D
   "pelog_sunda": [0, 1, 5, 7, 8],        // C, C#, F, G, G#
   "slendro":     [0, 2, 5, 7, 9]         // C, D, F, G, A
 };
+
+// Pitch-class of "Do" (tonic) for each scale, used for correct Do-Re-Mi labeling.
+// Relative minors share the same Do as their major counterpart (Am -> Do=C, Em -> Do=G),
+// consistent with Indonesian numbered-notation convention and with the backend's KEY_ROOTS_MIDI.
+const SCALE_ROOT_PITCH_CLASS = {
+  "c_major": 0, "a_minor": 0,
+  "g_major": 7, "e_minor": 7,
+  "f_major": 5,
+  "d_major": 2,
+  "bb_major": 10,
+  "pelog_sunda": 0,
+  "slendro": 0
+};
+
+// Maps the dropdown's scale key to the backend's key_sig string (see KEY_ROOTS_MIDI in api.py)
+const SCALE_KEY_TO_BACKEND_KEYSIG = {
+  "c_major": "C", "g_major": "G", "f_major": "F",
+  "d_major": "D", "bb_major": "Bb", "a_minor": "Am"
+};
+
+// Currently selected key from the "Tangga Nada (Key)" dropdown. 'auto' = auto-detect.
+let selectedRepeaterKey = 'c_major';
+
+// Resolve which scale to snap/label against: explicit user selection wins over auto-detect.
+function resolveTargetScaleKey(sequence) {
+  if (selectedRepeaterKey && selectedRepeaterKey !== 'auto' && HARMONIC_SCALES[selectedRepeaterKey]) {
+    return selectedRepeaterKey;
+  }
+  // Fallback: auto-detect dominant scale from the recorded sequence itself.
+  let pcWeights = new Array(12).fill(0);
+  for (let item of sequence) {
+    if (!item.note) continue;
+    const parsed = parsePitchNote(item.note);
+    if (parsed) pcWeights[parsed.pitchClass] += item.duration;
+  }
+  let bestScaleKey = "c_major";
+  let maxScore = -1;
+  for (let scaleKey in HARMONIC_SCALES) {
+    let score = 0;
+    for (let pc of HARMONIC_SCALES[scaleKey]) score += pcWeights[pc];
+    if (score > maxScore) {
+      maxScore = score;
+      bestScaleKey = scaleKey;
+    }
+  }
+  return bestScaleKey;
+}
+
+// Returns the backend key_sig string ("C", "G", "Bb", "Am", ...) for the currently
+// resolved key, so the server-side solfege labeling matches what's shown/played client-side.
+function getBackendKeySig(sequence) {
+  const scaleKey = resolveTargetScaleKey(sequence || []);
+  return SCALE_KEY_TO_BACKEND_KEYSIG[scaleKey] || "C";
+}
+
+// Computes the Do-Re-Mi solfege label for a pitch-class RELATIVE to the active key's root,
+// instead of assuming Do=C always.
+function pitchClassToScaleDegreeLabel(pitchClass, rootPitchClass) {
+  if (pitchClass === undefined || pitchClass === null) return '';
+  const doremiLabels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)'];
+  const semitoneFromRoot = ((pitchClass - rootPitchClass) % 12 + 12) % 12;
+  return doremiLabels[semitoneFromRoot];
+}
 
 function parsePitchNote(noteStr) {
   if (!noteStr) return null;
@@ -1736,20 +1801,26 @@ function snapNoteToHarmonicScale(noteStr, scaleClasses) {
     }
   }
 
-  // Direct Monotonic Clamp to Physical Angklung MIDI Range [52 = E3 to 96 = C7]
-  bestMidi = Math.max(52, Math.min(96, bestMidi));
+  // Fold into the physical Angklung MIDI range BY OCTAVE (preserve pitch-class),
+  // instead of hard-clamping which corrupts the note identity for anything
+  // outside E3-C7 (same bug class fixed on the backend in pitch_hz_to_scale_degree).
+  while (bestMidi < 52) bestMidi += 12;
+  while (bestMidi > 96) bestMidi -= 12;
   return midiToPitchNameString(bestMidi, parsed.isBass);
 }
 
 function autoTuneHarmonicSequence(sequence) {
   if (!sequence || sequence.length === 0) return [];
 
-  const targetScale = detectBestHarmonicScale(sequence);
+  const targetScaleKey = resolveTargetScaleKey(sequence);
+  const targetScale = HARMONIC_SCALES[targetScaleKey];
+  const rootPc = SCALE_ROOT_PITCH_CLASS[targetScaleKey] ?? 0;
 
   let tunedSequence = sequence.map(item => {
     if (!item.note) return { note: null, duration: item.duration };
     const tunedNote = snapNoteToHarmonicScale(item.note, targetScale);
-    return { note: tunedNote, duration: item.duration };
+    const scaleDegree = pitchClassToScaleDegreeLabel(parsePitchNote(tunedNote)?.pitchClass, rootPc);
+    return { note: tunedNote, duration: item.duration, scaleDegree };
   });
 
   let merged = [];
@@ -1757,7 +1828,7 @@ function autoTuneHarmonicSequence(sequence) {
     if (merged.length > 0 && merged[merged.length - 1].note === item.note) {
       merged[merged.length - 1].duration += item.duration;
     } else {
-      merged.push({ note: item.note, duration: item.duration });
+      merged.push({ note: item.note, duration: item.duration, scaleDegree: item.scaleDegree });
     }
   }
 
@@ -1768,8 +1839,11 @@ function autoTuneHarmonicSequence(sequence) {
 function applyTieredAutotune(sequence, mode = 'soft') {
   if (!sequence || sequence.length === 0) return sequence;
 
-  // Detect dominant harmonic key scale of the recorded song melody
-  const targetScale = detectBestHarmonicScale(sequence);
+  // Resolve dominant harmonic key scale: respects explicit user Key selection first,
+  // falls back to auto-detection from the recorded melody only when Key = "Auto-Detect".
+  const targetScaleKey = resolveTargetScaleKey(sequence);
+  const targetScale = HARMONIC_SCALES[targetScaleKey];
+  const rootPc = SCALE_ROOT_PITCH_CLASS[targetScaleKey] ?? 0;
 
   let tunedSequence = sequence.map(item => {
     if (!item.note) return item;
@@ -1778,11 +1852,14 @@ function applyTieredAutotune(sequence, mode = 'soft') {
 
     // 100% Quantize note to clean harmonic scale to eliminate all off-key ("fals") accidentals
     const snapped = snapNoteToHarmonicScale(item.note, targetScale);
+    const snappedParsed = parsePitchNote(snapped);
     return { 
       note: snapped, 
       duration: item.duration, 
       centsDev: item.centsDev,
-      scaleDegree: item.scaleDegree 
+      // Recompute the solfege label relative to the ACTIVE key's root, not a fixed
+      // Do=C table, so the badge matches whichever Key is actually selected/detected.
+      scaleDegree: pitchClassToScaleDegreeLabel(snappedParsed?.pitchClass, rootPc)
     };
   });
 
@@ -1915,6 +1992,7 @@ async function handleVocalFileUpload(input) {
   
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('key_sig', getBackendKeySig());
   
   try {
     const response = await fetch(`${settings.hostApi}/api/repeater/transcribe_vocal`, {
@@ -1938,6 +2016,8 @@ async function handleVocalFileUpload(input) {
 
 // Handle Key Signature Dropdown Selection
 function onRepeaterKeyChanged(selectedKey) {
+  selectedRepeaterKey = selectedKey;
+
   const statusText = document.getElementById('repeater-status');
   const micBtn = document.getElementById('repeater-mic-btn');
   const sonar = document.getElementById('repeater-sonar');

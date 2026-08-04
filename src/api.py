@@ -176,11 +176,11 @@ def detect_pitch_with_confidence(signal, sr):
     if global_max <= 0 or corr[0] == 0 or (global_max / corr[0]) < 0.22:
         return 0.0, 0.0
 
-    # First Fundamental Peak Selection:
-    threshold = 0.45 * global_max
+    # Fundamental Peak Selection (Search backward from largest lag / lowest frequency to prioritize fundamental pitch):
+    threshold = 0.40 * global_max
     peak = None
 
-    for i in range(1, len(search_segment) - 1):
+    for i in range(len(search_segment) - 2, 0, -1):
         if search_segment[i] > search_segment[i - 1] and search_segment[i] >= search_segment[i + 1]:
             if search_segment[i] >= threshold:
                 peak = i + min_lag

@@ -1,6 +1,9 @@
 import sys
 import os
 import re
+import tempfile
+import uuid
+import shutil
 # Auto-resolve parent folder in python path to prevent import errors
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -10,7 +13,7 @@ import asyncio
 import glob
 import random
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 import uvicorn
@@ -92,6 +95,22 @@ def init_model():
 
 if HAS_AI:
     init_model()
+
+# Shared Key Signature -> root MIDI mapping (dipakai di seluruh backend agar konsisten).
+# "Am" sengaja di-map ke root yang sama dengan "C" karena secara notasi angka Indonesia,
+# "1 = Am" berarti relative minor dari C (susunan solfege Do..Si-nya identik dengan C),
+# hanya pusat tonal (La) yang berbeda.
+KEY_ROOTS_MIDI = {
+    "C": 60, "C#": 61, "DB": 61, "D": 62, "D#": 63, "EB": 63,
+    "E": 64, "F": 65, "F#": 66, "GB": 66, "G": 67, "G#": 68,
+    "AB": 68, "A": 69, "A#": 70, "BB": 70, "B": 71,
+    "AM": 60,
+}
+
+def get_root_midi_from_key(key_sig: str) -> int:
+    if not key_sig:
+        return 60
+    return KEY_ROOTS_MIDI.get(key_sig.strip().upper(), 60)
 
 def frequency_to_note(freq):
     """Maps continuous vocal pitch frequencies into exact Angklung frequency range bins.
@@ -198,18 +217,36 @@ def detect_pitch(signal, sr):
     return freq
 
 def pitch_hz_to_scale_degree(freq_hz, root_midi=60, prev_midi=None):
-    """Direct Monotonic Pitch Mapping: Higher Frequency Hz -> Higher MIDI Note (Strict Monotonicity).
-    Guarantees 100% pitch direction fidelity: Higher pitch ALWAYS goes UP, Lower pitch ALWAYS goes DOWN!
+    """Octave-Preserving Pitch Mapping with Continuity Correction.
+    Maps freq -> the correct pitch-class (note name) first by folding by OCTAVES
+    (not clamping) into the physical Angklung MIDI range [52 = E3 to 96 = C7],
+    then uses prev_midi (the last played note) to resolve octave ambiguity so a
+    momentary pitch-detector wobble doesn't cause a random octave jump.
     """
     if freq_hz <= 0:
         return None, None, None
     import math
     exact_midi = 69.0 + 12.0 * math.log2(freq_hz / 440.0)
     raw_midi = int(round(exact_midi))
-    
-    # Direct Clamp to Physical Angklung MIDI Range [52 = E3 to 96 = C7]
-    # No artificial octave shifts that invert pitch direction!
-    transposed_midi = max(52, min(96, raw_midi))
+
+    # Fold into the physical Angklung MIDI range BY OCTAVE so the note name
+    # (pitch-class) is preserved. A hard clamp here would corrupt the note
+    # identity for anything outside E3-C7 (e.g. low male voices, or an
+    # octave-doubling error from the pitch detector).
+    transposed_midi = raw_midi
+    while transposed_midi < 52:
+        transposed_midi += 12
+    while transposed_midi > 96:
+        transposed_midi -= 12
+
+    # Octave-continuity disambiguation: if we know the previous note, choose
+    # whichever octave (-12 / same / +12) lands closest to it. This is what
+    # actually prevents spurious octave jumps in the melody, instead of just
+    # clamping frequencies to the range boundary.
+    if prev_midi is not None:
+        candidates = [c for c in (transposed_midi - 12, transposed_midi, transposed_midi + 12) if 52 <= c <= 96]
+        if candidates:
+            transposed_midi = min(candidates, key=lambda c: abs(c - prev_midi))
 
     pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     doremi_labels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)']
@@ -223,7 +260,7 @@ def pitch_hz_to_scale_degree(freq_hz, root_midi=60, prev_midi=None):
 
     return note_str, scale_deg, transposed_midi
 
-def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
+def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80, root_midi=60):
     """Monophonic Onset-Based Vocal Note Segmentation Engine (Hop size 10ms).
     Splits continuous vocal pitch stream into distinct Note Event segments using:
     (a) Pitch Delta > 50 Cents step
@@ -320,7 +357,7 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
         avg_conf = float(np.mean(confs))
 
         last_midi = raw_note_events[-1]["midi"] if len(raw_note_events) > 0 else None
-        note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz, prev_midi=last_midi)
+        note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz, root_midi=root_midi, prev_midi=last_midi)
 
         raw_note_events.append({
             "id": idx + 1,
@@ -334,19 +371,14 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
             "confidence": round(avg_conf, 2)
         })
 
-    # Same-Pitch Merger: Merge adjacent identical notes into ONE single continuous note!
-    merged_note_events = []
-    for ev in raw_note_events:
-        if len(merged_note_events) > 0 and merged_note_events[-1]["note"] == ev["note"]:
-            # Merge into single continuous sustained note
-            merged_note_events[-1]["end_ms"] = ev["end_ms"]
-            merged_note_events[-1]["duration_ms"] += ev["duration_ms"]
-            merged_note_events[-1]["confidence"] = round((merged_note_events[-1]["confidence"] + ev["confidence"]) / 2.0, 2)
-        else:
-            ev["id"] = len(merged_note_events) + 1
-            merged_note_events.append(ev)
-
-    return merged_note_events
+    # NOTE: We deliberately do NOT merge adjacent note events just because they share
+    # the same pitch/note name anymore. The onset segmenter above already splits the
+    # stream into separate Note Events using decay-valley RMS dips and syllable-attack
+    # energy jumps — which is exactly how it distinguishes "nada sama, ketukan beda"
+    # (same pitch sung twice/thrice as distinct beats) from one single sustained note.
+    # Blindly re-merging same-pitch neighbors here would erase that rhythmic distinction
+    # and collapse repeated-note lyrics/melismas into one long held note.
+    return raw_note_events
 
 def preprocess_audio_data(y):
     """Extracts Mel-Spectrogram features for CRNN model inference."""
@@ -1784,63 +1816,6 @@ async def classify_audio(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memproses file audio CRNN: {e}")
 
-@app.post("/api/repeater/transcribe_vocal")
-async def transcribe_vocal_audio_file(file: UploadFile = File(...)):
-    """Transcribes uploaded vocal audio file into precise Monophonic Note Sequence."""
-    try:
-        temp_dir = tempfile.gettempdir()
-        temp_path = os.path.join(temp_dir, f"vocal_repeater_{uuid.uuid4().hex}.wav")
-        
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        # Load audio using librosa (supports MP3, WAV, M4A, OGG, AAC)
-        try:
-            data, sr = librosa.load(temp_path, sr=16000, mono=True)
-        except Exception:
-            data, sr = sf.read(temp_path)
-            if len(data.shape) > 1:
-                data = data.mean(axis=1)
-            if sr != 16000:
-                data = librosa.resample(data, orig_sr=sr, target_sr=16000)
-                sr = 16000
-        
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-
-        # Run 10ms frame hop pitch detection
-        hop_samples = 160 # 10ms hop
-        window_samples = 512
-        frames = []
-        
-        for i in range(0, len(data) - window_samples, hop_samples):
-            chunk = data[i:i + window_samples]
-            time_ms = int((i / sr) * 1000.0)
-            rms_val = float(np.sqrt(np.mean(chunk**2)))
-            
-            freq, conf = detect_pitch_with_confidence(chunk, sr)
-            voiced = conf >= 0.20 and freq >= 75.0 and freq <= 850.0
-            
-            frames.append({
-                "time_ms": time_ms,
-                "freq": float(freq),
-                "voiced": voiced,
-                "confidence": float(conf),
-                "rms": round(rms_val, 4)
-            })
-
-        # Segment into Monophonic Note Events
-        note_events = segment_vocal_melody_frames(frames)
-        
-        return {
-            "status": "success",
-            "filename": file.filename,
-            "duration_sec": round(len(data) / sr, 2),
-            "sequence": note_events
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal mendeteksi melodi vokal dari file audio: {e}")
-
 @app.websocket("/ws/pitch")
 async def pitch_websocket(websocket: WebSocket):
     """Streams real-time pitch detection from the server's microphone to the client."""
@@ -1850,7 +1825,10 @@ async def pitch_websocket(websocket: WebSocket):
         await websocket.close()
         return
     await websocket.accept()
-    print("[WS] Klien terhubung ke WebSocket Pitch.")
+    key_sig = websocket.query_params.get("key", "C")
+    root_midi = get_root_midi_from_key(key_sig)
+    prev_midi = None
+    print(f"[WS] Klien terhubung ke WebSocket Pitch. Nada Dasar: {key_sig} (root_midi={root_midi})")
     
     # Audio settings for streaming (1024 samples @ 16kHz = 64ms per frame)
     chunk_size = 1024
@@ -1889,7 +1867,11 @@ async def pitch_websocket(websocket: WebSocket):
             freq, confidence = detect_pitch_with_confidence(sig, sample_rate)
             voiced = confidence >= 0.25 and freq >= 75.0 and freq <= 850.0
             
-            note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(freq) if voiced else (None, None, None)
+            if voiced:
+                note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(freq, root_midi=root_midi, prev_midi=prev_midi)
+                prev_midi = midi_num
+            else:
+                note_str, scale_deg, midi_num = (None, None, None)
             
             # Cents deviation calculation relative to 440Hz A4
             cents_dev = 0.0
@@ -2180,4 +2162,3 @@ async def midi_websocket(websocket: WebSocket):
 
 if __name__ == "__main__":
     uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)
-

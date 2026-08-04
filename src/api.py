@@ -1,6 +1,9 @@
 import sys
 import os
 import re
+import tempfile
+import uuid
+import shutil
 # Auto-resolve parent folder in python path to prevent import errors
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

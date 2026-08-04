@@ -1452,8 +1452,8 @@ async function toggleRepeaterListening() {
   currentRecNote = null;
   currentRecDuration = 0;
   let noteHistory = []; // Buffer 5 frame untuk menghaluskan nada
-  let segRmsHistory = []; // Riwayat RMS dalam segmen nada aktif saat ini (untuk deteksi onset/ketukan baru)
-  let lastForcedSplitTime = performance.now(); // Debounce agar tidak split berkali-kali di satu decay valley
+  let segRmsHistory = [];   // Rolling RMS untuk decay valley onset
+  let lastForcedSplitTime = 0;
   
   micBtn.classList.add('active');
   sonar.classList.add('active');
@@ -1469,8 +1469,7 @@ async function toggleRepeaterListening() {
   let lastFrameTime = performance.now();
 
   try {
-    const keySigParam = encodeURIComponent(getBackendKeySig());
-    repeaterSocket = new WebSocket(`${wsHost}/ws/pitch?key=${keySigParam}`);
+    repeaterSocket = new WebSocket(`${wsHost}/ws/pitch`);
     
     let freqHistoryBuffer = [];
 
@@ -1491,12 +1490,11 @@ async function toggleRepeaterListening() {
       noteHistory.push(rawNote);
       if (noteHistory.length > 4) noteHistory.shift();
       
-      // Hysteresis Pitch Stabilizer: Require 3-frame majority agreement to switch note (eliminates jittery pitch wobbles)
-      // Exception: immediately accept ANY note when currentRecNote is null (fixes "nada awal tidak terbaca").
+      // Hysteresis Pitch Stabilizer: Require 3-frame majority agreement to switch note
+      // Fast-accept nada pertama (currentRecNote===null) tanpa nunggu 3 frame agar nada awal tidak terbuang
       let activeNote = currentRecNote;
       if (currentRecNote === null && rawNote !== null) {
-        // First note onset — accept immediately without waiting for 3-frame majority
-        activeNote = rawNote;
+        activeNote = rawNote; // << nada awal langsung diterima
       } else if (noteHistory.length >= 3) {
         const counts = {};
         for (let n of noteHistory) {
@@ -1515,45 +1513,40 @@ async function toggleRepeaterListening() {
           activeNote = majNote;
         }
       }
-      
-      // Envelope-based Onset Detector for the live mic path (mirrors the backend's
-      // decay-valley logic in segment_vocal_melody_frames). Without this, the live
-      // path only starts a new note when the PITCH changes — so the same note sung
-      // twice/thrice as separate beats ("nada sama, ketukan beda") would incorrectly
-      // collapse into one long held note. Here we also force a new beat boundary when
-      // the loudness dips into a valley then the singer re-attacks, even if the pitch
-      // (activeNote) stayed exactly the same.
+
+      // Decay Valley Onset: deteksi perpindahan ketukan lirik saat volume memelan
       const rms = data.rms || 0.0;
       segRmsHistory.push(rms);
-      if (segRmsHistory.length > 40) segRmsHistory.shift(); // cap buffer growth
-
+      if (segRmsHistory.length > 40) segRmsHistory.shift();
       const maxSegRms = Math.max(...segRmsHistory, 0.0001);
+      const now2 = now;
       const decayValley = activeNote === currentRecNote &&
         activeNote !== null &&
         rms <= 0.35 * maxSegRms &&
         segRmsHistory.length >= 3 &&
         currentRecDuration >= 120 &&
-        (now - lastForcedSplitTime) >= 150; // debounce: avoid multiple splits per valley
+        (now2 - lastForcedSplitTime) >= 150;
 
-      // Accumulate exact measured duration per note/silence segment using high-res performance timestamps
+      // Accumulate exact measured duration per note/silence segment
       if (activeNote === currentRecNote && !decayValley) {
         currentRecDuration += measuredDurMs;
       } else {
-        if (currentRecDuration >= 100 && currentRecNote !== null) {
-          // Guard against tail pitch drift: only push if confidence is high enough (nada akhir tidak melengking)
-          if (confidence >= 0.20) {
-            recordedSequence.push({ 
-              note: currentRecNote, 
-              duration: Math.round(currentRecDuration),
-              centsDev: centsDev,
-              confidence: confidence 
-            });
-          }
+        // Hanya push jika confidence cukup (mencegah nada akhir fals saat hembusan napas)
+        if (currentRecDuration > 0 && currentRecNote !== null && confidence >= 0.15) {
+          recordedSequence.push({ 
+            note: currentRecNote, 
+            duration: Math.round(currentRecDuration),
+            centsDev: centsDev,
+            confidence: confidence 
+          });
+        } else if (currentRecDuration > 0 && currentRecNote === null) {
+          // silence segment — boleh push tanpa note
+          recordedSequence.push({ note: null, duration: Math.round(currentRecDuration) });
         }
         currentRecNote = activeNote;
         currentRecDuration = measuredDurMs;
         segRmsHistory = [rms];
-        if (decayValley) lastForcedSplitTime = now;
+        if (decayValley) lastForcedSplitTime = now2;
       }
 
       // HUD & Debug Overlay Updates
@@ -1591,28 +1584,27 @@ async function toggleRepeaterListening() {
 function cleanRepeaterSequence(rawSequence) {
   if (!rawSequence || rawSequence.length === 0) return [];
 
-  // Step 1: Merge only near-identical JITTER (adjacent notes within 1 semitone, very short
-  // duration) which is pitch-detector noise, NOT exact-same-note repeats. Two adjacent
-  // segments with the EXACT SAME note are intentionally left separate here, because they
-  // may represent distinct beats/syllables sung on the same pitch ("nada sama, ketukan
-  // beda") — the onset segmenter upstream already decided they're separate attacks.
+  // Step 1: Merge consecutive identical or near-identical notes (<= 1 semitone difference)
   let merged = [];
   for (let item of rawSequence) {
     let note = item.note || null;
-    let dur = item.duration || item.duration_ms || 200;
     if (merged.length > 0) {
       const last = merged[merged.length - 1];
-      // Micro-jitter merge only: different pitch-class but within 1 semitone AND very short.
-      if (last.note !== null && note !== null && last.note !== note) {
+      if (last.note === note) {
+        last.duration += item.duration;
+        continue;
+      }
+      // If adjacent notes are identical or micro-variations of same pitch, merge into one continuous note!
+      if (last.note !== null && note !== null) {
         const p1 = parsePitchNote(last.note);
         const p2 = parsePitchNote(note);
-        if (p1 && p2 && Math.abs(p1.midi - p2.midi) === 1 && dur < 150) {
-          last.duration += dur;
+        if (p1 && p2 && Math.abs(p1.midi - p2.midi) <= 1 && item.duration < 150) {
+          last.duration += item.duration;
           continue;
         }
       }
     }
-    merged.push({ note: note, duration: dur });
+    merged.push({ note: note, duration: item.duration });
   }
 
   // Step 2: Micro-Gap Filler (Fill tiny silence gaps < 200ms between notes to create smooth Legato)
@@ -1630,11 +1622,15 @@ function cleanRepeaterSequence(rawSequence) {
     legato.push(item);
   }
 
-  // Step 3 (REMOVED): This used to blindly re-merge every pair of adjacent identical
-  // notes back into one, which erased "nada sama, ketukan beda" (same pitch sung as
-  // separate beats). We now trust the segmentation from Step 1/2. Tiny fragments are
-  // still cleaned up by the duration-based fold in Step 4 below.
-  let reMerged = legato;
+  // Step 3: Re-merge consecutive identical notes
+  let reMerged = [];
+  for (let item of legato) {
+    if (reMerged.length > 0 && reMerged[reMerged.length - 1].note === item.note) {
+      reMerged[reMerged.length - 1].duration += item.duration;
+    } else {
+      reMerged.push({ note: item.note, duration: item.duration });
+    }
+  }
 
   // Step 4: Preserve exact recorded note duration matching singer's actual timing 1-to-1
   let filtered = [];
@@ -1679,75 +1675,11 @@ const HARMONIC_SCALES = {
   "g_major":     [7, 9, 11, 0, 2, 4, 6], // G, A, B, C, D, E, F#
   "f_major":     [5, 7, 9, 10, 0, 2, 4], // F, G, A, A#, C, D, E
   "d_major":     [2, 4, 6, 7, 9, 11, 1], // D, E, F#, G, A, B, C#
-  "bb_major":    [10, 0, 2, 3, 5, 7, 9], // Bb, C, D, Eb, F, G, A
   "a_minor":     [9, 11, 0, 2, 4, 5, 7], // A, B, C, D, E, F, G
   "e_minor":     [4, 6, 7, 9, 11, 0, 2], // E, F#, G, A, B, C, D
   "pelog_sunda": [0, 1, 5, 7, 8],        // C, C#, F, G, G#
   "slendro":     [0, 2, 5, 7, 9]         // C, D, F, G, A
 };
-
-// Pitch-class of "Do" (tonic) for each scale, used for correct Do-Re-Mi labeling.
-// Relative minors share the same Do as their major counterpart (Am -> Do=C, Em -> Do=G),
-// consistent with Indonesian numbered-notation convention and with the backend's KEY_ROOTS_MIDI.
-const SCALE_ROOT_PITCH_CLASS = {
-  "c_major": 0, "a_minor": 0,
-  "g_major": 7, "e_minor": 7,
-  "f_major": 5,
-  "d_major": 2,
-  "bb_major": 10,
-  "pelog_sunda": 0,
-  "slendro": 0
-};
-
-// Maps the dropdown's scale key to the backend's key_sig string (see KEY_ROOTS_MIDI in api.py)
-const SCALE_KEY_TO_BACKEND_KEYSIG = {
-  "c_major": "C", "g_major": "G", "f_major": "F",
-  "d_major": "D", "bb_major": "Bb", "a_minor": "Am"
-};
-
-// Currently selected key from the "Tangga Nada (Key)" dropdown. 'auto' = auto-detect.
-let selectedRepeaterKey = 'c_major';
-
-// Resolve which scale to snap/label against: explicit user selection wins over auto-detect.
-function resolveTargetScaleKey(sequence) {
-  if (selectedRepeaterKey && selectedRepeaterKey !== 'auto' && HARMONIC_SCALES[selectedRepeaterKey]) {
-    return selectedRepeaterKey;
-  }
-  // Fallback: auto-detect dominant scale from the recorded sequence itself.
-  let pcWeights = new Array(12).fill(0);
-  for (let item of sequence) {
-    if (!item.note) continue;
-    const parsed = parsePitchNote(item.note);
-    if (parsed) pcWeights[parsed.pitchClass] += item.duration;
-  }
-  let bestScaleKey = "c_major";
-  let maxScore = -1;
-  for (let scaleKey in HARMONIC_SCALES) {
-    let score = 0;
-    for (let pc of HARMONIC_SCALES[scaleKey]) score += pcWeights[pc];
-    if (score > maxScore) {
-      maxScore = score;
-      bestScaleKey = scaleKey;
-    }
-  }
-  return bestScaleKey;
-}
-
-// Returns the backend key_sig string ("C", "G", "Bb", "Am", ...) for the currently
-// resolved key, so the server-side solfege labeling matches what's shown/played client-side.
-function getBackendKeySig(sequence) {
-  const scaleKey = resolveTargetScaleKey(sequence || []);
-  return SCALE_KEY_TO_BACKEND_KEYSIG[scaleKey] || "C";
-}
-
-// Computes the Do-Re-Mi solfege label for a pitch-class RELATIVE to the active key's root,
-// instead of assuming Do=C always.
-function pitchClassToScaleDegreeLabel(pitchClass, rootPitchClass) {
-  if (pitchClass === undefined || pitchClass === null) return '';
-  const doremiLabels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)'];
-  const semitoneFromRoot = ((pitchClass - rootPitchClass) % 12 + 12) % 12;
-  return doremiLabels[semitoneFromRoot];
-}
 
 function parsePitchNote(noteStr) {
   if (!noteStr) return null;
@@ -1827,42 +1759,40 @@ function snapNoteToHarmonicScale(noteStr, scaleClasses) {
     }
   }
 
-  // Fold into the physical Angklung MIDI range BY OCTAVE (preserve pitch-class),
-  // instead of hard-clamping which corrupts the note identity for anything
-  // outside E3-C7 (same bug class fixed on the backend in pitch_hz_to_scale_degree).
-  while (bestMidi < 52) bestMidi += 12;
-  while (bestMidi > 96) bestMidi -= 12;
+  // Direct Monotonic Clamp to Physical Angklung MIDI Range [52 = E3 to 96 = C7]
+  bestMidi = Math.max(52, Math.min(96, bestMidi));
   return midiToPitchNameString(bestMidi, parsed.isBass);
 }
 
 function autoTuneHarmonicSequence(sequence) {
   if (!sequence || sequence.length === 0) return [];
 
-  const targetScaleKey = resolveTargetScaleKey(sequence);
-  const targetScale = HARMONIC_SCALES[targetScaleKey];
-  const rootPc = SCALE_ROOT_PITCH_CLASS[targetScaleKey] ?? 0;
+  const targetScale = detectBestHarmonicScale(sequence);
 
   let tunedSequence = sequence.map(item => {
     if (!item.note) return { note: null, duration: item.duration };
     const tunedNote = snapNoteToHarmonicScale(item.note, targetScale);
-    const scaleDegree = pitchClassToScaleDegreeLabel(parsePitchNote(tunedNote)?.pitchClass, rootPc);
-    return { note: tunedNote, duration: item.duration, scaleDegree };
+    return { note: tunedNote, duration: item.duration };
   });
 
-  // Kept separate on purpose — see note in applyTieredAutotune above about preserving
-  // "nada sama, ketukan beda".
-  return tunedSequence;
+  let merged = [];
+  for (let item of tunedSequence) {
+    if (merged.length > 0 && merged[merged.length - 1].note === item.note) {
+      merged[merged.length - 1].duration += item.duration;
+    } else {
+      merged.push({ note: item.note, duration: item.duration });
+    }
+  }
+
+  return merged;
 }
 
 // 100% Diatonic Scale Auto-Tune & Harmonics Quantizer (Eliminates all fals chromatic accidentals)
 function applyTieredAutotune(sequence, mode = 'soft') {
   if (!sequence || sequence.length === 0) return sequence;
 
-  // Resolve dominant harmonic key scale: respects explicit user Key selection first,
-  // falls back to auto-detection from the recorded melody only when Key = "Auto-Detect".
-  const targetScaleKey = resolveTargetScaleKey(sequence);
-  const targetScale = HARMONIC_SCALES[targetScaleKey];
-  const rootPc = SCALE_ROOT_PITCH_CLASS[targetScaleKey] ?? 0;
+  // Detect dominant harmonic key scale of the recorded song melody
+  const targetScale = detectBestHarmonicScale(sequence);
 
   let tunedSequence = sequence.map(item => {
     if (!item.note) return item;
@@ -1871,23 +1801,25 @@ function applyTieredAutotune(sequence, mode = 'soft') {
 
     // 100% Quantize note to clean harmonic scale to eliminate all off-key ("fals") accidentals
     const snapped = snapNoteToHarmonicScale(item.note, targetScale);
-    const snappedParsed = parsePitchNote(snapped);
     return { 
       note: snapped, 
       duration: item.duration, 
       centsDev: item.centsDev,
-      // Recompute the solfege label relative to the ACTIVE key's root, not a fixed
-      // Do=C table, so the badge matches whichever Key is actually selected/detected.
-      scaleDegree: pitchClassToScaleDegreeLabel(snappedParsed?.pitchClass, rootPc)
+      scaleDegree: item.scaleDegree 
     };
   });
 
-  // NOTE: We intentionally do NOT re-merge adjacent notes that snapped to the same
-  // pitch anymore. Two adjacent segments reaching here already represent distinct
-  // beats/syllables from the onset segmenter (backend) or the live decay-valley
-  // detector (mic), even when they happen to be the same note ("nada sama, ketukan
-  // beda") — merging them here would erase exactly that rhythmic distinction.
-  return tunedSequence;
+  // Re-merge adjacent notes that snapped to the same pitch
+  let merged = [];
+  for (let item of tunedSequence) {
+    if (merged.length > 0 && merged[merged.length - 1].note === item.note) {
+      merged[merged.length - 1].duration += item.duration;
+    } else {
+      merged.push(item);
+    }
+  }
+
+  return merged;
 }
 
 function applySmartAutoTune(sequence) {
@@ -2006,7 +1938,6 @@ async function handleVocalFileUpload(input) {
   
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('key_sig', getBackendKeySig());
   
   try {
     const response = await fetch(`${settings.hostApi}/api/repeater/transcribe_vocal`, {
@@ -2030,8 +1961,6 @@ async function handleVocalFileUpload(input) {
 
 // Handle Key Signature Dropdown Selection
 function onRepeaterKeyChanged(selectedKey) {
-  selectedRepeaterKey = selectedKey;
-
   const statusText = document.getElementById('repeater-status');
   const micBtn = document.getElementById('repeater-mic-btn');
   const sonar = document.getElementById('repeater-sonar');

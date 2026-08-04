@@ -1784,6 +1784,60 @@ async def classify_audio(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memproses file audio CRNN: {e}")
 
+@app.post("/api/repeater/transcribe_vocal")
+async def transcribe_vocal_audio_file(file: UploadFile = File(...)):
+    """Transcribes uploaded vocal audio file into precise Monophonic Note Sequence."""
+    try:
+        temp_dir = tempfile.gettempdir()
+        temp_path = os.path.join(temp_dir, f"vocal_repeater_{uuid.uuid4().hex}.wav")
+        
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        data, sr = sf.read(temp_path)
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+        if len(data.shape) > 1:
+            data = data.mean(axis=1)
+            
+        if sr != 16000:
+            data = librosa.resample(data, orig_sr=sr, target_sr=16000)
+            sr = 16000
+
+        # Run 10ms frame hop pitch detection
+        hop_samples = 160 # 10ms hop
+        window_samples = 512
+        frames = []
+        
+        for i in range(0, len(data) - window_samples, hop_samples):
+            chunk = data[i:i + window_samples]
+            time_ms = int((i / sr) * 1000.0)
+            rms_val = float(np.sqrt(np.mean(chunk**2)))
+            
+            freq, conf = detect_pitch_with_confidence(chunk, sr)
+            voiced = conf >= 0.20 and freq >= 75.0 and freq <= 850.0
+            
+            frames.append({
+                "time_ms": time_ms,
+                "freq": float(freq),
+                "voiced": voiced,
+                "confidence": float(conf),
+                "rms": round(rms_val, 4)
+            })
+
+        # Segment into Monophonic Note Events
+        note_events = segment_vocal_melody_frames(frames)
+        
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "duration_sec": round(len(data) / sr, 2),
+            "sequence": note_events
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal mendeteksi melodi vokal dari file audio: {e}")
+
 @app.websocket("/ws/pitch")
 async def pitch_websocket(websocket: WebSocket):
     """Streams real-time pitch detection from the server's microphone to the client."""

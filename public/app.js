@@ -1885,6 +1885,51 @@ function renderRepeaterNoteChips(sequence) {
   sequenceContainer.appendChild(chipsWrapper);
 }
 
+// Handle Vocal File Upload (.WAV / .MP3) for Repeater
+async function handleVocalFileUpload(input) {
+  if (!input || !input.files || input.files.length === 0) return;
+  const file = input.files[0];
+  
+  const statusText = document.getElementById('repeater-status');
+  const micBtn = document.getElementById('repeater-mic-btn');
+  const sonar = document.getElementById('repeater-sonar');
+
+  if (statusText) statusText.textContent = `Mengunggah & menganalisis melodi ${file.name}...`;
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {
+    const response = await fetch(`${settings.hostApi}/api/repeater/transcribe_vocal`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    const result = await response.json();
+    if (result.status === 'success' && result.sequence) {
+      recordedSequence = result.sequence;
+      if (statusText) statusText.textContent = `Selesai mentranskripsi ${result.sequence.length} not melodi dari ${file.name}!`;
+      playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+    } else {
+      if (statusText) statusText.textContent = `Gagal mentranskripsi file vokal: ${result.detail || 'Format tidak didukung'}`;
+    }
+  } catch (e) {
+    console.error("Gagal mengunggah file vokal:", e);
+    if (statusText) statusText.textContent = `Error mengunggah file audio vokal.`;
+  }
+}
+
+// Handle Key Signature Dropdown Selection
+function onRepeaterKeyChanged(selectedKey) {
+  const statusText = document.getElementById('repeater-status');
+  const micBtn = document.getElementById('repeater-mic-btn');
+  const sonar = document.getElementById('repeater-sonar');
+  
+  if (recordedSequence && recordedSequence.length > 0) {
+    playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+  }
+}
+
 // Playback Repeater Sequence (3-Mode Tiered Playback: Off, Soft, Hard)
 async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
   const cleaned = cleanRepeaterSequence(rawSequence);

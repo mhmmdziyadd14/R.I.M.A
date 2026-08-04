@@ -176,11 +176,11 @@ def detect_pitch_with_confidence(signal, sr):
     if global_max <= 0 or corr[0] == 0 or (global_max / corr[0]) < 0.22:
         return 0.0, 0.0
 
-    # Fundamental Peak Selection (Search backward from largest lag / lowest frequency to prioritize fundamental pitch):
-    threshold = 0.40 * global_max
+    # First Fundamental Peak Selection:
+    threshold = 0.45 * global_max
     peak = None
 
-    for i in range(len(search_segment) - 2, 0, -1):
+    for i in range(1, len(search_segment) - 1):
         if search_segment[i] > search_segment[i - 1] and search_segment[i] >= search_segment[i + 1]:
             if search_segment[i] >= threshold:
                 peak = i + min_lag
@@ -329,8 +329,8 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80, root_midi=60):
             continue
         
         dur_ms = seg[-1]['time_ms'] - seg[0]['time_ms'] + 10
-        if dur_ms < min_note_dur_ms:
-            continue # Ignore noise clicks < 80ms
+        if dur_ms < 50:  # Turun dari 80ms ke 50ms agar nada awal yang pendek tidak ikut terbuang
+            continue # Ignore noise clicks < 50ms
 
         freqs = [f['freq'] for f in seg if f['freq'] > 0]
         confs = [f['confidence'] for f in seg]
@@ -341,7 +341,11 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80, root_midi=60):
         # Filter trailing release pitch dip frames (mencegah nada drop tiba-tiba di akhir nyanyian)
         if len(seg) >= 4:
             valid_freqs = []
-            stable_ref = float(np.median(freqs[:3]))
+            # Gunakan median dari frame TENGAH (bukan hanya 3 pertama) agar lebih akurat
+            mid_start = max(0, len(seg) // 4)
+            mid_end = min(len(seg), 3 * len(seg) // 4)
+            mid_freqs = [f['freq'] for f in seg[mid_start:mid_end] if f['freq'] > 0]
+            stable_ref = float(np.median(mid_freqs)) if len(mid_freqs) > 0 else float(np.median(freqs[:3]))
             seg_max_rms = max(f.get('rms', 0.0) for f in seg)
             for f in seg:
                 if f['freq'] > 0:
@@ -371,19 +375,14 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80, root_midi=60):
             "confidence": round(avg_conf, 2)
         })
 
-    # Same-Pitch Merger: Merge adjacent identical notes into ONE single continuous note!
-    merged_note_events = []
-    for ev in raw_note_events:
-        if len(merged_note_events) > 0 and merged_note_events[-1]["note"] == ev["note"]:
-            # Merge into single continuous sustained note
-            merged_note_events[-1]["end_ms"] = ev["end_ms"]
-            merged_note_events[-1]["duration_ms"] += ev["duration_ms"]
-            merged_note_events[-1]["confidence"] = round((merged_note_events[-1]["confidence"] + ev["confidence"]) / 2.0, 2)
-        else:
-            ev["id"] = len(merged_note_events) + 1
-            merged_note_events.append(ev)
-
-    return merged_note_events
+    # NOTE: We deliberately do NOT merge adjacent note events just because they share
+    # the same pitch/note name anymore. The onset segmenter above already splits the
+    # stream into separate Note Events using decay-valley RMS dips and syllable-attack
+    # energy jumps — which is exactly how it distinguishes "nada sama, ketukan beda"
+    # (same pitch sung twice/thrice as distinct beats) from one single sustained note.
+    # Blindly re-merging same-pitch neighbors here would erase that rhythmic distinction
+    # and collapse repeated-note lyrics/melismas into one long held note.
+    return raw_note_events
 
 def preprocess_audio_data(y):
     """Extracts Mel-Spectrogram features for CRNN model inference."""

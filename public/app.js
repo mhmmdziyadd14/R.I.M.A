@@ -1452,6 +1452,8 @@ async function toggleRepeaterListening() {
   currentRecNote = null;
   currentRecDuration = 0;
   let noteHistory = []; // Buffer 5 frame untuk menghaluskan nada
+  let segRmsHistory = []; // Riwayat RMS dalam segmen nada aktif saat ini (untuk deteksi onset/ketukan baru)
+  let lastForcedSplitTime = performance.now(); // Debounce agar tidak split berkali-kali di satu decay valley
   
   micBtn.classList.add('active');
   sonar.classList.add('active');
@@ -1490,8 +1492,12 @@ async function toggleRepeaterListening() {
       if (noteHistory.length > 4) noteHistory.shift();
       
       // Hysteresis Pitch Stabilizer: Require 3-frame majority agreement to switch note (eliminates jittery pitch wobbles)
+      // Exception: immediately accept ANY note when currentRecNote is null (fixes "nada awal tidak terbaca").
       let activeNote = currentRecNote;
-      if (noteHistory.length >= 3) {
+      if (currentRecNote === null && rawNote !== null) {
+        // First note onset — accept immediately without waiting for 3-frame majority
+        activeNote = rawNote;
+      } else if (noteHistory.length >= 3) {
         const counts = {};
         for (let n of noteHistory) {
           const key = n === null ? 'NULL_NOTE' : n;
@@ -1510,20 +1516,44 @@ async function toggleRepeaterListening() {
         }
       }
       
+      // Envelope-based Onset Detector for the live mic path (mirrors the backend's
+      // decay-valley logic in segment_vocal_melody_frames). Without this, the live
+      // path only starts a new note when the PITCH changes — so the same note sung
+      // twice/thrice as separate beats ("nada sama, ketukan beda") would incorrectly
+      // collapse into one long held note. Here we also force a new beat boundary when
+      // the loudness dips into a valley then the singer re-attacks, even if the pitch
+      // (activeNote) stayed exactly the same.
+      const rms = data.rms || 0.0;
+      segRmsHistory.push(rms);
+      if (segRmsHistory.length > 40) segRmsHistory.shift(); // cap buffer growth
+
+      const maxSegRms = Math.max(...segRmsHistory, 0.0001);
+      const decayValley = activeNote === currentRecNote &&
+        activeNote !== null &&
+        rms <= 0.35 * maxSegRms &&
+        segRmsHistory.length >= 3 &&
+        currentRecDuration >= 120 &&
+        (now - lastForcedSplitTime) >= 150; // debounce: avoid multiple splits per valley
+
       // Accumulate exact measured duration per note/silence segment using high-res performance timestamps
-      if (activeNote === currentRecNote) {
+      if (activeNote === currentRecNote && !decayValley) {
         currentRecDuration += measuredDurMs;
       } else {
-        if (currentRecDuration > 0) {
-          recordedSequence.push({ 
-            note: currentRecNote, 
-            duration: Math.round(currentRecDuration),
-            centsDev: centsDev,
-            confidence: confidence 
-          });
+        if (currentRecDuration >= 100 && currentRecNote !== null) {
+          // Guard against tail pitch drift: only push if confidence is high enough (nada akhir tidak melengking)
+          if (confidence >= 0.20) {
+            recordedSequence.push({ 
+              note: currentRecNote, 
+              duration: Math.round(currentRecDuration),
+              centsDev: centsDev,
+              confidence: confidence 
+            });
+          }
         }
         currentRecNote = activeNote;
         currentRecDuration = measuredDurMs;
+        segRmsHistory = [rms];
+        if (decayValley) lastForcedSplitTime = now;
       }
 
       // HUD & Debug Overlay Updates
@@ -1561,22 +1591,22 @@ async function toggleRepeaterListening() {
 function cleanRepeaterSequence(rawSequence) {
   if (!rawSequence || rawSequence.length === 0) return [];
 
-  // Step 1: Merge consecutive identical or near-identical notes (<= 1 semitone difference)
+  // Step 1: Merge only near-identical JITTER (adjacent notes within 1 semitone, very short
+  // duration) which is pitch-detector noise, NOT exact-same-note repeats. Two adjacent
+  // segments with the EXACT SAME note are intentionally left separate here, because they
+  // may represent distinct beats/syllables sung on the same pitch ("nada sama, ketukan
+  // beda") — the onset segmenter upstream already decided they're separate attacks.
   let merged = [];
   for (let item of rawSequence) {
     let note = item.note || null;
     let dur = item.duration || item.duration_ms || 200;
     if (merged.length > 0) {
       const last = merged[merged.length - 1];
-      if (last.note === note) {
-        last.duration += dur;
-        continue;
-      }
-      // If adjacent notes are identical or micro-variations of same pitch, merge into one continuous note!
-      if (last.note !== null && note !== null) {
+      // Micro-jitter merge only: different pitch-class but within 1 semitone AND very short.
+      if (last.note !== null && note !== null && last.note !== note) {
         const p1 = parsePitchNote(last.note);
         const p2 = parsePitchNote(note);
-        if (p1 && p2 && Math.abs(p1.midi - p2.midi) <= 1 && dur < 150) {
+        if (p1 && p2 && Math.abs(p1.midi - p2.midi) === 1 && dur < 150) {
           last.duration += dur;
           continue;
         }
@@ -1600,15 +1630,11 @@ function cleanRepeaterSequence(rawSequence) {
     legato.push(item);
   }
 
-  // Step 3: Re-merge consecutive identical notes
-  let reMerged = [];
-  for (let item of legato) {
-    if (reMerged.length > 0 && reMerged[reMerged.length - 1].note === item.note) {
-      reMerged[reMerged.length - 1].duration += item.duration;
-    } else {
-      reMerged.push({ note: item.note, duration: item.duration });
-    }
-  }
+  // Step 3 (REMOVED): This used to blindly re-merge every pair of adjacent identical
+  // notes back into one, which erased "nada sama, ketukan beda" (same pitch sung as
+  // separate beats). We now trust the segmentation from Step 1/2. Tiny fragments are
+  // still cleaned up by the duration-based fold in Step 4 below.
+  let reMerged = legato;
 
   // Step 4: Preserve exact recorded note duration matching singer's actual timing 1-to-1
   let filtered = [];
@@ -1823,16 +1849,9 @@ function autoTuneHarmonicSequence(sequence) {
     return { note: tunedNote, duration: item.duration, scaleDegree };
   });
 
-  let merged = [];
-  for (let item of tunedSequence) {
-    if (merged.length > 0 && merged[merged.length - 1].note === item.note) {
-      merged[merged.length - 1].duration += item.duration;
-    } else {
-      merged.push({ note: item.note, duration: item.duration, scaleDegree: item.scaleDegree });
-    }
-  }
-
-  return merged;
+  // Kept separate on purpose — see note in applyTieredAutotune above about preserving
+  // "nada sama, ketukan beda".
+  return tunedSequence;
 }
 
 // 100% Diatonic Scale Auto-Tune & Harmonics Quantizer (Eliminates all fals chromatic accidentals)
@@ -1863,17 +1882,12 @@ function applyTieredAutotune(sequence, mode = 'soft') {
     };
   });
 
-  // Re-merge adjacent notes that snapped to the same pitch
-  let merged = [];
-  for (let item of tunedSequence) {
-    if (merged.length > 0 && merged[merged.length - 1].note === item.note) {
-      merged[merged.length - 1].duration += item.duration;
-    } else {
-      merged.push(item);
-    }
-  }
-
-  return merged;
+  // NOTE: We intentionally do NOT re-merge adjacent notes that snapped to the same
+  // pitch anymore. Two adjacent segments reaching here already represent distinct
+  // beats/syllables from the onset segmenter (backend) or the live decay-valley
+  // detector (mic), even when they happen to be the same note ("nada sama, ketukan
+  // beda") — merging them here would erase exactly that rhythmic distinction.
+  return tunedSequence;
 }
 
 function applySmartAutoTune(sequence) {

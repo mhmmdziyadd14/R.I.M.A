@@ -1564,23 +1564,24 @@ function cleanRepeaterSequence(rawSequence) {
   let merged = [];
   for (let item of rawSequence) {
     let note = item.note || null;
+    let dur = item.duration || item.duration_ms || 200;
     if (merged.length > 0) {
       const last = merged[merged.length - 1];
       if (last.note === note) {
-        last.duration += item.duration;
+        last.duration += dur;
         continue;
       }
       // If adjacent notes are identical or micro-variations of same pitch, merge into one continuous note!
       if (last.note !== null && note !== null) {
         const p1 = parsePitchNote(last.note);
         const p2 = parsePitchNote(note);
-        if (p1 && p2 && Math.abs(p1.midi - p2.midi) <= 1 && item.duration < 150) {
-          last.duration += item.duration;
+        if (p1 && p2 && Math.abs(p1.midi - p2.midi) <= 1 && dur < 150) {
+          last.duration += dur;
           continue;
         }
       }
     }
-    merged.push({ note: note, duration: item.duration });
+    merged.push({ note: note, duration: dur });
   }
 
   // Step 2: Micro-Gap Filler (Fill tiny silence gaps < 200ms between notes to create smooth Legato)

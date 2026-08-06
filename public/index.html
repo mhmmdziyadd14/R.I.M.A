@@ -59,21 +59,10 @@
 
         <div class="cn-carousel-container" id="menu-slider-track">
           
-          <!-- Card 1: Edukasi Angklung -->
-          <div class="cn-card-wrapper" onclick="navigateTo('page-edukasi')">
-            <div class="cn-character-placeholder">
-              <i class="fa-solid fa-book-open placeholder-icon" style="font-size: 64px; color: #10B981; margin-top: 25px;"></i>
-            </div>
-            <div class="cn-card-bg bg-green" style="background: #E8F5E9; border-color: #81C784;">
-              <h3 style="color: #1B5E20;">Edukasi Angklung</h3>
-              <p style="color: #2E7D32;">Sejarah & Robotik</p>
-            </div>
-          </div>
-
-          <!-- Card 2 -->
+          <!-- Card 1: Pustaka Lagu -->
           <div class="cn-card-wrapper active-slide" onclick="navigateTo('page-pustaka')">
             <div class="cn-character-placeholder">
-              <img src="ikonpustakalagu.svg" alt="Kontrol Manual" class="placeholder-icon">
+              <img src="ikonpustakalagu.svg" alt="Pustaka Lagu" class="placeholder-icon">
             </div>
             <div class="cn-card-bg bg-yellow">
               <h3>Pustaka Lagu</h3>
@@ -81,7 +70,7 @@
             </div>
           </div>
           
-          <!-- Card 3 -->
+          <!-- Card 2: Kontrol Manual -->
           <div class="cn-card-wrapper" onclick="navigateTo('page-manual')">
             <div class="cn-character-placeholder">
               <img src="ikonkontrolmanual.svg" alt="Kontrol Manual" class="placeholder-icon">
@@ -91,8 +80,19 @@
               <p>Main Interaktif</p>
             </div>
           </div>
+
+          <!-- Card 3: Repeater Vokal -->
+          <div class="cn-card-wrapper" onclick="navigateTo('page-repeater')">
+            <div class="cn-character-placeholder">
+              <img src="ikonrepeater.svg" alt="Repeater" class="placeholder-icon" style="transform: scale(0.7);">
+            </div>
+            <div class="cn-card-bg bg-cyan">
+              <h3>Repeater</h3>
+              <p>Ikuti Irama</p>
+            </div>
+          </div>
                     
-          <!-- Card 4 -->
+          <!-- Card 4: Deteksi Bahasa -->
           <div class="cn-card-wrapper" onclick="navigateTo('page-bahasa')">
             <div class="cn-character-placeholder">
               <img src="ikondeteksibahasa.svg" alt="Deteksi Bahasa" class="placeholder-icon" style="transform: scale(0.8);">
@@ -103,7 +103,18 @@
             </div>
           </div>
           
-          <!-- Card 5: Game Not Angka -->
+          <!-- Card 5: Edukasi Angklung -->
+          <div class="cn-card-wrapper" onclick="navigateTo('page-edukasi')">
+            <div class="cn-character-placeholder">
+              <i class="fa-solid fa-book-open placeholder-icon" style="font-size: 64px; color: #10B981; margin-top: 25px;"></i>
+            </div>
+            <div class="cn-card-bg bg-green" style="background: #E8F5E9; border-color: #81C784;">
+              <h3 style="color: #1B5E20;">Edukasi Angklung</h3>
+              <p style="color: #2E7D32;">Sejarah & Robotik</p>
+            </div>
+          </div>
+
+          <!-- Card 6: Game Not Angka -->
           <div class="cn-card-wrapper" onclick="navigateTo('page-gamenotangka')">
             <div class="cn-character-placeholder">
               <i class="fa-solid fa-gamepad placeholder-icon" style="font-size: 64px; color: #F59E0B; margin-top: 25px;"></i>
@@ -113,18 +124,8 @@
               <p style="color: #F57C00;">Bermain Interaktif</p>
             </div>
           </div>
-        </div>
 
-        <!-- Card 6-->
-          <div class="cn-card-wrapper" onclick="navigateTo('page-repeater')">
-            <div class="cn-character-placeholder">
-              <img src="ikonrepeater.svg" alt="Repeater" class="placeholder-icon" style="transform: scale(0.7);">
-            </div>
-            <div class="cn-card-bg bg-cyan">
-              <h3>Repeater</h3>
-              <p>Ikuti Irama</p>
-            </div>
-          </div>
+        </div>
 
         <button class="slider-arrow right-arrow" onclick="nextMenu()">
           <i class="fa-solid fa-chevron-right"></i>

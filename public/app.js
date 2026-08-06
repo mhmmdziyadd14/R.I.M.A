@@ -3133,7 +3133,7 @@ window.startAgenRima = function() {
   const fab = document.getElementById('agen-rima-fab');
   if (fab) fab.style.background = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
   
-  speakText("Selamat datang di Agen Rima. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, dan Deteksi Bahasa. Apa yang ingin Anda lakukan?", () => {
+  speakText("Selamat datang di Agen Rima. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Edukasi Angklung, atau Game Not Angka. Apa yang ingin Anda lakukan?", () => {
     try { voiceSearchRecognition.start(); } catch(e){}
   });
 };
@@ -3203,6 +3203,18 @@ function handleVoiceMenuSearch(query) {
     voiceSearchState = 0;
     navigateTo('page-repeater');
     speakText("Anda telah memasuki menu Repeater. Di sini Anda bisa mendengarkan dan mengikuti irama secara bertahap.", () => {
+      if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
+    });
+  } else if (query.includes('edukasi') || query.includes('sejarah') || query.includes('bambu')) {
+    voiceSearchState = 0;
+    navigateTo('page-edukasi');
+    speakText("Anda telah memasuki menu Edukasi Angklung. Di sini Anda dapat mempelajari sejarah, bahan bambu, dan teknologi robotik RIMA.", () => {
+      if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
+    });
+  } else if (query.includes('game') || query.includes('not angka') || query.includes('latihan')) {
+    voiceSearchState = 0;
+    navigateTo('page-gamenotangka');
+    speakText("Anda telah memasuki menu Game Not Angka. Di sini Anda dapat melatih akurasi ritme dengan menekan tuts not angka interaktif.", () => {
       if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
     });
   } else if (query.includes('deteksi') || query.includes('bahasa') || query.includes('perintah')) {

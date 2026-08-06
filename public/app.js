@@ -491,7 +491,32 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // 4. SPA Page Router
-function navigateTo(pageId) {
+let appNavigationHistory = [];
+let appCurrentPage = 'page-landing';
+
+const PAGE_NAMES = {
+  'page-pustaka': 'Pustaka Lagu',
+  'page-manual': 'Kontrol Manual',
+  'page-repeater': 'Repeater',
+  'page-bahasa': 'Deteksi Bahasa',
+  'page-edukasi': 'Edukasi Angklung',
+  'page-notangka': 'Game Not Angka'
+};
+
+function navigateBack() {
+  if (appNavigationHistory.length > 0) {
+    const prevPage = appNavigationHistory.pop();
+    navigateTo(prevPage, true);
+    return prevPage;
+  }
+  return null;
+}
+
+function navigateTo(pageId, skipHistory = false) {
+  if (!skipHistory && appCurrentPage !== pageId && appCurrentPage !== 'page-landing') {
+     appNavigationHistory.push(appCurrentPage);
+  }
+  appCurrentPage = pageId;
   // Clear any running song playbacks or socket connections when switching pages
   stopAllPlaybacks();
   if (pageId !== 'page-bahasa') {
@@ -3074,7 +3099,7 @@ function initVoiceSearch() {
          }
          return;
       }
-      if (transcript.includes("ganti kategori") || transcript.includes("kembali")) {
+      if (transcript.includes("ganti kategori")) {
          stopSongPlayback();
          if (voiceSearchState === 3 || voiceSearchState === 2 || voiceSearchState === 0) {
             voiceSearchState = 2;
@@ -3083,6 +3108,24 @@ function initVoiceSearch() {
             speakText(`Kembali ke pemilihan kategori. Kategori yang tersedia adalah: ${categoryList}. Silakan sebutkan nama kategori.`, () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
             return;
          }
+      }
+      if (transcript.includes("kembali") || transcript.includes("balik")) {
+         stopSongPlayback();
+         const prevPage = navigateBack();
+         if (prevPage) {
+            voiceSearchState = (prevPage === 'page-pustaka') ? 2 : 1;
+            const pageName = PAGE_NAMES[prevPage] || 'menu sebelumnya';
+            let msg = `Kembali ke menu ${pageName}.`;
+            if (prevPage === 'page-pustaka') {
+               const categoriesSet = new Set(songs.map(s => s.folder));
+               const categoryList = Array.from(categoriesSet).join(', ');
+               msg += ` Kategori yang tersedia adalah: ${categoryList}.`;
+            }
+            speakText(msg, () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
+         } else {
+            speakText("Tidak ada menu sebelumnya.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
+         }
+         return;
       }
     }
 

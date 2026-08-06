@@ -498,6 +498,15 @@ function navigateTo(pageId) {
     setBahasaMode(1);
   }
 
+  const agenRimaFab = document.getElementById('agen-rima-fab-container');
+  if (agenRimaFab) {
+    if (pageId === 'page-landing') {
+      agenRimaFab.style.display = 'none';
+    } else {
+      agenRimaFab.style.display = 'block';
+    }
+  }
+
   // Hide all screens and activate selected
   const pages = document.querySelectorAll('.app-page');
   pages.forEach(page => page.classList.remove('active'));
@@ -2986,3 +2995,268 @@ window.prevMenu = prevMenu;
 window.playBahasaSong = playBahasaSong;
 window.resetBahasaPage = resetBahasaPage;
 window.setBahasaMode = setBahasaMode;
+
+// ====================================================================
+// 13. Agen Rima Logic (Voice Assistant)
+// ====================================================================
+let voiceSearchState = 0; // 0: Idle, 1: Main Menu, 2: Category, 3: Song
+let voiceSearchRecognition = null;
+let currentVoiceCategory = null;
+let isAgenModeActive = false;
+
+function initVoiceSearch() {
+  if (voiceSearchRecognition) return;
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert("Browser Anda tidak mendukung Web Speech API. Silakan gunakan Google Chrome.");
+    return;
+  }
+  voiceSearchRecognition = new SpeechRecognition();
+  voiceSearchRecognition.lang = 'id-ID';
+  voiceSearchRecognition.interimResults = false;
+  voiceSearchRecognition.maxAlternatives = 1;
+
+  voiceSearchRecognition.onstart = function() {
+    const indicator = document.getElementById('voice-listening-indicator');
+    if (indicator) indicator.style.display = 'block';
+  };
+
+  voiceSearchRecognition.onend = function() {
+    const indicator = document.getElementById('voice-listening-indicator');
+    if (indicator) indicator.style.display = 'none';
+    
+    // Auto-restart if mode is active and not currently speaking
+    if (isAgenModeActive && !window.speechSynthesis.speaking) {
+       try { voiceSearchRecognition.start(); } catch(e){}
+    }
+  };
+
+  voiceSearchRecognition.onerror = function(event) {
+    console.error("Speech recognition error:", event.error);
+    const indicator = document.getElementById('voice-listening-indicator');
+    if (indicator) indicator.style.display = 'none';
+  };
+
+  voiceSearchRecognition.onresult = function(event) {
+    if (event.results.length === 0) return;
+    const transcript = event.results[0][0].transcript.trim().toLowerCase();
+    console.log("Agen Rima Transcript:", transcript);
+
+    if (isAgenModeActive) {
+      if (transcript.includes("matikan agen") || transcript.includes("keluar mode")) {
+         stopAgenRima();
+         return;
+      }
+      if (transcript.includes("menu utama")) {
+         voiceSearchState = 1;
+         speakText("Anda berada di Menu Utama. Anda dapat langsung menyebutkan judul lagu, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, dan Deteksi Bahasa.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
+         return;
+      }
+      if (transcript.includes("hi rima") || transcript.includes("hai rima")) {
+         voiceSearchState = 1; // Kembali ke state 1 agar bisa mendengarkan lagu/menu bebas
+         speakText("Ya? Silakan.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
+         return;
+      }
+      if (transcript.includes("stop lagu") || transcript.includes("berhenti lagu") || transcript.includes("matikan lagu")) {
+         stopSongPlayback();
+         voiceSearchState = 0;
+         speakText("Pemutaran lagu telah dihentikan.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
+         return;
+      }
+      if (transcript.includes("ganti lagu")) {
+         stopSongPlayback();
+         if (currentVoiceCategory) {
+            voiceSearchState = 3;
+            speakText("Pemutaran lagu telah dihentikan. Silakan sebutkan judul lagu baru yang ingin dimainkan.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
+         } else {
+            voiceSearchState = 1;
+            speakText("Pemutaran lagu dihentikan.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
+         }
+         return;
+      }
+      if (transcript.includes("ganti kategori") || transcript.includes("kembali")) {
+         stopSongPlayback();
+         if (voiceSearchState === 3 || voiceSearchState === 2 || voiceSearchState === 0) {
+            voiceSearchState = 2;
+            const categoriesSet = new Set(songs.map(s => s.folder));
+            const categoryList = Array.from(categoriesSet).join(', ');
+            speakText(`Kembali ke pemilihan kategori. Kategori yang tersedia adalah: ${categoryList}. Silakan sebutkan nama kategori.`, () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
+            return;
+         }
+      }
+    }
+
+    if (voiceSearchState === 1) {
+      handleVoiceMenuSearch(transcript);
+    } else if (voiceSearchState === 2) {
+      handleVoiceCategorySearch(transcript);
+    } else if (voiceSearchState === 3) {
+      handleVoiceSongInCategorySearch(transcript);
+    }
+  };
+}
+
+function speakText(text, callback) {
+  if (!window.speechSynthesis) {
+    if (callback) callback();
+    return;
+  }
+  
+  if (voiceSearchRecognition) {
+      try { voiceSearchRecognition.abort(); } catch(e){}
+  }
+  
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'id-ID';
+  utterance.onend = function() {
+    if (callback) callback();
+    else if (isAgenModeActive) {
+      try { voiceSearchRecognition.start(); } catch(e){}
+    }
+  };
+  window.speechSynthesis.speak(utterance);
+}
+
+window.startAgenRima = function() {
+  initVoiceSearch();
+  if (!voiceSearchRecognition) return;
+  
+  if (isAgenModeActive) {
+     stopAgenRima();
+     return;
+  }
+  
+  isAgenModeActive = true;
+  voiceSearchState = 1;
+  
+  const fab = document.getElementById('agen-rima-fab');
+  if (fab) fab.style.background = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
+  
+  speakText("Selamat datang di Agen Rima. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, dan Deteksi Bahasa. Apa yang ingin Anda lakukan?", () => {
+    try { voiceSearchRecognition.start(); } catch(e){}
+  });
+};
+
+function stopAgenRima() {
+  isAgenModeActive = false;
+  voiceSearchState = 0;
+  
+  const fab = document.getElementById('agen-rima-fab');
+  if (fab) fab.style.background = 'linear-gradient(135deg, #a855f7 0%, #6b21a8 100%)';
+  
+  if (voiceSearchRecognition) {
+    try { voiceSearchRecognition.abort(); } catch(e){}
+  }
+  window.speechSynthesis.cancel();
+  speakText("Agen Rima dimatikan. Terima kasih telah menggunakan layanan kami.", () => {});
+}
+
+function handleVoiceMenuSearch(query) {
+  // Cek apakah query langsung menyebutkan judul lagu secara global
+  const matchedSong = songs.find(s => s.title.toLowerCase().includes(query) || query.includes(s.title.toLowerCase()));
+  if (matchedSong) {
+    voiceSearchState = 0; // go to idle
+    navigateTo('page-pustaka');
+    const searchInput = document.getElementById('cn-search-input');
+    if (searchInput) searchInput.value = '';
+    
+    speakText(`Memainkan lagu ${matchedSong.title}.`, () => {
+      setTimeout(() => playSong(matchedSong.id, matchedSong.notes), 400);
+      if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
+    });
+    return;
+  }
+
+  // Cek apakah query langsung menyebutkan nama kategori
+  const categoriesSet = new Set(songs.map(s => s.folder));
+  const matchedCategory = Array.from(categoriesSet).find(c => c.toLowerCase().includes(query) || query.includes(c.toLowerCase()));
+  if (matchedCategory) {
+    navigateTo('page-pustaka');
+    currentVoiceCategory = matchedCategory;
+    const songsInCategory = songs.filter(s => s.folder === matchedCategory);
+    const songList = songsInCategory.map(s => s.title).join(', ');
+    
+    voiceSearchState = 3;
+    speakText(`Kategori ${matchedCategory} dipilih. Lagu yang tersedia adalah: ${songList}. Silakan sebutkan judul lagu.`, () => {
+      if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
+    });
+    return;
+  }
+  if (query.includes('pustaka') || query.includes('lagu') || query.includes('mendengarkan')) {
+    navigateTo('page-pustaka');
+    const categoriesSet = new Set(songs.map(s => s.folder));
+    const categoriesArray = Array.from(categoriesSet);
+    const categoryList = categoriesArray.join(', ');
+    
+    voiceSearchState = 2;
+    speakText(`Anda telah memasuki menu Pustaka Lagu. Kategori yang tersedia adalah: ${categoryList}. Silakan sebutkan nama kategori yang ingin Anda dengarkan.`, () => {
+      if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
+    });
+  } else if (query.includes('kontrol') || query.includes('manual') || query.includes('main')) {
+    voiceSearchState = 0;
+    navigateTo('page-manual');
+    speakText("Anda telah memasuki menu Kontrol Manual. Di sini Anda bisa memainkan angklung menggunakan keyboard yang tersedia.", () => {
+      if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
+    });
+  } else if (query.includes('repeater') || query.includes('irama') || query.includes('ikuti')) {
+    voiceSearchState = 0;
+    navigateTo('page-repeater');
+    speakText("Anda telah memasuki menu Repeater. Di sini Anda bisa mendengarkan dan mengikuti irama secara bertahap.", () => {
+      if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
+    });
+  } else if (query.includes('deteksi') || query.includes('bahasa') || query.includes('perintah')) {
+    navigateTo('page-bahasa');
+    
+    // Matikan mode agen rima agar tidak bentrok dengan listening engine deteksi bahasa
+    isAgenModeActive = false;
+    voiceSearchState = 0;
+    const fab = document.getElementById('agen-rima-fab');
+    if (fab) fab.style.background = 'linear-gradient(135deg, #a855f7 0%, #6b21a8 100%)';
+    if (voiceSearchRecognition) {
+      try { voiceSearchRecognition.abort(); } catch(e){}
+    }
+    window.speechSynthesis.cancel();
+
+    speakText("Anda telah memasuki menu Deteksi Bahasa. Kata yang bisa Anda sebutkan adalah: Sampurasun, Horas, Adil Ka Talino, Wa Wa Wa, Kula Nuwun, Tabea, dan Peuhaba. Silakan tekan ikon mikrofon di tengah layar untuk memulai deteksi.", () => {});
+  } else {
+    speakText("Maaf, perintah, menu, atau lagu tersebut tidak ditemukan. Silakan sebutkan nama menu, kategori, atau judul lagu yang Anda inginkan.", () => {
+      if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
+    });
+  }
+}
+
+function handleVoiceCategorySearch(query) {
+  const categoriesSet = new Set(songs.map(s => s.folder));
+  const matchedCategory = Array.from(categoriesSet).find(c => c.toLowerCase().includes(query) || query.includes(c.toLowerCase()));
+  
+  if (matchedCategory) {
+    currentVoiceCategory = matchedCategory;
+    const songsInCategory = songs.filter(s => s.folder === matchedCategory);
+    const songList = songsInCategory.map(s => s.title).join(', ');
+    
+    voiceSearchState = 3;
+    speakText(`Lagu di kategori ${matchedCategory} adalah: ${songList}. Silakan sebutkan judul lagu yang ingin dimainkan.`, () => {
+      if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
+    });
+  } else {
+    // Fallback: Jika tidak cocok dengan kategori, coba cari sebagai menu atau lagu
+    handleVoiceMenuSearch(query);
+  }
+}
+
+function handleVoiceSongInCategorySearch(query) {
+  const songsInCategory = songs.filter(s => s.folder === currentVoiceCategory);
+  const matchedSong = songsInCategory.find(s => s.title.toLowerCase().includes(query) || query.includes(s.title.toLowerCase()));
+  
+  if (matchedSong) {
+    voiceSearchState = 0; // go to idle
+    const searchInput = document.getElementById('cn-search-input');
+    if (searchInput) searchInput.value = '';
+    setTimeout(() => playSong(matchedSong.id, matchedSong.notes), 400);
+  } else {
+    speakText(`Lagu tidak ada di kategori ${currentVoiceCategory}. Silakan sebutkan ulang judul lagu.`, () => {
+      if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
+    });
+  }
+}

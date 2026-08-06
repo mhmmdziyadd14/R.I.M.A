@@ -3049,7 +3049,7 @@ function initVoiceSearch() {
       }
       if (transcript.includes("menu utama")) {
          voiceSearchState = 1;
-         speakText("Anda berada di Menu Utama. Anda dapat langsung menyebutkan judul lagu, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, dan Deteksi Bahasa.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
+         speakText("Anda berada di Menu Utama. Anda dapat langsung menyebutkan judul lagu, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Edukasi Angklung, atau Game Not Angka.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
          return;
       }
       if (transcript.includes("hi rima") || transcript.includes("hai rima")) {

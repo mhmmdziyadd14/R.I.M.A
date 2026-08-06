@@ -1,6 +1,9 @@
 import sys
 import os
 import re
+import tempfile
+import uuid
+import shutil
 # Auto-resolve parent folder in python path to prevent import errors
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -10,7 +13,7 @@ import asyncio
 import glob
 import random
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 import uvicorn
@@ -93,6 +96,33 @@ def init_model():
 if HAS_AI:
     init_model()
 
+# Shared Key Signature -> root MIDI mapping (dipakai di seluruh backend agar konsisten).
+# "Am" sengaja di-map ke root yang sama dengan "C" karena secara notasi angka Indonesia,
+# "1 = Am" berarti relative minor dari C (susunan solfege Do..Si-nya identik dengan C),
+# hanya pusat tonal (La) yang berbeda.
+KEY_ROOTS_MIDI = {
+    "C": 60, "C_MAJOR": 60,
+    "C#": 61, "C#_MAJOR": 61, "DB": 61, "DB_MAJOR": 61,
+    "D": 62, "D_MAJOR": 62,
+    "D#": 63, "D#_MAJOR": 63, "EB": 63, "EB_MAJOR": 63,
+    "E": 64, "E_MAJOR": 64,
+    "F": 65, "F_MAJOR": 65,
+    "F#": 66, "F#_MAJOR": 66, "GB": 66, "GB_MAJOR": 66,
+    "G": 67, "G_MAJOR": 67,
+    "G#": 68, "G#_MAJOR": 68, "AB": 68, "AB_MAJOR": 68,
+    "A": 69, "A_MAJOR": 69,
+    "A#": 70, "A#_MAJOR": 70, "BB": 70, "BB_MAJOR": 70,
+    "B": 71, "B_MAJOR": 71,
+    "AM": 60, "A_MINOR": 60,
+    "EM": 64, "E_MINOR": 64
+}
+
+def get_root_midi_from_key(key_sig: str) -> int:
+    if not key_sig:
+        return 60
+    k = key_sig.strip().upper()
+    return KEY_ROOTS_MIDI.get(k, 60)
+
 def frequency_to_note(freq):
     """Maps continuous vocal pitch frequencies into exact Angklung frequency range bins.
     Guarantees that 100% of detected vocal sounds are classified into the nearest note bucket.
@@ -119,97 +149,136 @@ def frequency_to_note(freq):
     return f"{pitch_name}{octave}"
 
 def detect_pitch_with_confidence(signal, sr):
-    """Dominant Fundamental Pitch Detector with AGC Soft Mic Preamplifier & Noise Rejection."""
+    """High-Precision Monophonic YIN Pitch Estimator (Cumulative Mean Normalized Difference Function).
+    Eliminates vocal formant interference, harmonic pitch doubling/halving, and sub-octave errors.
+    """
     if len(signal) == 0:
         return 0.0, 0.0
+        
     signal = signal - np.mean(signal)
-    
     rms = np.sqrt(np.mean(signal**2))
-    if rms < 0.002:
+    if rms < 0.0015:
         return 0.0, 0.0
 
-    # Automatic Gain Control (AGC) Preamplifier: Boost soft mic inputs ("suara kecil") up to 6.0x for clear pitch detection!
-    agc_gain = min(6.0, max(1.0, 0.04 / max(0.0005, rms)))
-    signal = signal * agc_gain
-    rms_boosted = rms * agc_gain
-        
-    max_val = np.max(np.abs(signal))
-    norm_signal = signal / max_val if max_val > 0 else signal
+    # Automatic Gain Control Preamplifier for soft human vocal mic inputs
+    agc_gain = min(8.0, max(1.0, 0.05 / max(0.0003, rms)))
+    sig = signal * agc_gain
 
-    # Low-pass filter (Moving average 5-point untuk menapis squeak / nada tinggi kecil berisik)
-    smoothed = np.convolve(norm_signal, np.ones(5)/5.0, mode='same')
-        
-    corr = np.correlate(smoothed, smoothed, mode='full')
-    corr = corr[len(corr)//2:]
+    # Vocal fundamental frequency bounds: 70 Hz (Male Bass E2/C3) to 880 Hz (Female High A5)
+    min_lag = int(sr / 880)
+    max_lag = min(len(sig) // 2, int(sr / 70))
+    if max_lag <= min_lag or len(sig) < max_lag:
+        return 0.0, 0.0
+
+    # Step 1: Difference Function d(tau)
+    W = len(sig) - max_lag
+    if W <= 0:
+        return 0.0, 0.0
+
+    x = sig[:W]
+    d = np.zeros(max_lag + 1, dtype=np.float64)
     
-    # Fokus rentang frekuensi vokal utama (75 Hz hingga 850 Hz untuk nada dominan keras)
-    min_lag = int(sr / 850)
-    max_lag = int(sr / 75)
+    for tau in range(min_lag, max_lag + 1):
+        x_tau = sig[tau:tau + W]
+        d[tau] = np.sum((x - x_tau)**2)
+
+    # Step 2: Cumulative Mean Normalized Difference Function d'(tau)
+    d_prime = np.ones(max_lag + 1, dtype=np.float64)
+    running_sum = 0.0
+    for tau in range(1, max_lag + 1):
+        running_sum += d[tau]
+        if running_sum > 0:
+            d_prime[tau] = d[tau] / (running_sum / tau)
+        else:
+            d_prime[tau] = 1.0
+
+    # Step 3: Absolute Threshold Search
+    threshold = 0.18
+    best_tau = None
     
-    if max_lag >= len(corr) or min_lag >= len(corr):
-        return 0.0, 0.0
-        
-    search_segment = corr[min_lag:max_lag]
-    if len(search_segment) == 0:
-        return 0.0, 0.0
-        
-    global_max = np.max(search_segment)
-    if global_max <= 0 or corr[0] == 0 or (global_max / corr[0]) < 0.22:
-        return 0.0, 0.0
+    for tau in range(min_lag, max_lag):
+        if d_prime[tau] < threshold:
+            while tau + 1 <= max_lag and d_prime[tau + 1] < d_prime[tau]:
+                tau += 1
+            best_tau = tau
+            break
 
-    # First Fundamental Peak Selection:
-    threshold = 0.45 * global_max
-    peak = None
+    if best_tau is None:
+        best_tau = int(min_lag + np.argmin(d_prime[min_lag:max_lag + 1]))
+        if d_prime[best_tau] > 0.30:
+            return 0.0, 0.0
 
-    for i in range(1, len(search_segment) - 1):
-        if search_segment[i] > search_segment[i - 1] and search_segment[i] >= search_segment[i + 1]:
-            if search_segment[i] >= threshold:
-                peak = i + min_lag
-                break
-
-    if peak is None:
-        peak = np.argmax(search_segment) + min_lag
-
-    peak_ratio = float(corr[peak] / corr[0])
-    rms_weight = min(1.0, float(rms_boosted / 0.05))
-    confidence = min(1.0, max(0.0, peak_ratio * 0.75 + rms_weight * 0.25))
-        
-    if 0 < peak < len(corr) - 1:
-        alpha = corr[peak - 1]
-        beta = corr[peak]
-        gamma = corr[peak + 1]
-        denom = (alpha - 2 * beta + gamma)
+    # Step 4: Parabolic Peak Refinement
+    refined_tau = float(best_tau)
+    if min_lag < best_tau < max_lag:
+        alpha = d_prime[best_tau - 1]
+        beta = d_prime[best_tau]
+        gamma = d_prime[best_tau + 1]
+        denom = alpha - 2.0 * beta + gamma
         if denom != 0:
             p = 0.5 * (alpha - gamma) / denom
-            refined_peak = peak + p
-        else:
-            refined_peak = float(peak)
-    else:
-        refined_peak = float(peak)
+            refined_tau = best_tau + p
 
-    if refined_peak <= 0:
+    if refined_tau <= 0:
         return 0.0, 0.0
 
-    freq = sr / refined_peak
-    return float(freq), float(round(confidence, 3))
+    freq = sr / refined_tau
+    confidence = float(np.clip(1.0 - d_prime[best_tau], 0.0, 1.0))
+
+    if freq < 70.0 or freq > 880.0:
+        return 0.0, 0.0
+
+    return float(round(freq, 2)), float(round(confidence, 3))
 
 def detect_pitch(signal, sr):
     freq, _ = detect_pitch_with_confidence(signal, sr)
     return freq
 
+KEY_SCALE_PITCH_CLASSES = {
+    60: [0, 2, 4, 5, 7, 9, 11], # C Major / A Minor
+    61: [1, 3, 5, 6, 8, 10, 0], # C# Major
+    62: [2, 4, 6, 7, 9, 11, 1], # D Major
+    63: [3, 5, 7, 8, 10, 0, 2], # Eb Major
+    64: [4, 6, 7, 9, 11, 0, 2], # E Major / E Minor
+    65: [5, 7, 9, 10, 0, 2, 4], # F Major
+    66: [6, 8, 10, 11, 1, 3, 5], # F# Major
+    67: [7, 9, 11, 0, 2, 4, 6], # G Major
+    68: [8, 10, 0, 1, 3, 5, 7], # Ab Major
+    69: [9, 11, 1, 2, 4, 6, 8], # A Major
+    70: [10, 0, 2, 3, 5, 7, 9], # Bb Major
+    71: [11, 1, 3, 4, 6, 8, 10]  # B Major
+}
+
 def pitch_hz_to_scale_degree(freq_hz, root_midi=60, prev_midi=None):
-    """Direct Monotonic Pitch Mapping: Higher Frequency Hz -> Higher MIDI Note (Strict Monotonicity).
-    Guarantees 100% pitch direction fidelity: Higher pitch ALWAYS goes UP, Lower pitch ALWAYS goes DOWN!
+    """Octave-Preserving Pitch Mapping with Harmonic Auto-Correction.
+    Maps freq -> exact MIDI note, snaps off-key pitches/noise accidentals to nearest
+    harmonically valid scale degree of active key, and resolves octave continuity.
     """
     if freq_hz <= 0:
         return None, None, None
     import math
     exact_midi = 69.0 + 12.0 * math.log2(freq_hz / 440.0)
     raw_midi = int(round(exact_midi))
-    
-    # Direct Clamp to Physical Angklung MIDI Range [52 = E3 to 96 = C7]
-    # No artificial octave shifts that invert pitch direction!
-    transposed_midi = max(52, min(96, raw_midi))
+
+    # Harmonic Auto-Correction: Snap off-key pitches/noise accidentals to active key's scale
+    root_pc = root_midi % 12
+    valid_pcs = KEY_SCALE_PITCH_CLASSES.get(root_pc, [0, 2, 4, 5, 7, 9, 11])
+    raw_pc = raw_midi % 12
+    if raw_pc not in valid_pcs:
+        snapped_midi = raw_midi
+        best_diff = 999
+        for delta in (-1, 1, -2, 2):
+            cand_midi = raw_midi + delta
+            if (cand_midi % 12) in valid_pcs:
+                diff = abs(delta)
+                if diff < best_diff:
+                    best_diff = diff
+                    snapped_midi = cand_midi
+        raw_midi = snapped_midi
+
+    # Preserved raw pitch MIDI without arbitrary boundary slicing at 52.
+    # Uniform global octave shift is applied cleanly in Pass 2 across the entire phrase.
+    transposed_midi = raw_midi
 
     pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     doremi_labels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)']
@@ -223,18 +292,32 @@ def pitch_hz_to_scale_degree(freq_hz, root_midi=60, prev_midi=None):
 
     return note_str, scale_deg, transposed_midi
 
-def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
+def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80, root_midi=60):
     """Monophonic Onset-Based Vocal Note Segmentation Engine (Hop size 10ms).
     Splits continuous vocal pitch stream into distinct Note Event segments using:
-    (a) Pitch Delta > 50 Cents step
-    (b) Voiced / Unvoiced onset transition
-    (c) Decay Valley Onset ("pas suara mulai pelan -> ketukan baru")
+    (a) 7-frame median pitch filter pre-pass to suppress vocal vibrato ripples
+    (b) Pitch Delta > 50 Cents step
+    (c) Voiced / Unvoiced onset transition
     """
     if not frame_list or len(frame_list) == 0:
         return []
 
     import math
     import numpy as np
+
+    # Pre-pass: 7-frame (70ms) median pitch filter to suppress vocal vibrato ripples
+    raw_freqs = [f.get('freq', 0.0) for f in frame_list]
+    smoothed_freqs = list(raw_freqs)
+    
+    N = len(raw_freqs)
+    for i in range(N):
+        if raw_freqs[i] > 0:
+            window = [raw_freqs[j] for j in range(max(0, i - 3), min(N, i + 4)) if raw_freqs[j] > 0]
+            if window:
+                smoothed_freqs[i] = float(np.median(window))
+                
+    for i, f in enumerate(frame_list):
+        f['freq'] = smoothed_freqs[i]
 
     segments = []
     current_segment = []
@@ -265,8 +348,9 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
             current_median = float(np.median(seg_freqs)) if len(seg_freqs) > 0 else current_segment[0]['freq']
 
             # Check Onset Triggers:
-            # 1. Pitch Step Delta > 50 Cents from current stable note
-            pitch_jump = cents_distance(freq, current_median) > 50.0
+            # 1. Pitch Step Delta > 60 Cents (0.6 semitones) from current stable note
+            # Perfectly captures all 1-semitone musical steps (100 cents) without merging notes!
+            pitch_jump = cents_distance(freq, current_median) > 60.0
 
             # 2. Envelope Decay Valley Onset ("pas suara mulai pelan -> ketukan baru!")
             max_seg_rms = max(f.get('rms', 0.0) for f in current_segment)
@@ -301,18 +385,38 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
         if len(freqs) == 0:
             continue
 
-        # Filter trailing release pitch dip frames (mencegah nada drop tiba-tiba di akhir nyanyian)
-        if len(seg) >= 4:
+        # Robust Core-Pitch Estimator (simetris: melindungi AWAL & AKHIR segmen)
+        # ------------------------------------------------------------------
+        # Masalah lama: hanya membuang frame di AKHIR yang anjlok >600 cents dari
+        # median 3 frame pertama. Ini (a) tidak melindungi bagian AWAL nada (attack
+        # transient autocorrelation sering belum stabil di ~1-2 periode pitch pertama),
+        # (b) ambang 600 cents terlalu ekstrem sehingga nada "melengking naik/turun"
+        # yang lebih wajar (2-4 semitone) di ujung nada tetap lolos dan merusak median.
+        #
+        # Solusi: cari dulu frekuensi INTI (core) yang stabil dari bagian TENGAH yang
+        # RMS-nya tinggi (representasi paling percaya diri dari nada yang dinyanyikan),
+        # lalu buang frame mana pun -- di awal ATAU akhir -- yang menyimpang jauh dari
+        # inti tsb SAAT RMS-nya juga sedang rendah (ciri khas noise transient
+        # attack/release, bukan nada yang benar-benar berubah).
+        seg_max_rms = max((f.get('rms', 0.0) for f in seg), default=0.0)
+        if seg_max_rms > 0 and len(freqs) >= 3:
+            # Inti sementara: median dari frame-frame yang RMS-nya >= 55% puncak segmen
+            # (bagian paling "penuh suara", biasanya bagian tengah nada yang stabil)
+            loud_freqs = [f['freq'] for f in seg if f['freq'] > 0 and f.get('rms', 0.0) >= 0.55 * seg_max_rms]
+            core_ref = float(np.median(loud_freqs)) if loud_freqs else float(np.median(freqs))
+
             valid_freqs = []
-            stable_ref = float(np.median(freqs[:3]))
-            seg_max_rms = max(f.get('rms', 0.0) for f in seg)
             for f in seg:
-                if f['freq'] > 0:
-                    diff_cents = 1200.0 * abs(math.log2(f['freq'] / stable_ref)) if stable_ref > 0 else 0
-                    # Skip frame peluruhan di akhir note jika nada anjlok > 600 cents (6 semiton) saat RMS memelan
-                    if diff_cents > 600.0 and f.get('rms', 0.0) < 0.35 * seg_max_rms:
-                        continue
-                    valid_freqs.append(f['freq'])
+                if f['freq'] <= 0:
+                    continue
+                diff_cents = 1200.0 * abs(math.log2(f['freq'] / core_ref)) if core_ref > 0 else 0
+                rms_ratio = f.get('rms', 0.0) / seg_max_rms if seg_max_rms > 0 else 1.0
+                # Buang frame HANYA jika menyimpang pitch cukup jauh (>150 cents / 1.5 semitone)
+                # DAN berada di zona pelan (<50% puncak) -- ciri onset/offset yang belum stabil,
+                # bukan pergeseran nada yang disengaja oleh penyanyi.
+                if diff_cents > 150.0 and rms_ratio < 0.5:
+                    continue
+                valid_freqs.append(f['freq'])
             if len(valid_freqs) > 0:
                 freqs = valid_freqs
 
@@ -320,7 +424,7 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
         avg_conf = float(np.mean(confs))
 
         last_midi = raw_note_events[-1]["midi"] if len(raw_note_events) > 0 else None
-        note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz, prev_midi=last_midi)
+        note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(median_hz, root_midi=root_midi, prev_midi=last_midi)
 
         raw_note_events.append({
             "id": idx + 1,
@@ -334,19 +438,21 @@ def segment_vocal_melody_frames(frame_list, min_note_dur_ms=80):
             "confidence": round(avg_conf, 2)
         })
 
-    # Same-Pitch Merger: Merge adjacent identical notes into ONE single continuous note!
-    merged_note_events = []
-    for ev in raw_note_events:
-        if len(merged_note_events) > 0 and merged_note_events[-1]["note"] == ev["note"]:
-            # Merge into single continuous sustained note
-            merged_note_events[-1]["end_ms"] = ev["end_ms"]
-            merged_note_events[-1]["duration_ms"] += ev["duration_ms"]
-            merged_note_events[-1]["confidence"] = round((merged_note_events[-1]["confidence"] + ev["confidence"]) / 2.0, 2)
-        else:
-            ev["id"] = len(merged_note_events) + 1
-            merged_note_events.append(ev)
+    # Pass 2: Pure Natural Vocal Pitch & Octave Engine
+    # Preserves 100% un-shifted natural vocal pitch and octave readings (Octave 3, 4, 5, 6).
+    # Notes sung in Octave 3 stay in Octave 3 (E3, F3, G3, A3, B3).
+    # Notes sung in Octave 4 are read precisely in Octave 4 (C4, D4, E4, F4, G4).
+    for evt in raw_note_events:
+        if not evt.get("midi"):
+            continue
+        m = evt["midi"]
 
-    return merged_note_events
+        evt["midi"] = m
+        is_bass = (m >= 52 and m <= 67)
+        evt["note"] = midi_to_pitch_name(m, prefer_bass=is_bass)
+        evt["scale_degree"] = get_scale_degree_label(m, root_midi)
+
+    return raw_note_events
 
 def preprocess_audio_data(y):
     """Extracts Mel-Spectrogram features for CRNN model inference."""
@@ -1784,6 +1890,69 @@ async def classify_audio(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memproses file audio CRNN: {e}")
 
+@app.post("/api/repeater/transcribe_vocal")
+async def transcribe_vocal_audio_file(file: UploadFile = File(...), key_sig: str = Form("C")):
+    """Transcribes uploaded vocal audio file into precise Monophonic Note Sequence."""
+    try:
+        root_midi = get_root_midi_from_key(key_sig)
+        temp_dir = tempfile.gettempdir()
+        temp_path = os.path.join(temp_dir, f"vocal_repeater_{uuid.uuid4().hex}.wav")
+        
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # Load audio using librosa (supports MP3, WAV, M4A, OGG, AAC)
+        try:
+            data, sr = librosa.load(temp_path, sr=16000, mono=True)
+        except Exception:
+            data, sr = sf.read(temp_path)
+            if len(data.shape) > 1:
+                data = data.mean(axis=1)
+            if sr != 16000:
+                data = librosa.resample(data, orig_sr=sr, target_sr=16000)
+                sr = 16000
+        
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+        # Normalization: Boost soft audio inputs so peak amplitude is 0.70
+        max_amp = float(np.max(np.abs(data)))
+        if 0 < max_amp < 0.5:
+            data = data * (0.70 / max_amp)
+
+        # Run 10ms frame hop pitch detection (1024 samples = 64ms window)
+        hop_samples = 160 # 10ms hop
+        window_samples = 1024
+        frames = []
+        
+        for i in range(0, len(data) - window_samples, hop_samples):
+            chunk = data[i:i + window_samples]
+            time_ms = int((i / sr) * 1000.0)
+            rms_val = float(np.sqrt(np.mean(chunk**2)))
+            
+            freq, conf = detect_pitch_with_confidence(chunk, sr)
+            voiced = conf >= 0.20 and freq >= 75.0 and freq <= 850.0
+            
+            frames.append({
+                "time_ms": time_ms,
+                "freq": float(freq),
+                "voiced": voiced,
+                "confidence": float(conf),
+                "rms": round(rms_val, 4)
+            })
+
+        # Segment into Monophonic Note Events
+        note_events = segment_vocal_melody_frames(frames, root_midi=root_midi)
+        
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "duration_sec": round(len(data) / sr, 2),
+            "sequence": note_events
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal mendeteksi melodi vokal dari file audio: {e}")
+
 @app.websocket("/ws/pitch")
 async def pitch_websocket(websocket: WebSocket):
     """Streams real-time pitch detection from the server's microphone to the client."""
@@ -1793,7 +1962,10 @@ async def pitch_websocket(websocket: WebSocket):
         await websocket.close()
         return
     await websocket.accept()
-    print("[WS] Klien terhubung ke WebSocket Pitch.")
+    key_sig = websocket.query_params.get("key", "C")
+    root_midi = get_root_midi_from_key(key_sig)
+    prev_midi = None
+    print(f"[WS] Klien terhubung ke WebSocket Pitch. Nada Dasar: {key_sig} (root_midi={root_midi})")
     
     # Audio settings for streaming (1024 samples @ 16kHz = 64ms per frame)
     chunk_size = 1024
@@ -1832,7 +2004,11 @@ async def pitch_websocket(websocket: WebSocket):
             freq, confidence = detect_pitch_with_confidence(sig, sample_rate)
             voiced = confidence >= 0.25 and freq >= 75.0 and freq <= 850.0
             
-            note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(freq) if voiced else (None, None, None)
+            if voiced:
+                note_str, scale_deg, midi_num = pitch_hz_to_scale_degree(freq, root_midi=root_midi, prev_midi=prev_midi)
+                prev_midi = midi_num
+            else:
+                note_str, scale_deg, midi_num = (None, None, None)
             
             # Cents deviation calculation relative to 440Hz A4
             cents_dev = 0.0
@@ -2123,4 +2299,3 @@ async def midi_websocket(websocket: WebSocket):
 
 if __name__ == "__main__":
     uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)
-

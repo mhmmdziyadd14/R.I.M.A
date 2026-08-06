@@ -191,8 +191,30 @@ let recordedSequence = [];
 let currentRecNote = null;
 let currentRecStart = 0;
 let currentRecDuration = 0;
+let segNoteFrames = []; // {note, rms} semua frame dalam segmen nada yang sedang berjalan (persist antar start/stop)
 let keyIntervals = new Map();
 let chordIntervals = new Map();
+
+// Robust Segment Label Picker — mencegah "nada akhir melengking naik/turun":
+// alih-alih memakai activeNote APAPUN yang terjadi tepat saat segmen ditutup
+// (bisa saja itu pitch-bend/napas-habis di ujung nada), pilih nada mayoritas
+// HANYA dari frame-frame yang RMS-nya kuat (>= 50% puncak segmen) — yaitu bagian
+// paling stabil & percaya diri dari nada tsb, mengabaikan wobble di attack/release.
+function finalizeSegmentNote(frames) {
+  if (!frames || frames.length === 0) return null;
+  const maxRms = Math.max(...frames.map(f => f.rms), 0.0001);
+  const strong = frames.filter(f => f.rms >= 0.5 * maxRms && f.note !== null);
+  const pool = strong.length > 0 ? strong : frames.filter(f => f.note !== null);
+  if (pool.length === 0) return null;
+  const counts = {};
+  for (const f of pool) counts[f.note] = (counts[f.note] || 0) + 1;
+  let best = pool[pool.length - 1].note;
+  let bestCount = 0;
+  for (const note in counts) {
+    if (counts[note] > bestCount) { bestCount = counts[note]; best = note; }
+  }
+  return best;
+}
 
 function setRepeaterMode(mode) {
   repeaterProcessingMode = mode;
@@ -1414,7 +1436,7 @@ function stopSongFile() {
 // 9. Repeater Section (Pitch Tuning via Websocket)
 async function toggleRepeaterListening() {
   const micBtn = document.getElementById('mic-repeater-btn');
-  const sonar = document.querySelector('.sonar-wave.wave-green');
+  const sonar = document.getElementById('repeater-sonar');
   const statusText = document.getElementById('repeater-status');
 
   if (repeaterState === 'playing') {
@@ -1424,25 +1446,77 @@ async function toggleRepeaterListening() {
   }
 
   if (repeaterState === 'recording') {
-    // Stop recording and start playback
     repeaterState = 'idle';
-    if (repeaterSocket) {
-      repeaterSocket.close();
-      repeaterSocket = null;
-    }
+    if (micBtn) micBtn.classList.remove('active');
+    if (sonar) sonar.classList.remove('active');
+    if (statusText) statusText.textContent = 'Menjalankan analisis presisi vokal...';
     
-    micBtn.classList.remove('active');
-    sonar.classList.remove('active');
-    statusText.textContent = 'Memproses & memainkan urutan nada...';
-    
-    // Finalize the active note cleanly if exists (ignore short trailing release drops)
     if (currentRecDuration >= 100 && currentRecNote !== null) {
-      recordedSequence.push({ note: currentRecNote, duration: Math.round(currentRecDuration) });
+      recordedSequence.push({ note: typeof finalizeSegmentNote === 'function' ? finalizeSegmentNote(segNoteFrames) : currentRecNote, duration: Math.round(currentRecDuration) });
     }
     currentRecNote = null;
     currentRecDuration = 0;
+    segNoteFrames = [];
+
+    const keySig = getBackendKeySig();
     
-    playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+    const executeBackendPreprocess = async () => {
+      try {
+        const response = await fetch(`${settings.hostApi}/api/repeater/preprocess_latest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key_sig: keySig })
+        });
+        const result = await response.json();
+        if (result.status === 'success' && result.sequence && result.sequence.length > 0) {
+          recordedSequence = result.sequence;
+          if (statusText) statusText.textContent = `Analisis Presisi Selesai: terdeteksi ${recordedSequence.length} nada!`;
+          playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+        } else {
+          playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+        }
+      } catch (e) {
+        console.error("Gagal menjalankan preprocessing:", e);
+        playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+      }
+    };
+
+    if (repeaterSocket && repeaterSocket.readyState === WebSocket.OPEN) {
+      let handshaked = false;
+      repeaterSocket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.status === 'saved' && !handshaked) {
+            handshaked = true;
+            if (repeaterSocket) {
+              repeaterSocket.close();
+              repeaterSocket = null;
+            }
+            executeBackendPreprocess();
+          }
+        } catch(e) {}
+      };
+      // Send explicit stop action to backend
+      repeaterSocket.send(JSON.stringify({ action: "stop" }));
+      
+      // Safety fallback
+      setTimeout(() => {
+        if (!handshaked) {
+          handshaked = true;
+          if (repeaterSocket) {
+            repeaterSocket.close();
+            repeaterSocket = null;
+          }
+          executeBackendPreprocess();
+        }
+      }, 800);
+    } else {
+      if (repeaterSocket) {
+        repeaterSocket.close();
+        repeaterSocket = null;
+      }
+      executeBackendPreprocess();
+    }
     return;
   }
 
@@ -1452,12 +1526,13 @@ async function toggleRepeaterListening() {
   currentRecNote = null;
   currentRecDuration = 0;
   let noteHistory = []; // Buffer 5 frame untuk menghaluskan nada
-  let segRmsHistory = [];   // Rolling RMS untuk decay valley onset
-  let lastForcedSplitTime = 0;
+  let segRmsHistory = []; // Riwayat RMS dalam segmen nada aktif saat ini (untuk deteksi onset/ketukan baru)
+  let lastForcedSplitTime = performance.now(); // Debounce agar tidak split berkali-kali di satu decay valley
+  segNoteFrames = []; // reset buffer global untuk sesi rekaman baru
   
-  micBtn.classList.add('active');
-  sonar.classList.add('active');
-  statusText.textContent = 'Merekam nada vokal... Tekan lagi untuk putar ulang!';
+  if (micBtn) micBtn.classList.add('active');
+  if (sonar) sonar.classList.add('active');
+  if (statusText) statusText.textContent = 'Merekam nada vokal... Tekan lagi untuk putar ulang!';
 
   // Clear sequence UI
   const sequenceContainer = document.getElementById('repeater-note-sequence');
@@ -1469,7 +1544,8 @@ async function toggleRepeaterListening() {
   let lastFrameTime = performance.now();
 
   try {
-    repeaterSocket = new WebSocket(`${wsHost}/ws/pitch`);
+    const keySigParam = encodeURIComponent(getBackendKeySig());
+    repeaterSocket = new WebSocket(`${wsHost}/ws/pitch?key=${keySigParam}`);
     
     let freqHistoryBuffer = [];
 
@@ -1491,10 +1567,16 @@ async function toggleRepeaterListening() {
       if (noteHistory.length > 4) noteHistory.shift();
       
       // Hysteresis Pitch Stabilizer: Require 3-frame majority agreement to switch note
-      // Fast-accept nada pertama (currentRecNote===null) tanpa nunggu 3 frame agar nada awal tidak terbuang
+      // (eliminates jittery pitch wobbles) — but ONLY when switching between two
+      // established notes. When starting FROM SILENCE (currentRecNote === null),
+      // there's no "previous note" to protect against, so waiting for a 3-frame
+      // majority just eats the first ~150-200ms of the very first syllable/beat.
+      // Fast-lock instead: accept the raw note as soon as it's confidently voiced.
       let activeNote = currentRecNote;
-      if (currentRecNote === null && rawNote !== null) {
-        activeNote = rawNote; // << nada awal langsung diterima
+      if (currentRecNote === null) {
+        if (rawNote !== null && confidence >= 0.20) {
+          activeNote = rawNote;
+        }
       } else if (noteHistory.length >= 3) {
         const counts = {};
         for (let n of noteHistory) {
@@ -1513,40 +1595,44 @@ async function toggleRepeaterListening() {
           activeNote = majNote;
         }
       }
-
-      // Decay Valley Onset: deteksi perpindahan ketukan lirik saat volume memelan
+      
+      // Envelope-based Onset Detector for the live mic path (mirrors the backend's
+      // decay-valley logic in segment_vocal_melody_frames). Without this, the live
+      // path only starts a new note when the PITCH changes — so the same note sung
+      // twice/thrice as separate beats ("nada sama, ketukan beda") would incorrectly
+      // collapse into one long held note. Here we also force a new beat boundary when
+      // the loudness dips into a valley then the singer re-attacks, even if the pitch
+      // (activeNote) stayed exactly the same.
       const rms = data.rms || 0.0;
       segRmsHistory.push(rms);
-      if (segRmsHistory.length > 40) segRmsHistory.shift();
+      if (segRmsHistory.length > 40) segRmsHistory.shift(); // cap buffer growth
+
       const maxSegRms = Math.max(...segRmsHistory, 0.0001);
-      const now2 = now;
       const decayValley = activeNote === currentRecNote &&
         activeNote !== null &&
         rms <= 0.35 * maxSegRms &&
         segRmsHistory.length >= 3 &&
         currentRecDuration >= 120 &&
-        (now2 - lastForcedSplitTime) >= 150;
+        (now - lastForcedSplitTime) >= 150; // debounce: avoid multiple splits per valley
 
-      // Accumulate exact measured duration per note/silence segment
+      // Accumulate exact measured duration per note/silence segment using high-res performance timestamps
       if (activeNote === currentRecNote && !decayValley) {
         currentRecDuration += measuredDurMs;
+        segNoteFrames.push({ note: activeNote, rms: rms });
       } else {
-        // Hanya push jika confidence cukup (mencegah nada akhir fals saat hembusan napas)
-        if (currentRecDuration > 0 && currentRecNote !== null && confidence >= 0.15) {
+        if (currentRecDuration > 0) {
           recordedSequence.push({ 
-            note: currentRecNote, 
+            note: finalizeSegmentNote(segNoteFrames), 
             duration: Math.round(currentRecDuration),
             centsDev: centsDev,
             confidence: confidence 
           });
-        } else if (currentRecDuration > 0 && currentRecNote === null) {
-          // silence segment — boleh push tanpa note
-          recordedSequence.push({ note: null, duration: Math.round(currentRecDuration) });
         }
         currentRecNote = activeNote;
         currentRecDuration = measuredDurMs;
         segRmsHistory = [rms];
-        if (decayValley) lastForcedSplitTime = now2;
+        segNoteFrames = [{ note: activeNote, rms: rms }];
+        if (decayValley) lastForcedSplitTime = now;
       }
 
       // HUD & Debug Overlay Updates
@@ -1584,72 +1670,97 @@ async function toggleRepeaterListening() {
 function cleanRepeaterSequence(rawSequence) {
   if (!rawSequence || rawSequence.length === 0) return [];
 
-  // Step 1: Merge consecutive identical or near-identical notes (<= 1 semitone difference)
+  // Step 1: Merge identical adjacent notes OR 1-frame micro-jitter (< 65ms).
   let merged = [];
   for (let item of rawSequence) {
     let note = item.note || null;
+    let dur = item.duration || item.duration_ms || 200;
+
     if (merged.length > 0) {
       const last = merged[merged.length - 1];
+
+      // Merge identical notes only if one of the fragments is micro-jitter < 90ms
       if (last.note === note) {
-        last.duration += item.duration;
-        continue;
+        if (dur < 90 || last.duration < 90) {
+          last.duration += dur;
+          continue;
+        }
       }
-      // If adjacent notes are identical or micro-variations of same pitch, merge into one continuous note!
+
+      // Micro-transition wobble absorber: absorb 1-frame noise glitches (< 65ms)
       if (last.note !== null && note !== null) {
         const p1 = parsePitchNote(last.note);
         const p2 = parsePitchNote(note);
-        if (p1 && p2 && Math.abs(p1.midi - p2.midi) <= 1 && item.duration < 150) {
-          last.duration += item.duration;
+        if (p1 && p2 && dur < 65) {
+          last.duration += dur;
           continue;
         }
       }
     }
-    merged.push({ note: note, duration: item.duration });
+    merged.push({ note: note, duration: dur });
   }
 
-  // Step 2: Micro-Gap Filler (Fill tiny silence gaps < 200ms between notes to create smooth Legato)
+  // Step 2: Micro-Gap Legato Filler (Connect tiny silence gaps < 180ms between notes)
   let legato = [];
   for (let i = 0; i < merged.length; i++) {
     const item = merged[i];
     const prev = i > 0 ? merged[i - 1] : null;
     const next = i < merged.length - 1 ? merged[i + 1] : null;
 
-    if (item.note === null && item.duration < 200 && prev && next && prev.note !== null && next.note !== null) {
-      // Micro-silence gap -> Extend previous note over the gap so notes connect smoothly in Legato!
+    if (item.note === null && item.duration < 180 && prev && next && prev.note !== null && next.note !== null) {
       prev.duration += item.duration;
       continue;
     }
     legato.push(item);
   }
 
-  // Step 3: Re-merge consecutive identical notes
-  let reMerged = [];
-  for (let item of legato) {
-    if (reMerged.length > 0 && reMerged[reMerged.length - 1].note === item.note) {
-      reMerged[reMerged.length - 1].duration += item.duration;
-    } else {
-      reMerged.push({ note: item.note, duration: item.duration });
-    }
-  }
-
-  // Step 4: Preserve exact recorded note duration matching singer's actual timing 1-to-1
+  // Step 3: Standalone Transient Noise Glitch Filter (< 70ms)
   let filtered = [];
-  for (let i = 0; i < reMerged.length; i++) {
-    const item = reMerged[i];
-    const prev = i > 0 ? reMerged[i - 1] : null;
-    const next = i < reMerged.length - 1 ? reMerged[i + 1] : null;
+  for (let i = 0; i < legato.length; i++) {
+    const item = legato[i];
+    const prev = i > 0 ? legato[i - 1] : null;
+    const next = i < legato.length - 1 ? legato[i + 1] : null;
 
     if (item.note === null) {
       filtered.push(item);
       continue;
     }
 
-    // Preserve exact duration down to 100ms (so short 0.1s notes stay short and long 1.5s notes stay long!)
-    if (item.duration < 90) {
-      if (prev && prev.note !== null) prev.duration += item.duration;
-      else if (next && next.note !== null) next.duration += item.duration;
+    // Filter out short transient noise clicks/glitches under 70ms
+    if (item.duration < 70) {
+      if (prev && prev.note !== null) {
+        prev.duration += item.duration;
+      } else if (next && next.note !== null) {
+        next.duration += item.duration;
+      }
     } else {
       filtered.push(item);
+    }
+  }
+
+  // Step 4: Octave-Spike Stabilizer (Fix isolated 1-octave jumps: C4 -> C5 -> C4)
+  for (let i = 1; i < filtered.length - 1; i++) {
+    const prev = filtered[i - 1];
+    const curr = filtered[i];
+    const next = filtered[i + 1];
+
+    if (prev.note && curr.note && next.note) {
+      const pPrev = parsePitchNote(prev.note);
+      const pCurr = parsePitchNote(curr.note);
+      const pNext = parsePitchNote(next.note);
+
+      if (pPrev && pCurr && pNext) {
+        const diffPrev = Math.abs(pCurr.midi - pPrev.midi);
+        const diffNext = Math.abs(pCurr.midi - pNext.midi);
+
+        // If current note is an isolated 1-octave or 2-octave spike between prev and next
+        if ((diffPrev === 12 || diffPrev === 24) && (diffNext === 12 || diffNext === 24)) {
+          let adjustedMidi = pCurr.midi;
+          if (pCurr.midi > pPrev.midi) adjustedMidi -= 12;
+          else adjustedMidi += 12;
+          curr.note = midiToPitchNameString(adjustedMidi, pCurr.isBass);
+        }
+      }
     }
   }
 
@@ -1675,11 +1786,75 @@ const HARMONIC_SCALES = {
   "g_major":     [7, 9, 11, 0, 2, 4, 6], // G, A, B, C, D, E, F#
   "f_major":     [5, 7, 9, 10, 0, 2, 4], // F, G, A, A#, C, D, E
   "d_major":     [2, 4, 6, 7, 9, 11, 1], // D, E, F#, G, A, B, C#
+  "bb_major":    [10, 0, 2, 3, 5, 7, 9], // Bb, C, D, Eb, F, G, A
   "a_minor":     [9, 11, 0, 2, 4, 5, 7], // A, B, C, D, E, F, G
   "e_minor":     [4, 6, 7, 9, 11, 0, 2], // E, F#, G, A, B, C, D
   "pelog_sunda": [0, 1, 5, 7, 8],        // C, C#, F, G, G#
   "slendro":     [0, 2, 5, 7, 9]         // C, D, F, G, A
 };
+
+// Pitch-class of "Do" (tonic) for each scale, used for correct Do-Re-Mi labeling.
+// Relative minors share the same Do as their major counterpart (Am -> Do=C, Em -> Do=G),
+// consistent with Indonesian numbered-notation convention and with the backend's KEY_ROOTS_MIDI.
+const SCALE_ROOT_PITCH_CLASS = {
+  "c_major": 0, "a_minor": 0,
+  "g_major": 7, "e_minor": 7,
+  "f_major": 5,
+  "d_major": 2,
+  "bb_major": 10,
+  "pelog_sunda": 0,
+  "slendro": 0
+};
+
+// Maps the dropdown's scale key to the backend's key_sig string (see KEY_ROOTS_MIDI in api.py)
+const SCALE_KEY_TO_BACKEND_KEYSIG = {
+  "c_major": "C", "g_major": "G", "f_major": "F",
+  "d_major": "D", "bb_major": "Bb", "a_minor": "Am"
+};
+
+// Currently selected key from the "Tangga Nada (Key)" dropdown. 'auto' = auto-detect.
+let selectedRepeaterKey = 'c_major';
+
+// Resolve which scale to snap/label against: explicit user selection wins over auto-detect.
+function resolveTargetScaleKey(sequence) {
+  if (selectedRepeaterKey && selectedRepeaterKey !== 'auto' && HARMONIC_SCALES[selectedRepeaterKey]) {
+    return selectedRepeaterKey;
+  }
+  // Fallback: auto-detect dominant scale from the recorded sequence itself.
+  let pcWeights = new Array(12).fill(0);
+  for (let item of sequence) {
+    if (!item.note) continue;
+    const parsed = parsePitchNote(item.note);
+    if (parsed) pcWeights[parsed.pitchClass] += item.duration;
+  }
+  let bestScaleKey = "c_major";
+  let maxScore = -1;
+  for (let scaleKey in HARMONIC_SCALES) {
+    let score = 0;
+    for (let pc of HARMONIC_SCALES[scaleKey]) score += pcWeights[pc];
+    if (score > maxScore) {
+      maxScore = score;
+      bestScaleKey = scaleKey;
+    }
+  }
+  return bestScaleKey;
+}
+
+// Returns the backend key_sig string ("C", "G", "Bb", "Am", ...) for the currently
+// resolved key, so the server-side solfege labeling matches what's shown/played client-side.
+function getBackendKeySig(sequence) {
+  const scaleKey = resolveTargetScaleKey(sequence || []);
+  return SCALE_KEY_TO_BACKEND_KEYSIG[scaleKey] || "C";
+}
+
+// Computes the Do-Re-Mi solfege label for a pitch-class RELATIVE to the active key's root,
+// instead of assuming Do=C always.
+function pitchClassToScaleDegreeLabel(pitchClass, rootPitchClass) {
+  if (pitchClass === undefined || pitchClass === null) return '';
+  const doremiLabels = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)'];
+  const semitoneFromRoot = ((pitchClass - rootPitchClass) % 12 + 12) % 12;
+  return doremiLabels[semitoneFromRoot];
+}
 
 function parsePitchNote(noteStr) {
   if (!noteStr) return null;
@@ -1742,11 +1917,16 @@ function snapNoteToHarmonicScale(noteStr, scaleClasses) {
     return noteStr; // Already in scale -> keep exact note!
   }
 
-  // Find nearest note in scale (closest MIDI distance)
+  // Cari nada terdekat di tangga nada. Jangkauan diperlebar ke ±6 semitone (bukan ±2)
+  // supaya SELALU ketemu kandidat walau: (a) penyanyi meleset jauh dari nada yang
+  // dimaksud ("fals"/kurang presisi pitch), atau (b) tangga nada pentatonis (Pelog/
+  // Slendro) yang celah antar nadanya bisa sampai 4 semitone -- dengan ±2 saja,
+  // nada yang meleset di luar celah itu tidak akan ter-snap sama sekali dan lolos
+  // sebagai nada asli yang salah.
   let bestMidi = parsed.midi;
   let minDiff = 999;
 
-  for (let delta = -2; delta <= 2; delta++) {
+  for (let delta = -6; delta <= 6; delta++) {
     if (delta === 0) continue;
     const candidateMidi = parsed.midi + delta;
     const candidatePc = (candidateMidi % 12 + 12) % 12;
@@ -1759,40 +1939,42 @@ function snapNoteToHarmonicScale(noteStr, scaleClasses) {
     }
   }
 
-  // Direct Monotonic Clamp to Physical Angklung MIDI Range [52 = E3 to 96 = C7]
-  bestMidi = Math.max(52, Math.min(96, bestMidi));
+  // Fold into the physical Angklung MIDI range BY OCTAVE (preserve pitch-class),
+  // instead of hard-clamping which corrupts the note identity for anything
+  // outside E3-C7 (same bug class fixed on the backend in pitch_hz_to_scale_degree).
+  while (bestMidi < 52) bestMidi += 12;
+  while (bestMidi > 96) bestMidi -= 12;
   return midiToPitchNameString(bestMidi, parsed.isBass);
 }
 
 function autoTuneHarmonicSequence(sequence) {
   if (!sequence || sequence.length === 0) return [];
 
-  const targetScale = detectBestHarmonicScale(sequence);
+  const targetScaleKey = resolveTargetScaleKey(sequence);
+  const targetScale = HARMONIC_SCALES[targetScaleKey];
+  const rootPc = SCALE_ROOT_PITCH_CLASS[targetScaleKey] ?? 0;
 
   let tunedSequence = sequence.map(item => {
     if (!item.note) return { note: null, duration: item.duration };
     const tunedNote = snapNoteToHarmonicScale(item.note, targetScale);
-    return { note: tunedNote, duration: item.duration };
+    const scaleDegree = pitchClassToScaleDegreeLabel(parsePitchNote(tunedNote)?.pitchClass, rootPc);
+    return { note: tunedNote, duration: item.duration, scaleDegree };
   });
 
-  let merged = [];
-  for (let item of tunedSequence) {
-    if (merged.length > 0 && merged[merged.length - 1].note === item.note) {
-      merged[merged.length - 1].duration += item.duration;
-    } else {
-      merged.push({ note: item.note, duration: item.duration });
-    }
-  }
-
-  return merged;
+  // Kept separate on purpose — see note in applyTieredAutotune above about preserving
+  // "nada sama, ketukan beda".
+  return tunedSequence;
 }
 
 // 100% Diatonic Scale Auto-Tune & Harmonics Quantizer (Eliminates all fals chromatic accidentals)
 function applyTieredAutotune(sequence, mode = 'soft') {
   if (!sequence || sequence.length === 0) return sequence;
 
-  // Detect dominant harmonic key scale of the recorded song melody
-  const targetScale = detectBestHarmonicScale(sequence);
+  // Resolve dominant harmonic key scale: respects explicit user Key selection first,
+  // falls back to auto-detection from the recorded melody only when Key = "Auto-Detect".
+  const targetScaleKey = resolveTargetScaleKey(sequence);
+  const targetScale = HARMONIC_SCALES[targetScaleKey];
+  const rootPc = SCALE_ROOT_PITCH_CLASS[targetScaleKey] ?? 0;
 
   let tunedSequence = sequence.map(item => {
     if (!item.note) return item;
@@ -1801,25 +1983,23 @@ function applyTieredAutotune(sequence, mode = 'soft') {
 
     // 100% Quantize note to clean harmonic scale to eliminate all off-key ("fals") accidentals
     const snapped = snapNoteToHarmonicScale(item.note, targetScale);
+    const snappedParsed = parsePitchNote(snapped);
     return { 
       note: snapped, 
       duration: item.duration, 
       centsDev: item.centsDev,
-      scaleDegree: item.scaleDegree 
+      // Recompute the solfege label relative to the ACTIVE key's root, not a fixed
+      // Do=C table, so the badge matches whichever Key is actually selected/detected.
+      scaleDegree: pitchClassToScaleDegreeLabel(snappedParsed?.pitchClass, rootPc)
     };
   });
 
-  // Re-merge adjacent notes that snapped to the same pitch
-  let merged = [];
-  for (let item of tunedSequence) {
-    if (merged.length > 0 && merged[merged.length - 1].note === item.note) {
-      merged[merged.length - 1].duration += item.duration;
-    } else {
-      merged.push(item);
-    }
-  }
-
-  return merged;
+  // NOTE: We intentionally do NOT re-merge adjacent notes that snapped to the same
+  // pitch anymore. Two adjacent segments reaching here already represent distinct
+  // beats/syllables from the onset segmenter (backend) or the live decay-valley
+  // detector (mic), even when they happen to be the same note ("nada sama, ketukan
+  // beda") — merging them here would erase exactly that rhythmic distinction.
+  return tunedSequence;
 }
 
 function applySmartAutoTune(sequence) {
@@ -1882,8 +2062,8 @@ function convertSequenceTo123V1(sequence) {
   return `V1: | ${v1Bars.join(" | ")} |`;
 }
 
-// Render transcribed vocal melody note chips with Scale Degree (Do-Re-Mi) badges
-function renderRepeaterNoteChips(sequence) {
+// Render transcribed vocal melody as clean, minimal, professional Note Cards (No emojis, soft natural themes)
+function renderRepeaterNoteChips(sequence, activeIndex = -1) {
   const sequenceContainer = document.getElementById('repeater-note-sequence');
   if (!sequenceContainer) return;
   sequenceContainer.innerHTML = '';
@@ -1891,42 +2071,158 @@ function renderRepeaterNoteChips(sequence) {
   const chipsWrapper = document.createElement('div');
   chipsWrapper.style.display = 'flex';
   chipsWrapper.style.flexWrap = 'wrap';
-  chipsWrapper.style.gap = '8px';
+  chipsWrapper.style.gap = '10px';
   chipsWrapper.style.width = '100%';
+  chipsWrapper.style.justifyContent = 'center';
+  chipsWrapper.style.padding = '6px 2px';
 
-  sequence.forEach((item) => {
+  // Clean, natural pastel color themes for scale degrees (No heavy gradients, no emojis)
+  const DEGREE_THEMES = [
+    { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' }, // 1 Do (Soft Emerald)
+    { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' }, // 2 Re (Soft Blue)
+    { bg: '#F5F3FF', text: '#6D28D9', border: '#DDD6FE' }, // 3 Mi (Soft Purple)
+    { bg: '#FFF7ED', text: '#C2410C', border: '#FFEDD5' }, // 4 Fa (Soft Orange)
+    { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' }, // 5 Sol (Soft Amber)
+    { bg: '#FDF2F8', text: '#BE185D', border: '#FBCFE8' }, // 6 La (Soft Pink)
+    { bg: '#ECFEFF', text: '#0E7490', border: '#CFFAFE' }  // 7 Si (Soft Cyan)
+  ];
+
+  sequence.forEach((item, idx) => {
     if (!item.note) return;
-    
-    // Compute scale degree if missing
+
+    const parsed = parsePitchNote(item.note);
+    const pc = parsed ? parsed.pitchClass : 0;
+    const theme = DEGREE_THEMES[pc % 7];
+
     let scaleBadge = item.scaleDegree || '';
-    if (!scaleBadge) {
-      const parsed = parsePitchNote(item.note);
-      if (parsed) {
-        const doremiMap = ['1 (Do)', '1/ (Do#)', '2 (Re)', '2/ (Re#)', '3 (Mi)', '4 (Fa)', '4/ (Fa#)', '5 (Sol)', '5/ (Sol#)', '6 (La)', '6/ (La#)', '7 (Si)'];
-        scaleBadge = doremiMap[parsed.pitchClass] || '';
-      }
+    if (!scaleBadge && parsed) {
+      const rootPc = SCALE_ROOT_PITCH_CLASS[selectedRepeaterKey] ?? 0;
+      scaleBadge = pitchClassToScaleDegreeLabel(parsed.pitchClass, rootPc);
     }
 
-    const chip = document.createElement('div');
-    chip.style.background = '#E8F5E9';
-    chip.style.border = '1px solid #81C784';
-    chip.style.borderRadius = '20px';
-    chip.style.padding = '8px 16px';
-    chip.style.fontWeight = '800';
-    chip.style.color = '#1B5E20';
-    chip.style.boxShadow = '0 2px 8px rgba(76, 175, 80, 0.15)';
-    chip.style.display = 'flex';
-    chip.style.alignItems = 'center';
-    chip.style.gap = '6px';
-    chip.innerHTML = `<span>🎵 ${item.note}</span> <span style="font-size: 11px; background: #C8E6C9; padding: 2px 8px; border-radius: 10px; color: #2E7D32;">${scaleBadge}</span> <span style="font-size: 11px; opacity: 0.85; font-weight: 600;">(${(item.duration / 1000).toFixed(1)}s)</span>`;
-    chipsWrapper.appendChild(chip);
+    const card = document.createElement('div');
+    card.className = 'repeater-note-card' + (idx === activeIndex ? ' active-playing' : '');
+    card.style.background = idx === activeIndex ? '#ECFDF5' : '#FFFFFF';
+    card.style.border = idx === activeIndex ? '2px solid #10B981' : '1px solid #E5E7EB';
+    card.style.borderRadius = '14px';
+    card.style.padding = '10px 14px';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.alignItems = 'center';
+    card.style.gap = '5px';
+    card.style.minWidth = '88px';
+    card.style.boxShadow = idx === activeIndex ? '0 6px 18px rgba(16, 185, 129, 0.25)' : '0 2px 8px rgba(0,0,0,0.04)';
+    card.style.cursor = 'pointer';
+    card.style.userSelect = 'none';
+    card.style.transition = 'all 0.2s ease';
+    card.title = 'Klik untuk memperdengarkan nada ini';
+
+    if (idx === activeIndex) {
+      card.style.transform = 'translateY(-3px)';
+    }
+
+    // Top Scale Degree Badge (Clean pastel pill, zero emojis)
+    const badge = document.createElement('div');
+    badge.style.background = theme.bg;
+    badge.style.color = theme.text;
+    badge.style.border = `1px solid ${theme.border}`;
+    badge.style.fontWeight = '700';
+    badge.style.fontSize = '12px';
+    badge.style.padding = '2px 10px';
+    badge.style.borderRadius = '10px';
+    badge.textContent = scaleBadge || item.note;
+
+    // Middle Pitch Name
+    const pitchText = document.createElement('div');
+    pitchText.style.fontWeight = '800';
+    pitchText.style.fontSize = '18px';
+    pitchText.style.color = '#111827';
+    pitchText.textContent = item.note;
+
+    // Bottom Duration Pill (Clean text, no emoji)
+    const durPill = document.createElement('div');
+    durPill.style.fontSize = '11px';
+    durPill.style.fontWeight = '600';
+    durPill.style.color = '#6B7280';
+    durPill.style.background = '#F9FAFB';
+    durPill.style.padding = '2px 8px';
+    durPill.style.borderRadius = '6px';
+    durPill.textContent = `${(item.duration / 1000).toFixed(1)}s`;
+
+    card.appendChild(badge);
+    card.appendChild(pitchText);
+    card.appendChild(durPill);
+
+    card.addEventListener('mouseenter', () => {
+      if (idx !== activeIndex) {
+        card.style.transform = 'translateY(-3px)';
+        card.style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)';
+        card.style.borderColor = '#D1D5DB';
+      }
+    });
+
+    card.addEventListener('mouseleave', () => {
+      if (idx !== activeIndex) {
+        card.style.transform = 'translateY(0)';
+        card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+        card.style.borderColor = '#E5E7EB';
+      }
+    });
+
+    card.addEventListener('click', () => {
+      let hw = mapPitchNameToNoteNumber(item.note);
+      if (hw) {
+        document.getElementById('repeater-note').textContent = item.note;
+        highlightKeyProgrammatic(hw.note, hw.angklung, true, item.duration);
+        playChordForNoteNumSustained(hw.note, hw.angklung, item.duration);
+      }
+    });
+
+    chipsWrapper.appendChild(card);
   });
 
   sequenceContainer.appendChild(chipsWrapper);
 }
 
+// Handle Vocal File Upload (.WAV / .MP3) for Repeater
+async function handleVocalFileUpload(input) {
+  if (!input || !input.files || input.files.length === 0) return;
+  const file = input.files[0];
+  
+  const statusText = document.getElementById('repeater-status');
+  const micBtn = document.getElementById('repeater-mic-btn');
+  const sonar = document.getElementById('repeater-sonar');
+
+  if (statusText) statusText.textContent = `Mengunggah & menganalisis melodi ${file.name}...`;
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('key_sig', getBackendKeySig());
+  
+  try {
+    const response = await fetch(`${settings.hostApi}/api/repeater/transcribe_vocal`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    const result = await response.json();
+    if (result.status === 'success' && result.sequence) {
+      recordedSequence = result.sequence;
+      if (statusText) statusText.textContent = `Selesai mentranskripsi ${result.sequence.length} not melodi dari ${file.name}!`;
+      playRepeaterSequence(recordedSequence, statusText, micBtn, sonar);
+    } else {
+      if (statusText) statusText.textContent = `Gagal mentranskripsi file vokal: ${result.detail || 'Format tidak didukung'}`;
+    }
+  } catch (e) {
+    console.error("Gagal mengunggah file vokal:", e);
+    if (statusText) statusText.textContent = `Error mengunggah file audio vokal.`;
+  }
+}
+
 // Handle Key Signature Dropdown Selection
 function onRepeaterKeyChanged(selectedKey) {
+  selectedRepeaterKey = selectedKey;
+
   const statusText = document.getElementById('repeater-status');
   const micBtn = document.getElementById('repeater-mic-btn');
   const sonar = document.getElementById('repeater-sonar');
@@ -1941,30 +2237,40 @@ async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
   const cleaned = cleanRepeaterSequence(rawSequence);
   const sequence = applyTieredAutotune(cleaned, repeaterProcessingMode);
 
-  renderRepeaterNoteChips(sequence);
+  renderRepeaterNoteChips(sequence, -1);
 
   if (sequence.length === 0) {
-    statusText.textContent = 'Tidak ada nada stabil yang terdeteksi. Coba nyanyikan nada lebih jelas!';
+    if (statusText) statusText.textContent = 'Tidak ada nada stabil yang terdeteksi. Coba nyanyikan nada lebih jelas!';
     repeaterState = 'idle';
-    micBtn.classList.remove('active');
-    micBtn.classList.remove('mic-playing');
-    sonar.classList.remove('active');
+    if (micBtn) {
+      micBtn.classList.remove('active');
+      micBtn.classList.remove('mic-playing');
+    }
+    if (sonar) sonar.classList.remove('active');
     return;
   }
 
   repeaterState = 'playing';
-  micBtn.classList.add('active');
-  micBtn.classList.add('mic-playing');
-  sonar.classList.add('active');
-  statusText.textContent = 'Memainkan melodi persis hasil rekaman vokal...';
+  if (micBtn) {
+    micBtn.classList.add('active');
+    micBtn.classList.add('mic-playing');
+  }
+  if (sonar) sonar.classList.add('active');
+  if (statusText) statusText.textContent = 'Memainkan melodi persis hasil rekaman vokal...';
   
-  for (let item of sequence) {
+  for (let i = 0; i < sequence.length; i++) {
+    let item = sequence[i];
+    let nextItem = i < sequence.length - 1 ? sequence[i + 1] : null;
     if (repeaterState !== 'playing') break;
     
+    // Highlight active playing card in real time
+    renderRepeaterNoteChips(sequence, i);
+
     if (item.note !== null) {
       let hw = mapPitchNameToNoteNumber(item.note);
       if (hw) {
-        document.getElementById('repeater-note').textContent = item.note;
+        const noteElem = document.getElementById('repeater-note');
+        if (noteElem) noteElem.textContent = item.note;
         
         // Highlight visual key and sustain Web Audio synth for EXACT item.duration
         highlightKeyProgrammatic(hw.note, hw.angklung, true, item.duration);
@@ -1972,24 +2278,33 @@ async function playRepeaterSequence(rawSequence, statusText, micBtn, sonar) {
         // Sustain physical hardware angklung shaking throughout item.duration
         playChordForNoteNumSustained(hw.note, hw.angklung, item.duration);
         
-        // Hold playback execution for exact duration of note
-        await new Promise(r => setTimeout(r, item.duration));
+        if (nextItem && nextItem.note === item.note && item.duration > 80) {
+          await new Promise(r => setTimeout(r, Math.max(10, item.duration - 25)));
+          if (noteElem) noteElem.textContent = '---';
+          await new Promise(r => setTimeout(r, 25));
+        } else {
+          await new Promise(r => setTimeout(r, item.duration));
+        }
       } else {
         await new Promise(r => setTimeout(r, item.duration));
       }
     } else {
-      // Rest/Silence pause between notes
-      document.getElementById('repeater-note').textContent = '---';
+      const noteElem = document.getElementById('repeater-note');
+      if (noteElem) noteElem.textContent = '---';
       await new Promise(r => setTimeout(r, item.duration));
     }
   }
   
+  renderRepeaterNoteChips(sequence, -1);
+
   if (repeaterState === 'playing') {
     repeaterState = 'idle';
-    micBtn.classList.remove('active');
-    micBtn.classList.remove('mic-playing');
-    sonar.classList.remove('active');
-    statusText.textContent = 'Ketuk mikrofon untuk merekam nada';
+    if (micBtn) {
+      micBtn.classList.remove('active');
+      micBtn.classList.remove('mic-playing');
+    }
+    if (sonar) sonar.classList.remove('active');
+    if (statusText) statusText.textContent = 'Ketuk mikrofon untuk merekam nada';
   }
 }
 
@@ -2029,6 +2344,21 @@ function mapPitchNameToNoteNumber(pitchName) {
   // Try bass fallback for Angklung 3 upper notes
   if (PITCH_TO_HARDWARE[normalized + "_bass"]) {
     return PITCH_TO_HARDWARE[normalized + "_bass"];
+  }
+
+  // Fallback: Octave Folding for low notes (like C3, D3, Eb3) or high notes outside physical range
+  const parsed = parsePitchNote(pitchName);
+  if (parsed) {
+    let foldedMidi = parsed.midi;
+    while (foldedMidi < 52) foldedMidi += 12;
+    while (foldedMidi > 96) foldedMidi -= 12;
+    const foldedName = midiToPitchName(foldedMidi, parsed.isBass);
+    if (PITCH_TO_HARDWARE[foldedName]) {
+      return PITCH_TO_HARDWARE[foldedName];
+    }
+    if (PITCH_TO_HARDWARE[foldedName + "_bass"]) {
+      return PITCH_TO_HARDWARE[foldedName + "_bass"];
+    }
   }
   
   return null;
@@ -2428,6 +2758,228 @@ window.toggleShuffle = toggleShuffle;
 window.toggleRepeat = toggleRepeat;
 window.toggleRepeaterListening = toggleRepeaterListening;
 window.triggerLanguageClassification = triggerLanguageClassification;
+
+// =========================================================================
+// EDUKASI ANGKLUNG & GAME NOT ANGKA ENGINE
+// =========================================================================
+
+function switchEduTab(tabName) {
+  const tabs = ['sejarah', 'otomatisasi', 'panduan'];
+  tabs.forEach(t => {
+    const btn = document.getElementById(`edu-tab-${t}`);
+    const content = document.getElementById(`edu-content-${t}`);
+    if (btn) btn.classList.toggle('active', t === tabName);
+    if (content) content.style.display = t === tabName ? 'block' : 'none';
+  });
+}
+
+// Interactive Not Angka Song Database
+const GAME_SONGS = [
+  {
+    title: "Gundul-Gundul Pacul",
+    origin: "Jawa Tengah",
+    notes: ["1", "3", "1", "3", "4", "5", "5", "7", "1'", "7", "1'", "7", "5", "1", "3", "1", "3", "4", "5", "5"]
+  },
+  {
+    title: "Manuk Dadali",
+    origin: "Jawa Barat",
+    notes: ["5", "5", "6", "1'", "5", "3", "2", "3", "5", "3", "2", "1", "2", "3", "5", "3"]
+  },
+  {
+    title: "Ibu Kita Kartini",
+    origin: "Nasional",
+    notes: ["1", "2", "3", "4", "5", "3", "1", "6", "1'", "7", "6", "5", "4", "6", "5", "4", "3"]
+  },
+  {
+    title: "Suwe Ora Jamu",
+    origin: "Jawa Tengah",
+    notes: ["1", "1", "2", "3", "5", "5", "6", "5", "3", "2", "1", "3", "5", "6", "5", "3"]
+  },
+  {
+    title: "Garuda Pancasila",
+    origin: "Nasional",
+    notes: ["1", "1", "2", "2", "3", "3", "4", "5", "5", "6", "5", "4", "3", "2", "1"]
+  }
+];
+
+let currentSongIdx = 0;
+let currentNoteIndex = 0;
+let totalHits = 0;
+let correctHits = 0;
+let isDemoPlaying = false;
+let demoTimer = null;
+
+function loadGameSong(idx) {
+  if (idx < 0 || idx >= GAME_SONGS.length) return;
+  currentSongIdx = idx;
+  currentNoteIndex = 0;
+  totalHits = 0;
+  correctHits = 0;
+  if (isDemoPlaying) stopGameDemo();
+
+  const btns = document.querySelectorAll('.game-song-btn');
+  btns.forEach((btn, i) => btn.classList.toggle('active', i === idx));
+
+  const song = GAME_SONGS[idx];
+  const titleElem = document.getElementById('game-current-song-title');
+  const originElem = document.getElementById('game-current-song-origin');
+  if (titleElem) titleElem.textContent = song.title;
+  if (originElem) originElem.textContent = song.origin;
+
+  updateGameScoreUI();
+  renderGameNotSheet();
+}
+
+function renderGameNotSheet() {
+  const sheet = document.getElementById('game-not-angka-sheet');
+  const targetBadge = document.getElementById('game-target-note-badge');
+  if (!sheet) return;
+  sheet.innerHTML = '';
+
+  const song = GAME_SONGS[currentSongIdx];
+  const solfegeNames = { '1': 'Do', '2': 'Re', '3': 'Mi', '4': 'Fa', '5': 'Sol', '6': 'La', '7': 'Si', '1\'': 'Do Tinggi' };
+
+  song.notes.forEach((not, idx) => {
+    const chip = document.createElement('div');
+    chip.className = 'game-not-chip';
+    if (idx === currentNoteIndex) chip.classList.add('current');
+    else if (idx < currentNoteIndex) chip.classList.add('passed');
+    chip.textContent = not;
+    sheet.appendChild(chip);
+  });
+
+  if (targetBadge) {
+    if (currentNoteIndex < song.notes.length) {
+      const targetNot = song.notes[currentNoteIndex];
+      if (targetNot === "1'") {
+        targetBadge.textContent = "1' (Do Tinggi)";
+      } else {
+        const baseNum = targetNot.replace("'", "");
+        const sol = solfegeNames[baseNum] || 'Do';
+        targetBadge.textContent = `${baseNum} (${sol})`;
+      }
+    } else {
+      targetBadge.textContent = "Selesai! Selamat!";
+    }
+  }
+}
+
+function updateGameScoreUI() {
+  const percentElem = document.getElementById('game-score-percent');
+  const progressElem = document.getElementById('game-progress-count');
+  const song = GAME_SONGS[currentSongIdx];
+
+  const percent = totalHits === 0 ? 100 : Math.round((correctHits / totalHits) * 100);
+  if (percentElem) percentElem.textContent = `${percent}%`;
+  if (progressElem) progressElem.textContent = `${currentNoteIndex} / ${song.notes.length}`;
+}
+
+function onGameKeypadPress(numStr) {
+  const song = GAME_SONGS[currentSongIdx];
+  if (currentNoteIndex >= song.notes.length) return;
+
+  totalHits++;
+  const rawTargetNot = song.notes[currentNoteIndex]; // e.g. "1'" or "1"
+
+  // Trigger Angklung Hardware & Web Audio Synth
+  const scaleDegreeToPitch = { 
+    '1': 'C4', 
+    '2': 'D4', 
+    '3': 'E4', 
+    '4': 'F4', 
+    '5': 'G4', 
+    '6': 'A4', 
+    '7': 'B4', 
+    "1'": 'C5', 
+    "8": 'C5' 
+  };
+  const pitchName = scaleDegreeToPitch[numStr] || (numStr.includes("'") ? 'C5' : 'C4');
+  let hw = mapPitchNameToNoteNumber(pitchName);
+  if (hw) {
+    highlightKeyProgrammatic(hw.note, hw.angklung, true, 300);
+    playChordForNoteNumSustained(hw.note, hw.angklung, 300);
+  }
+
+  // Strict exact match requirement:
+  // "1" (Do Biasa) ONLY matches "1"
+  // "1'" (Do Tinggi) ONLY matches "1'"
+  if (numStr === rawTargetNot) {
+    correctHits++;
+    currentNoteIndex++;
+  }
+
+  updateGameScoreUI();
+  renderGameNotSheet();
+}
+
+function toggleGameDemoAutoPlay() {
+  if (isDemoPlaying) {
+    stopGameDemo();
+  } else {
+    startGameDemo();
+  }
+}
+
+function startGameDemo() {
+  isDemoPlaying = true;
+  currentNoteIndex = 0;
+  const demoBtn = document.getElementById('game-demo-btn');
+  if (demoBtn) demoBtn.textContent = "⏹️ Stop Demo";
+
+  const song = GAME_SONGS[currentSongIdx];
+
+  const playStep = () => {
+    if (!isDemoPlaying || currentNoteIndex >= song.notes.length) {
+      stopGameDemo();
+      return;
+    }
+
+    const notStr = song.notes[currentNoteIndex];
+    onGameKeypadPress(notStr);
+    demoTimer = setTimeout(playStep, 450);
+  };
+
+  playStep();
+}
+
+function stopGameDemo() {
+  isDemoPlaying = false;
+  if (demoTimer) clearTimeout(demoTimer);
+  const demoBtn = document.getElementById('game-demo-btn');
+  if (demoBtn) demoBtn.textContent = "▶ Demo Auto-Play";
+}
+
+function resetGameSession() {
+  stopGameDemo();
+  currentNoteIndex = 0;
+  totalHits = 0;
+  correctHits = 0;
+  updateGameScoreUI();
+  renderGameNotSheet();
+}
+
+// Keyboard listener for Game Not Angka (Keys 1-8)
+document.addEventListener('keydown', (e) => {
+  const activePage = document.querySelector('.app-page:not(.hide)');
+  if (activePage && activePage.id === 'page-gamenotangka') {
+    if (['1', '2', '3', '4', '5', '6', '7'].includes(e.key)) {
+      onGameKeypadPress(e.key);
+    } else if (e.key === '8' || e.key === '!') {
+      onGameKeypadPress("1'");
+    }
+  }
+});
+
+// Initialize first game song on page load
+document.addEventListener('DOMContentLoaded', () => {
+  loadGameSong(0);
+});
+
+window.switchEduTab = switchEduTab;
+window.loadGameSong = loadGameSong;
+window.onGameKeypadPress = onGameKeypadPress;
+window.toggleGameDemoAutoPlay = toggleGameDemoAutoPlay;
+window.resetGameSession = resetGameSession;
 window.handleGlobalSearch = handleGlobalSearch;
 window.nextMenu = nextMenu;
 window.prevMenu = prevMenu;

@@ -3203,7 +3203,11 @@ function updateGameScoreUI() {
   const song = GAME_SONGS[currentSongIdx];
   const flatNotes = getSongFlatNotes(song);
 
-  const percent = totalHits === 0 ? 100 : Math.round((correctHits / totalHits) * 100);
+  let percent = 100;
+  if (totalHits > 0) {
+    percent = Math.min(100, Math.max(0, Math.round((correctHits / totalHits) * 100)));
+  }
+
   if (percentElem) percentElem.textContent = `${percent}%`;
   if (progressElem) progressElem.textContent = `${currentNoteIndex} / ${flatNotes.length}`;
 }
@@ -3218,48 +3222,49 @@ function onGameKeypadPress(numStr) {
     currentNoteIndex++;
   }
 
-  totalHits++;
   const targetItem = flatNotes[currentNoteIndex];
   const rawTargetNot = getNoteStr(targetItem); // e.g. "1'", "5", "0"
 
-  // Exact match check (e.g. '5' === '5')
+  // 1. Calculate trailing dots '.' following this note
+  let dotCount = 0;
+  let lookAheadIdx = currentNoteIndex + 1;
+  while (lookAheadIdx < flatNotes.length && getNoteStr(flatNotes[lookAheadIdx]) === '.') {
+    dotCount++;
+    lookAheadIdx++;
+  }
+
+  const totalBeats = 1 + dotCount;
+  const durationMs = 350 + (dotCount * 350); // e.g. 1 dot = 700ms, 2 dots = 1050ms
+
+  // 2. Send MIDI Output Note with sustained duration
+  sendMidiNoteOut(numStr, durationMs);
+
+  // 3. Trigger Angklung Hardware & Web Audio Synth with sustained duration
+  const scaleDegreeToPitch = { 
+    '1': 'C4', 
+    '2': 'D4', 
+    '3': 'E4', 
+    '4': 'F4', 
+    '5': 'G4', 
+    '6': 'A4', 
+    '7': 'B4', 
+    "1'": 'C5', 
+    "8": 'C5' 
+  };
+  const pitchName = scaleDegreeToPitch[numStr] || (numStr.includes("'") ? 'C5' : 'C4');
+  let hw = mapPitchNameToNoteNumber(pitchName);
+  if (hw) {
+    highlightKeyProgrammatic(hw.note, hw.angklung, true, durationMs);
+    playChordForNoteNumSustained(hw.note, hw.angklung, durationMs);
+  }
+
+  // 4. Check match & update score counters
   if (numStr === rawTargetNot) {
-    // 1. Calculate trailing dots '.' following this note
-    let dotCount = 0;
-    let lookAheadIdx = currentNoteIndex + 1;
-    while (lookAheadIdx < flatNotes.length && getNoteStr(flatNotes[lookAheadIdx]) === '.') {
-      dotCount++;
-      lookAheadIdx++;
-    }
-
-    const totalBeats = 1 + dotCount;
-    const durationMs = 350 + (dotCount * 350); // e.g. 1 dot = 700ms, 2 dots = 1050ms
-
-    // 2. Send MIDI Output Note with sustained duration
-    sendMidiNoteOut(numStr, durationMs);
-
-    // 3. Trigger Angklung Hardware & Web Audio Synth with sustained duration
-    const scaleDegreeToPitch = { 
-      '1': 'C4', 
-      '2': 'D4', 
-      '3': 'E4', 
-      '4': 'F4', 
-      '5': 'G4', 
-      '6': 'A4', 
-      '7': 'B4', 
-      "1'": 'C5', 
-      "8": 'C5' 
-    };
-    const pitchName = scaleDegreeToPitch[numStr] || (numStr.includes("'") ? 'C5' : 'C4');
-    let hw = mapPitchNameToNoteNumber(pitchName);
-    if (hw) {
-      highlightKeyProgrammatic(hw.note, hw.angklung, true, durationMs);
-      playChordForNoteNumSustained(hw.note, hw.angklung, durationMs);
-    }
-
-    // 4. Advance currentNoteIndex past the note AND all its trailing dots!
+    totalHits += totalBeats;
     correctHits += totalBeats;
     currentNoteIndex += totalBeats;
+  } else {
+    totalHits += 1;
   }
 
   updateGameScoreUI();

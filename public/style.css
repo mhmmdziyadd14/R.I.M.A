@@ -2356,11 +2356,11 @@ body {
 #game-not-angka-sheet {
   display: flex !important;
   flex-direction: column !important;
-  gap: 20px !important;
+  gap: 14px !important;
   width: 100% !important;
   max-width: 900px !important;
   margin: 0 auto !important;
-  padding: 24px 28px !important;
+  padding: 18px 24px !important;
   background: #FAF8F5 !important;
   border: 1.5px solid #E5E0D8 !important;
   border-radius: 16px !important;

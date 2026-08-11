@@ -301,9 +301,49 @@ function stopKeyTrigger(keyElement) {
   keyElement.classList.remove('active');
 }
 
+// Map MIDI note number (60-72, C4 to C5) to Not Angka scale degree string
+function mapMidiNoteToScaleDegree(midiNote) {
+  const noteVal = parseInt(midiNote, 10);
+  if (isNaN(noteVal)) return null;
+
+  const directMap = {
+    60: "1",  // C4 = Do
+    62: "2",  // D4 = Re
+    64: "3",  // E4 = Mi
+    65: "4",  // F4 = Fa
+    67: "5",  // G4 = Sol
+    69: "6",  // A4 = La
+    71: "7",  // B4 = Si
+    72: "1'" // C5 = Do Tinggi
+  };
+  if (directMap[noteVal]) return directMap[noteVal];
+
+  // Octave-independent pitch class mapping (C = 0)
+  const pitchClass = noteVal % 12;
+  const pcMap = { 0: "1", 2: "2", 4: "3", 5: "4", 7: "5", 9: "6", 11: "7" };
+  if (pitchClass === 0 && noteVal >= 72) return "1'";
+  return pcMap[pitchClass] || null;
+}
+
+// Map Angklung Hardware Note (1-8) to Not Angka scale degree string
+function mapAngklungNoteToScaleDegree(noteNum, angklungId = 3) {
+  const noteVal = parseInt(noteNum, 10);
+  const angklungMap = {
+    1: "1",
+    2: "2",
+    3: "3",
+    4: "4",
+    5: "5",
+    6: "6",
+    7: "7",
+    8: "1'"
+  };
+  return angklungMap[noteVal] || null;
+}
+
 let midiSocket = null;
 
-function setKeyProgrammaticState(noteNum, angklungId, isDown) {
+function setKeyProgrammaticState(noteNum, angklungId, isDown, midiNote = null) {
   // Gating: Only allow MIDI audio/visual triggers on Kontrol Manual and Game Lagu pages
   if (!isMidiInputPlayAllowed()) return;
 
@@ -322,6 +362,20 @@ function setKeyProgrammaticState(noteNum, angklungId, isDown) {
       }
     } else {
       key.classList.remove('active');
+    }
+  }
+
+  // GAME LAGU MIDI INTEGRATION: Automatically advance Game Not Angka on physical MIDI keyboard note press
+  if (isDown && appCurrentPage === 'page-gamenotangka') {
+    let scaleDegree = null;
+    if (midiNote) {
+      scaleDegree = mapMidiNoteToScaleDegree(midiNote);
+    }
+    if (!scaleDegree) {
+      scaleDegree = mapAngklungNoteToScaleDegree(noteNum, angklungId);
+    }
+    if (scaleDegree) {
+      onGameKeypadPress(scaleDegree);
     }
   }
 }
@@ -343,7 +397,8 @@ function connectMidiWebSocket() {
     try {
       const data = JSON.parse(event.data);
       if (data.note && data.angklung) {
-        setKeyProgrammaticState(data.note, data.angklung, data.action === "down");
+        const isDown = data.action === "down" || data.action === "play" || !data.action;
+        setKeyProgrammaticState(data.note, data.angklung, isDown, data.midi || data.midi_note);
       }
     } catch (e) {
       console.error("[WS-MIDI] Error parsing message:", e);
@@ -2839,6 +2894,22 @@ function initWebMidiOutput() {
         const statusElem = document.getElementById('modal-midi-status');
         if (statusElem) statusElem.textContent = `Terhubung (${webMidiOutputDevice.name})`;
       }
+
+      // Web MIDI API Input listener (Direct Browser Keyboard Connection)
+      const inputs = Array.from(midiAccess.inputs.values());
+      inputs.forEach(input => {
+        input.onmidimessage = (event) => {
+          if (!isMidiInputPlayAllowed()) return;
+          const [status, midiNote, velocity] = event.data;
+          const isNoteOn = (status & 0xF0) === 0x90 && velocity > 0;
+          if (isNoteOn) {
+            const scaleDegree = mapMidiNoteToScaleDegree(midiNote);
+            if (scaleDegree && appCurrentPage === 'page-gamenotangka') {
+              onGameKeypadPress(scaleDegree);
+            }
+          }
+        };
+      });
     }).catch(err => {
       console.warn("Web MIDI Access error:", err);
     });

@@ -2369,11 +2369,11 @@ body {
 
 .game-sheet-phrase-row {
   display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 12px 18px !important;
+  flex-wrap: nowrap !important;
+  width: 100% !important;
   align-items: flex-end !important;
-  justify-content: flex-start !important;
-  padding-bottom: 8px !important;
+  justify-content: space-between !important;
+  padding-bottom: 12px !important;
   border-bottom: 1.5px solid #E2DDD5 !important;
 }
 
@@ -2382,9 +2382,11 @@ body {
   flex-direction: column !important;
   align-items: center !important;
   justify-content: center !important;
-  min-width: 34px !important;
+  flex: 1 !important;
+  min-width: 0 !important;
   padding: 4px 2px !important;
   position: relative !important;
+  text-align: center !important;
   transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
 }
 

@@ -3165,20 +3165,31 @@ function renderGameNotSheet() {
 
   if (targetBadge) {
     if (currentNoteIndex < flatNotes.length) {
-      const targetNotItem = flatNotes[currentNoteIndex];
+      let targetIdx = currentNoteIndex;
+      while (targetIdx < flatNotes.length - 1 && getNoteStr(flatNotes[targetIdx]) === '.') {
+        targetIdx++;
+      }
+      const targetNotItem = flatNotes[targetIdx];
       const targetNot = getNoteStr(targetNotItem);
       const lyric = getNoteLyric(targetNotItem);
 
+      // Count trailing dots for beat hint
+      let dotCount = 0;
+      let lookAheadIdx = targetIdx + 1;
+      while (lookAheadIdx < flatNotes.length && getNoteStr(flatNotes[lookAheadIdx]) === '.') {
+        dotCount++;
+        lookAheadIdx++;
+      }
+      const beatHint = (dotCount > 0) ? ` (${1 + dotCount} Ketuk Panjang)` : '';
+
       if (targetNot === "1'") {
-        targetBadge.textContent = `1' (Do Tinggi)${lyric ? ' - "' + lyric + '"' : ''}`;
-      } else if (targetNot === ".") {
-        targetBadge.textContent = `. (Tahan - Perpanjang Nada)${lyric ? ' - "' + lyric + '"' : ''}`;
+        targetBadge.textContent = `1' (Do Tinggi)${lyric ? ' - "' + lyric + '"' : ''}${beatHint}`;
       } else if (targetNot === "0") {
         targetBadge.textContent = `0 (Istirahat / Diam)`;
       } else {
         const baseNum = targetNot.replace("'", "");
         const sol = solfegeNames[baseNum] || 'Do';
-        targetBadge.textContent = `${baseNum} (${sol})${lyric ? ' - "' + lyric + '"' : ''}`;
+        targetBadge.textContent = `${baseNum} (${sol})${lyric ? ' - "' + lyric + '"' : ''}${beatHint}`;
       }
     } else {
       targetBadge.textContent = "🎉 Selesai! Selamat!";
@@ -3202,47 +3213,53 @@ function onGameKeypadPress(numStr) {
   const flatNotes = getSongFlatNotes(song);
   if (currentNoteIndex >= flatNotes.length) return;
 
+  // Skip standalone '.' if currentNoteIndex is on a dot
+  while (currentNoteIndex < flatNotes.length - 1 && getNoteStr(flatNotes[currentNoteIndex]) === '.') {
+    currentNoteIndex++;
+  }
+
   totalHits++;
   const targetItem = flatNotes[currentNoteIndex];
-  const rawTargetNot = getNoteStr(targetItem); // e.g. "1'", "1", ".", "0"
+  const rawTargetNot = getNoteStr(targetItem); // e.g. "1'", "5", "0"
 
-  // Track last played note for '.' hold matching
-  if (rawTargetNot !== '.' && rawTargetNot !== '0') {
-    lastPlayedGameNoteStr = rawTargetNot;
-  }
+  // Exact match check (e.g. '5' === '5')
+  if (numStr === rawTargetNot) {
+    // 1. Calculate trailing dots '.' following this note
+    let dotCount = 0;
+    let lookAheadIdx = currentNoteIndex + 1;
+    while (lookAheadIdx < flatNotes.length && getNoteStr(flatNotes[lookAheadIdx]) === '.') {
+      dotCount++;
+      lookAheadIdx++;
+    }
 
-  // Determine MIDI Note string to output
-  const midiNoteStr = (numStr === '.' || numStr === '0') ? (lastPlayedGameNoteStr || '1') : numStr;
+    const totalBeats = 1 + dotCount;
+    const durationMs = 350 + (dotCount * 350); // e.g. 1 dot = 700ms, 2 dots = 1050ms
 
-  // 1. Send MIDI Output Note in Key of C (Do = C4 = 60)
-  sendMidiNoteOut(midiNoteStr, 350);
+    // 2. Send MIDI Output Note with sustained duration
+    sendMidiNoteOut(numStr, durationMs);
 
-  // 2. Trigger Angklung Hardware & Web Audio Synth
-  const scaleDegreeToPitch = { 
-    '1': 'C4', 
-    '2': 'D4', 
-    '3': 'E4', 
-    '4': 'F4', 
-    '5': 'G4', 
-    '6': 'A4', 
-    '7': 'B4', 
-    "1'": 'C5', 
-    "8": 'C5' 
-  };
-  const pitchName = scaleDegreeToPitch[midiNoteStr] || (midiNoteStr.includes("'") ? 'C5' : 'C4');
-  let hw = mapPitchNameToNoteNumber(pitchName);
-  if (hw) {
-    highlightKeyProgrammatic(hw.note, hw.angklung, true, 300);
-    playChordForNoteNumSustained(hw.note, hw.angklung, 300);
-  }
+    // 3. Trigger Angklung Hardware & Web Audio Synth with sustained duration
+    const scaleDegreeToPitch = { 
+      '1': 'C4', 
+      '2': 'D4', 
+      '3': 'E4', 
+      '4': 'F4', 
+      '5': 'G4', 
+      '6': 'A4', 
+      '7': 'B4', 
+      "1'": 'C5', 
+      "8": 'C5' 
+    };
+    const pitchName = scaleDegreeToPitch[numStr] || (numStr.includes("'") ? 'C5' : 'C4');
+    let hw = mapPitchNameToNoteNumber(pitchName);
+    if (hw) {
+      highlightKeyProgrammatic(hw.note, hw.angklung, true, durationMs);
+      playChordForNoteNumSustained(hw.note, hw.angklung, durationMs);
+    }
 
-  // Exact match OR hold dot match:
-  const isMatch = (numStr === rawTargetNot) || 
-                  (rawTargetNot === '.' && (numStr === '.' || numStr === lastPlayedGameNoteStr));
-
-  if (isMatch) {
-    correctHits++;
-    currentNoteIndex++;
+    // 4. Advance currentNoteIndex past the note AND all its trailing dots!
+    correctHits += totalBeats;
+    currentNoteIndex += totalBeats;
   }
 
   updateGameScoreUI();

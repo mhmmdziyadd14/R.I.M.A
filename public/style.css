@@ -2375,6 +2375,19 @@ body {
   justify-content: space-between !important;
   padding-bottom: 12px !important;
   border-bottom: 1.5px solid #E2DDD5 !important;
+  gap: 4px !important;
+}
+
+.sheet-bar-line {
+  font-size: 28px !important;
+  font-weight: 300 !important;
+  color: #9CA3AF !important;
+  padding: 0 6px !important;
+  line-height: 1 !important;
+  user-select: none !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  padding-bottom: 2px !important;
 }
 
 .game-sheet-note-col {
@@ -2388,6 +2401,18 @@ body {
   position: relative !important;
   text-align: center !important;
   transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+/* Overline Bar for 1/2 Beat Notes (Garis Atas Nada Pendek 1/2 Ketuk) */
+.game-sheet-note-col.has-overline .sheet-not-num::before {
+  content: '' !important;
+  position: absolute !important;
+  top: -4px !important;
+  left: -2px !important;
+  right: -2px !important;
+  height: 2.5px !important;
+  background: #374151 !important;
+  border-radius: 2px !important;
 }
 
 .game-sheet-note-col .sheet-lyric-txt {

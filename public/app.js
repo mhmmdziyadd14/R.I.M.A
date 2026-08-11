@@ -2872,6 +2872,7 @@ function sendMidiNoteOut(scaleDegreeStr, durationMs = 350) {
     } catch(e) {}
   }
 }
+let lastPlayedGameNoteStr = '1';
 
 // Helper functions for Note items
 function getNoteStr(item) {
@@ -2890,7 +2891,7 @@ function getSongFlatNotes(song) {
   return [];
 }
 
-// Interactive Not Angka Song Database (Phrases & Lyrics - No Card Boxes)
+// Authentic Not Angka Song Database (. = Titik Perpanjang, 0 = Not Diam, Overline = Garis 1/2 Ketuk)
 const GAME_SONGS = [
   {
     title: "Gundul-Gundul Pacul",
@@ -2903,15 +2904,18 @@ const GAME_SONGS = [
         { not: "3", lyric: "dul" },
         { not: "4", lyric: "pa-" },
         { not: "5", lyric: "cul" },
-        { not: "5", lyric: "cul" }
+        { not: ".", lyric: "" }
       ],
       [
+        { not: "5", lyric: "cul" },
+        { not: ".", lyric: "" },
         { not: "7", lyric: "glem-" },
         { not: "1'", lyric: "pen-" },
         { not: "7", lyric: "gan" },
         { not: "1'", lyric: "nyung-" },
         { not: "7", lyric: "gi-" },
-        { not: "5", lyric: "nyung" }
+        { not: "5", lyric: "nyung" },
+        { not: ".", lyric: "" }
       ],
       [
         { not: "1", lyric: "wak-" },
@@ -2920,6 +2924,7 @@ const GAME_SONGS = [
         { not: "3", lyric: "pen-" },
         { not: "4", lyric: "gan" },
         { not: "5", lyric: "ngglim-" },
+        { not: ".", lyric: "" },
         { not: "5", lyric: "pang" }
       ],
       [
@@ -2927,10 +2932,12 @@ const GAME_SONGS = [
         { not: "5", lyric: "da-" },
         { not: "4", lyric: "nya" },
         { not: "3", lyric: "ja-" },
+        { not: ".", lyric: "" },
         { not: "2", lyric: "di" },
         { not: "1", lyric: "sak-" },
         { not: "1", lyric: "ra-" },
-        { not: "3", lyric: "tan" }
+        { not: "3", lyric: "tan" },
+        { not: ".", lyric: "" }
       ]
     ]
   },
@@ -2948,8 +2955,10 @@ const GAME_SONGS = [
         { not: "2", lyric: "ring" },
         { not: "3", lyric: "a-" },
         { not: "5", lyric: "wang" },
+        { not: ".", lyric: "" },
         { not: "3", lyric: "a-" },
-        { not: "2", lyric: "wang" }
+        { not: "2", lyric: "wang" },
+        { not: ".", lyric: "" }
       ],
       [
         { not: "1", lyric: "Ngan-" },
@@ -2957,8 +2966,10 @@ const GAME_SONGS = [
         { not: "3", lyric: "keun" },
         { not: "5", lyric: "jang-" },
         { not: "3", lyric: "na" },
+        { not: ".", lyric: "" },
         { not: "2", lyric: "bang-" },
-        { not: "1", lyric: "bir" }
+        { not: "1", lyric: "bir" },
+        { not: ".", lyric: "" }
       ]
     ]
   },
@@ -2970,17 +2981,20 @@ const GAME_SONGS = [
         { not: "1", lyric: "I-" },
         { not: "2", lyric: "bu" },
         { not: "3", lyric: "Ki-" },
-        { not: "4", lyric: "ta" },
+        { not: ".", lyric: "" },
+        { not: "4", lyric: "ta", overline: true },
         { not: "5", lyric: "Kar-" },
         { not: "3", lyric: "ti-" },
-        { not: "1", lyric: "ni" }
+        { not: "1", lyric: "ni" },
+        { not: ".", lyric: "" }
       ],
       [
         { not: "6", lyric: "Put-" },
         { not: "1'", lyric: "ri" },
         { not: "7", lyric: "se-" },
         { not: "6", lyric: "ja-" },
-        { not: "5", lyric: "ti" }
+        { not: "5", lyric: "ti" },
+        { not: ".", lyric: "" }
       ],
       [
         { not: "4", lyric: "Put-" },
@@ -2989,7 +3003,9 @@ const GAME_SONGS = [
         { not: "4", lyric: "do-" },
         { not: "3", lyric: "ne-" },
         { not: "2", lyric: "sia" },
-        { not: "1", lyric: "ha-" }
+        { not: ".", lyric: "" },
+        { not: "1", lyric: "ha-" },
+        { not: ".", lyric: "" }
       ]
     ]
   },
@@ -3003,7 +3019,9 @@ const GAME_SONGS = [
         { not: "2", lyric: "o-" },
         { not: "3", lyric: "ra" },
         { not: "5", lyric: "ja-" },
-        { not: "5", lyric: "mu" }
+        { not: ".", lyric: "" },
+        { not: "5", lyric: "mu" },
+        { not: ".", lyric: "" }
       ],
       [
         { not: "6", lyric: "Ja-" },
@@ -3011,7 +3029,9 @@ const GAME_SONGS = [
         { not: "3", lyric: "go-" },
         { not: "2", lyric: "dong" },
         { not: "1", lyric: "te-" },
-        { not: "3", lyric: "te" }
+        { not: ".", lyric: "" },
+        { not: "3", lyric: "te" },
+        { not: ".", lyric: "" }
       ],
       [
         { not: "2", lyric: "Su-" },
@@ -3021,7 +3041,9 @@ const GAME_SONGS = [
         { not: "1'", lyric: "ke-" },
         { not: "7", lyric: "te-" },
         { not: "6", lyric: "mu" },
-        { not: "5", lyric: "pisan" }
+        { not: ".", lyric: "" },
+        { not: "5", lyric: "pisan" },
+        { not: ".", lyric: "" }
       ]
     ]
   },
@@ -3037,7 +3059,8 @@ const GAME_SONGS = [
         { not: "3", lyric: "ca-" },
         { not: "3", lyric: "si-" },
         { not: "4", lyric: "la" },
-        { not: "5", lyric: "A-" }
+        { not: "5", lyric: "A-" },
+        { not: ".", lyric: "" }
       ],
       [
         { not: "5", lyric: "kul-" },
@@ -3045,12 +3068,14 @@ const GAME_SONGS = [
         { not: "5", lyric: "pen-" },
         { not: "4", lyric: "du-" },
         { not: "3", lyric: "kung-" },
-        { not: "2", lyric: "mu" }
+        { not: "2", lyric: "mu" },
+        { not: ".", lyric: "" }
       ],
       [
         { not: "1", lyric: "pa-" },
         { not: "3", lyric: "tri-" },
-        { not: "5", lyric: "ot" }
+        { not: "5", lyric: "ot" },
+        { not: ".", lyric: "" }
       ]
     ]
   }
@@ -3091,7 +3116,7 @@ function renderGameNotSheet() {
   sheet.innerHTML = '';
 
   const song = GAME_SONGS[currentSongIdx];
-  const solfegeNames = { '1': 'Do', '2': 'Re', '3': 'Mi', '4': 'Fa', '5': 'Sol', '6': 'La', '7': 'Si', '1\'': 'Do Tinggi' };
+  const solfegeNames = { '1': 'Do', '2': 'Re', '3': 'Mi', '4': 'Fa', '5': 'Sol', '6': 'La', '7': 'Si', '1\'': 'Do Tinggi', '.': 'Tahan (.)', '0': 'Diam' };
 
   const flatNotes = getSongFlatNotes(song);
   let globalNoteIdx = 0;
@@ -3102,15 +3127,23 @@ function renderGameNotSheet() {
     const phraseRow = document.createElement('div');
     phraseRow.className = 'game-sheet-phrase-row';
 
+    // Left Bar Line (|)
+    const leftBar = document.createElement('div');
+    leftBar.className = 'sheet-bar-line';
+    leftBar.textContent = '|';
+    phraseRow.appendChild(leftBar);
+
     phrase.forEach((item) => {
       const idx = globalNoteIdx;
       globalNoteIdx++;
 
       const notVal = getNoteStr(item);
       const lyricVal = getNoteLyric(item);
+      const isOverline = typeof item === 'object' && item.overline;
 
       const noteCol = document.createElement('div');
       noteCol.className = 'game-sheet-note-col';
+      if (isOverline) noteCol.classList.add('has-overline');
       if (idx === currentNoteIndex) noteCol.classList.add('current');
       else if (idx < currentNoteIndex) noteCol.classList.add('passed');
 
@@ -3120,6 +3153,12 @@ function renderGameNotSheet() {
       `;
       phraseRow.appendChild(noteCol);
     });
+
+    // Right Bar Line (|)
+    const rightBar = document.createElement('div');
+    rightBar.className = 'sheet-bar-line';
+    rightBar.textContent = '|';
+    phraseRow.appendChild(rightBar);
 
     sheet.appendChild(phraseRow);
   });
@@ -3132,6 +3171,10 @@ function renderGameNotSheet() {
 
       if (targetNot === "1'") {
         targetBadge.textContent = `1' (Do Tinggi)${lyric ? ' - "' + lyric + '"' : ''}`;
+      } else if (targetNot === ".") {
+        targetBadge.textContent = `. (Tahan - Perpanjang Nada)${lyric ? ' - "' + lyric + '"' : ''}`;
+      } else if (targetNot === "0") {
+        targetBadge.textContent = `0 (Istirahat / Diam)`;
       } else {
         const baseNum = targetNot.replace("'", "");
         const sol = solfegeNames[baseNum] || 'Do';
@@ -3161,10 +3204,18 @@ function onGameKeypadPress(numStr) {
 
   totalHits++;
   const targetItem = flatNotes[currentNoteIndex];
-  const rawTargetNot = getNoteStr(targetItem); // e.g. "1'" or "1"
+  const rawTargetNot = getNoteStr(targetItem); // e.g. "1'", "1", ".", "0"
+
+  // Track last played note for '.' hold matching
+  if (rawTargetNot !== '.' && rawTargetNot !== '0') {
+    lastPlayedGameNoteStr = rawTargetNot;
+  }
+
+  // Determine MIDI Note string to output
+  const midiNoteStr = (numStr === '.' || numStr === '0') ? (lastPlayedGameNoteStr || '1') : numStr;
 
   // 1. Send MIDI Output Note in Key of C (Do = C4 = 60)
-  sendMidiNoteOut(numStr, 350);
+  sendMidiNoteOut(midiNoteStr, 350);
 
   // 2. Trigger Angklung Hardware & Web Audio Synth
   const scaleDegreeToPitch = { 
@@ -3178,17 +3229,18 @@ function onGameKeypadPress(numStr) {
     "1'": 'C5', 
     "8": 'C5' 
   };
-  const pitchName = scaleDegreeToPitch[numStr] || (numStr.includes("'") ? 'C5' : 'C4');
+  const pitchName = scaleDegreeToPitch[midiNoteStr] || (midiNoteStr.includes("'") ? 'C5' : 'C4');
   let hw = mapPitchNameToNoteNumber(pitchName);
   if (hw) {
     highlightKeyProgrammatic(hw.note, hw.angklung, true, 300);
     playChordForNoteNumSustained(hw.note, hw.angklung, 300);
   }
 
-  // Strict exact match requirement:
-  // "1" (Do Biasa) ONLY matches "1"
-  // "1'" (Do Tinggi) ONLY matches "1'"
-  if (numStr === rawTargetNot) {
+  // Exact match OR hold dot match:
+  const isMatch = (numStr === rawTargetNot) || 
+                  (rawTargetNot === '.' && (numStr === '.' || numStr === lastPlayedGameNoteStr));
+
+  if (isMatch) {
     correctHits++;
     currentNoteIndex++;
   }

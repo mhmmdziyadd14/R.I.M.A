@@ -249,7 +249,12 @@ function setRepeaterMode(mode) {
   }
 }
 
+function isMidiInputPlayAllowed() {
+  return appCurrentPage === 'page-manual' || appCurrentPage === 'page-gamenotangka';
+}
+
 function startKeyTrigger(keyElement) {
+  if (!isMidiInputPlayAllowed()) return;
   const noteId = `${keyElement.getAttribute('data-angklung')}-${keyElement.getAttribute('data-note')}`;
   
   // Prevent duplicate triggers if already held
@@ -264,8 +269,10 @@ function startKeyTrigger(keyElement) {
     const label = keyElement.getAttribute('data-label');
     const angklungId = parseInt(keyElement.getAttribute('data-angklung') || '3', 10);
     
-    document.getElementById('active-note-display').textContent = label.toUpperCase();
-    document.getElementById('notes-indicator-container').style.opacity = '1';
+    const activeDisplay = document.getElementById('active-note-display');
+    if (activeDisplay) activeDisplay.textContent = label.toUpperCase();
+    const indicatorContainer = document.getElementById('notes-indicator-container');
+    if (indicatorContainer) indicatorContainer.style.opacity = '1';
 
     // Play local synthesizer sound
     const freqMap = NOTE_FREQUENCIES[angklungId];
@@ -297,12 +304,17 @@ function stopKeyTrigger(keyElement) {
 let midiSocket = null;
 
 function setKeyProgrammaticState(noteNum, angklungId, isDown) {
+  // Gating: Only allow MIDI audio/visual triggers on Kontrol Manual and Game Lagu pages
+  if (!isMidiInputPlayAllowed()) return;
+
   const key = document.querySelector(`.key[data-note="${noteNum}"][data-angklung="${angklungId}"]`);
   if (key) {
     if (isDown) {
       key.classList.add('active');
-      document.getElementById('active-note-display').textContent = key.getAttribute('data-label').toUpperCase();
-      document.getElementById('notes-indicator-container').style.opacity = '1';
+      const activeDisplay = document.getElementById('active-note-display');
+      if (activeDisplay) activeDisplay.textContent = key.getAttribute('data-label').toUpperCase();
+      const indicatorContainer = document.getElementById('notes-indicator-container');
+      if (indicatorContainer) indicatorContainer.style.opacity = '1';
       
       const freqMap = NOTE_FREQUENCIES[angklungId];
       if (freqMap && freqMap[noteNum]) {
@@ -831,14 +843,18 @@ async function saveConnectionSettings() {
 
 // 6. Interactive Keyboard Playback
 function triggerKeyOn(keyElement) {
+  if (!isMidiInputPlayAllowed()) return;
+
   const noteNum = parseInt(keyElement.getAttribute('data-note'), 10);
   const label = keyElement.getAttribute('data-label');
   const angklungId = parseInt(keyElement.getAttribute('data-angklung') || '3', 10);
   
   // Show active visual trigger
   keyElement.classList.add('active');
-  document.getElementById('active-note-display').textContent = label.toUpperCase();
-  document.getElementById('notes-indicator-container').style.opacity = '1';
+  const activeDisplay = document.getElementById('active-note-display');
+  if (activeDisplay) activeDisplay.textContent = label.toUpperCase();
+  const indicatorContainer = document.getElementById('notes-indicator-container');
+  if (indicatorContainer) indicatorContainer.style.opacity = '1';
 
   // Play client-side audio synth instantly
   const freqMap = NOTE_FREQUENCIES[angklungId];
@@ -857,10 +873,13 @@ function triggerKeyOn(keyElement) {
 
 // Programmatic key highlight (for repeater incoming feedback & song playbacks)
 function highlightKeyProgrammatic(noteNum, angklungId = 3, playSound = true, durationMs = 250) {
+  if (!isMidiInputPlayAllowed()) return;
+
   const key = document.querySelector(`.key[data-note="${noteNum}"][data-angklung="${angklungId}"]`);
   if (key) {
     key.classList.add('active');
-    document.getElementById('active-note-display').textContent = key.getAttribute('data-label').toUpperCase();
+    const activeDisplay = document.getElementById('active-note-display');
+    if (activeDisplay) activeDisplay.textContent = key.getAttribute('data-label').toUpperCase();
     document.getElementById('notes-indicator-container').style.opacity = '1';
     
     if (playSound) {
@@ -2904,41 +2923,73 @@ const GAME_SONGS = [
         { not: "3", lyric: "dul" },
         { not: "4", lyric: "pa-" },
         { not: "5", lyric: "cul" },
-        { not: ".", lyric: "" }
-      ],
-      [
         { not: "5", lyric: "cul" },
-        { not: ".", lyric: "" },
-        { not: "7", lyric: "glem-" },
-        { not: "1'", lyric: "pen-" },
-        { not: "7", lyric: "gan" },
-        { not: "1'", lyric: "nyung-" },
-        { not: "7", lyric: "gi-" },
-        { not: "5", lyric: "nyung" },
         { not: ".", lyric: "" }
       ],
       [
-        { not: "1", lyric: "wak-" },
+        { not: "7", lyric: "gem" },
+        { not: "1'", lyric: "be" },
+        { not: "7", lyric: "" },
+        { not: "1'", lyric: "le" },
+        { not: "7", lyric: "" },
+        { not: "5", lyric: "ngan" },
+        { not: ".", lyric: "" }
+      ],
+      [
+        { not: "1", lyric: "Nyung-" },
+        { not: "3", lyric: "gi" },
+        { not: "1", lyric: "nyung" },
+        { not: "3", lyric: "gi" },
+        { not: "4", lyric: "wa" },
+        { not: "5", lyric: "kul" },
+        { not: "5", lyric: "kul" },
+        { not: ".", lyric: "" }
+      ],
+      [
+        { not: "7", lyric: "gem" },
+        { not: "1'", lyric: "be" },
+        { not: "7", lyric: "" },
+        { not: "1'", lyric: "le" },
+        { not: "7", lyric: "" },
+        { not: "5", lyric: "ngan" },
+        { not: ".", lyric: "" }
+      ],
+      [
+        { not: "1", lyric: "wa" },
+        { not: ".", lyric: "" },
         { not: "3", lyric: "kul" },
-        { not: "1", lyric: "glem-" },
-        { not: "3", lyric: "pen-" },
-        { not: "4", lyric: "gan" },
-        { not: "5", lyric: "ngglim-" },
         { not: ".", lyric: "" },
-        { not: "5", lyric: "pang" }
+        { not: "5.", lyric: "ngglim" },
+        { not: ".", lyric: "" },
+        { not: "4", lyric: "pang" },
+        { not: "4", lyric: "se" },
+        { not: "5", lyric: "ga" },
+        { not: "4", lyric: "ne" },
+        { not: "3", lyric: "da" },
+        { not: "1", lyric: "di" },
+        { not: "4", lyric: "sak" },
+        { not: "3", lyric: "la" },
+        { not: "1", lyric: "tar" },
+        { not: ".", lyric: "" }
       ],
       [
-        { not: "3", lyric: "se-" },
-        { not: "5", lyric: "da-" },
-        { not: "4", lyric: "nya" },
-        { not: "3", lyric: "ja-" },
+        { not: "1", lyric: "wa" },
         { not: ".", lyric: "" },
-        { not: "2", lyric: "di" },
-        { not: "1", lyric: "sak-" },
-        { not: "1", lyric: "ra-" },
-        { not: "3", lyric: "tan" },
+        { not: "3", lyric: "kul" },
+        { not: ".", lyric: "" },
+        { not: "5.", lyric: "ngglim" },
+        { not: ".", lyric: "" },
+        { not: "4", lyric: "pang" },
+        { not: "4", lyric: "se" },
+        { not: "5", lyric: "ga" },
+        { not: "4", lyric: "ne" },
+        { not: "3", lyric: "da" },
+        { not: "1", lyric: "di" },
+        { not: "4", lyric: "sak" },
+        { not: "3", lyric: "la" },
+        { not: "1", lyric: "tar" },
         { not: ".", lyric: "" }
-      ]
+      ],
     ]
   },
   {
@@ -3221,6 +3272,8 @@ function updateGameScoreUI() {
 }
 
 function onGameKeypadPress(numStr) {
+  if (appCurrentPage !== 'page-gamenotangka') return;
+
   const song = GAME_SONGS[currentSongIdx];
   const flatNotes = getSongFlatNotes(song);
   if (currentNoteIndex >= flatNotes.length) return;

@@ -2352,6 +2352,100 @@ body {
   transition: all 0.3s ease;
 }
 
+/* Not Angka Multi-Line Grid & Sheet Cards */
+#game-not-angka-sheet {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 14px 10px !important;
+  justify-content: center !important;
+  width: 100% !important;
+  max-width: 940px !important;
+  margin: 0 auto !important;
+  padding: 12px 8px !important;
+}
+
+.game-not-chip-card {
+  background: #FFFFFF;
+  border: 2px solid #E5E7EB;
+  border-radius: 14px;
+  padding: 8px 12px 10px 12px;
+  min-width: 74px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  user-select: none;
+}
+
+.game-not-chip-card .chip-duration-tag {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #6B7280;
+  background: #F3F4F6;
+  padding: 2px 7px;
+  border-radius: 12px;
+  margin-bottom: 4px;
+  letter-spacing: 0.2px;
+  border: 1px solid #E5E7EB;
+}
+
+.game-not-chip-card .chip-not-num {
+  font-size: 26px;
+  font-weight: 900;
+  color: #111827;
+  line-height: 1.1;
+  font-family: var(--font-header);
+}
+
+.game-not-chip-card .chip-lyric-lbl {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #4B5563;
+  margin-top: 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.game-not-chip-card.current {
+  background: #ECFDF5;
+  border-color: #10B981;
+  transform: translateY(-4px) scale(1.08);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.25);
+  z-index: 5;
+}
+
+.game-not-chip-card.current .chip-not-num {
+  color: #047857;
+}
+
+.game-not-chip-card.current .chip-duration-tag {
+  background: #D1FAE5;
+  color: #065F46;
+  border-color: #A7F3D0;
+}
+
+.game-not-chip-card.current .chip-lyric-lbl {
+  color: #047857;
+  font-weight: 800;
+}
+
+.game-not-chip-card.passed {
+  opacity: 0.55;
+  background: #F9FAFB;
+  border-color: #E5E7EB;
+}
+
+.game-not-chip-card.passed .chip-not-num {
+  color: #9CA3AF;
+}
+
+.game-not-chip-card.passed .chip-lyric-lbl {
+  color: #9CA3AF;
+}
+
 .status-dot-pulse {
   width: 10px;
   height: 10px;

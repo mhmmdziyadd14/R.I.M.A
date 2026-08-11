@@ -2807,32 +2807,221 @@ function switchEduTab(tabName) {
   });
 }
 
-// Interactive Not Angka Song Database
+// Web MIDI Output Engine (Root Key C: Do = C4 = 60)
+let webMidiOutputDevice = null;
+
+function initWebMidiOutput() {
+  if (navigator.requestMIDIAccess) {
+    navigator.requestMIDIAccess().then(midiAccess => {
+      const outputs = Array.from(midiAccess.outputs.values());
+      if (outputs.length > 0) {
+        webMidiOutputDevice = outputs[0];
+        console.log("Web MIDI Output device connected:", webMidiOutputDevice.name);
+        const statusElem = document.getElementById('modal-midi-status');
+        if (statusElem) statusElem.textContent = `Terhubung (${webMidiOutputDevice.name})`;
+      }
+    }).catch(err => {
+      console.warn("Web MIDI Access error:", err);
+    });
+  }
+}
+
+// Call Web MIDI Output Init on page load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initWebMidiOutput);
+} else {
+  initWebMidiOutput();
+}
+
+function sendMidiNoteOut(scaleDegreeStr, durationMs = 350) {
+  const scaleDegreeToMidiNote = {
+    '1': 60,  // Do  = C4 (60)
+    '2': 62,  // Re  = D4 (62)
+    '3': 64,  // Mi  = E4 (64)
+    '4': 65,  // Fa  = F4 (65)
+    '5': 67,  // Sol = G4 (67)
+    '6': 69,  // La  = A4 (69)
+    '7': 71,  // Si  = B4 (71)
+    "1'": 72, // Do' = C5 (72)
+    "8": 72
+  };
+  const midiNote = scaleDegreeToMidiNote[scaleDegreeStr] || (scaleDegreeStr.includes("'") ? 72 : 60);
+
+  // 1. Send via Web MIDI API to connected Synthesizer / Output Device
+  if (webMidiOutputDevice) {
+    try {
+      webMidiOutputDevice.send([0x90, midiNote, 0x7F]); // Note On
+      setTimeout(() => {
+        webMidiOutputDevice.send([0x80, midiNote, 0x00]); // Note Off
+      }, durationMs);
+    } catch(e) {
+      console.warn("Web MIDI send error:", e);
+    }
+  }
+
+  // 2. Send via WebSocket backend if connected
+  if (midiSocket && midiSocket.readyState === WebSocket.OPEN) {
+    try {
+      midiSocket.send(JSON.stringify({
+        action: "play_note",
+        midi: midiNote,
+        pitch: scaleDegreeStr,
+        root: "C",
+        duration: durationMs
+      }));
+    } catch(e) {}
+  }
+}
+
+// Helper functions for Note items
+function getNoteStr(item) {
+  return typeof item === 'object' ? item.not : item;
+}
+
+function getNoteLyric(item) {
+  return (typeof item === 'object' && item.lyric) ? item.lyric : '';
+}
+
+function getNoteDurationTag(item) {
+  if (typeof item === 'object' && item.duration) {
+    return `${item.duration} ktk`;
+  }
+  return '1 ktk';
+}
+
+// Interactive Not Angka Song Database with Lyrics & Durations (Panjang-Pendek Not)
 const GAME_SONGS = [
   {
     title: "Gundul-Gundul Pacul",
     origin: "Jawa Tengah",
-    notes: ["1", "3", "1", "3", "4", "5", "5", "7", "1'", "7", "1'", "7", "5", "1", "3", "1", "3", "4", "5", "5"]
+    notes: [
+      { not: "1", lyric: "Gun-", duration: "1" },
+      { not: "3", lyric: "dul", duration: "1" },
+      { not: "1", lyric: "gun-", duration: "1" },
+      { not: "3", lyric: "dul", duration: "1" },
+      { not: "4", lyric: "pa-", duration: "1" },
+      { not: "5", lyric: "cul", duration: "2 (.)" },
+      { not: "5", lyric: "cul", duration: "2 (.)" },
+      { not: "7", lyric: "glem-", duration: "1" },
+      { not: "1'", lyric: "pen-", duration: "1" },
+      { not: "7", lyric: "gan", duration: "1" },
+      { not: "1'", lyric: "nyung-", duration: "1" },
+      { not: "7", lyric: "gi-", duration: "1" },
+      { not: "5", lyric: "nyung", duration: "2 (.)" },
+      { not: "1", lyric: "wak-", duration: "1" },
+      { not: "3", lyric: "kul", duration: "1" },
+      { not: "1", lyric: "glem-", duration: "1" },
+      { not: "3", lyric: "pen-", duration: "1" },
+      { not: "4", lyric: "gan", duration: "1" },
+      { not: "5", lyric: "ngglim-", duration: "2 (.)" },
+      { not: "5", lyric: "pang", duration: "1" },
+      { not: "3", lyric: "se-", duration: "1" },
+      { not: "5", lyric: "da-", duration: "1" },
+      { not: "4", lyric: "nya", duration: "1" },
+      { not: "3", lyric: "ja-", duration: "2 (.)" },
+      { not: "2", lyric: "di", duration: "1" },
+      { not: "1", lyric: "sak-", duration: "1" },
+      { not: "1", lyric: "ra-", duration: "1" },
+      { not: "3", lyric: "tan", duration: "2 (.)" }
+    ]
   },
   {
     title: "Manuk Dadali",
     origin: "Jawa Barat",
-    notes: ["5", "5", "6", "1'", "5", "3", "2", "3", "5", "3", "2", "1", "2", "3", "5", "3"]
+    notes: [
+      { not: "5", lyric: "Mes-", duration: "1" },
+      { not: "5", lyric: "at", duration: "1" },
+      { not: "6", lyric: "nga-", duration: "1" },
+      { not: "1'", lyric: "bang", duration: "1" },
+      { not: "5", lyric: "luh-", duration: "1" },
+      { not: "3", lyric: "ta-", duration: "1" },
+      { not: "2", lyric: "ring", duration: "1" },
+      { not: "3", lyric: "a-", duration: "1" },
+      { not: "5", lyric: "wang", duration: "2 (.)" },
+      { not: "3", lyric: "a-", duration: "1" },
+      { not: "2", lyric: "wang", duration: "2 (.)" },
+      { not: "1", lyric: "Ngan-", duration: "1" },
+      { not: "2", lyric: "pak-", duration: "1" },
+      { not: "3", lyric: "keun", duration: "1" },
+      { not: "5", lyric: "jang-", duration: "1" },
+      { not: "3", lyric: "na", duration: "2 (.)" },
+      { not: "2", lyric: "bang-", duration: "1" },
+      { not: "1", lyric: "bir", duration: "2 (.)" }
+    ]
   },
   {
     title: "Ibu Kita Kartini",
     origin: "Nasional",
-    notes: ["1", "2", "3", "4", "5", "3", "1", "6", "1'", "7", "6", "5", "4", "6", "5", "4", "3"]
+    notes: [
+      { not: "1", lyric: "I-", duration: "1" },
+      { not: "2", lyric: "bu", duration: "1" },
+      { not: "3", lyric: "Ki-", duration: "1.5 (.)" },
+      { not: "4", lyric: "ta", duration: "0.5 (¯)" },
+      { not: "5", lyric: "Kar-", duration: "1" },
+      { not: "3", lyric: "ti-", duration: "1" },
+      { not: "1", lyric: "ni", duration: "2 (.)" },
+      { not: "6", lyric: "Put-", duration: "1" },
+      { not: "1'", lyric: "ri", duration: "1" },
+      { not: "7", lyric: "se-", duration: "1" },
+      { not: "6", lyric: "ja-", duration: "1" },
+      { not: "5", lyric: "ti", duration: "2 (.)" },
+      { not: "4", lyric: "Put-", duration: "1" },
+      { not: "6", lyric: "ri", duration: "1" },
+      { not: "5", lyric: "In-", duration: "1" },
+      { not: "4", lyric: "do-", duration: "1" },
+      { not: "3", lyric: "ne-", duration: "1" },
+      { not: "2", lyric: "sia", duration: "2 (.)" },
+      { not: "1", lyric: "ha-", duration: "2 (.)" }
+    ]
   },
   {
     title: "Suwe Ora Jamu",
     origin: "Jawa Tengah",
-    notes: ["1", "1", "2", "3", "5", "5", "6", "5", "3", "2", "1", "3", "5", "6", "5", "3"]
+    notes: [
+      { not: "1", lyric: "Su-", duration: "1" },
+      { not: "1", lyric: "we", duration: "1" },
+      { not: "2", lyric: "o-", duration: "1" },
+      { not: "3", lyric: "ra", duration: "1" },
+      { not: "5", lyric: "ja-", duration: "2 (.)" },
+      { not: "5", lyric: "mu", duration: "2 (.)" },
+      { not: "6", lyric: "Ja-", duration: "1" },
+      { not: "5", lyric: "mu", duration: "1" },
+      { not: "3", lyric: "go-", duration: "1" },
+      { not: "2", lyric: "dong", duration: "1" },
+      { not: "1", lyric: "te-", duration: "2 (.)" },
+      { not: "3", lyric: "te", duration: "2 (.)" },
+      { not: "2", lyric: "Su-", duration: "1" },
+      { not: "3", lyric: "we", duration: "1" },
+      { not: "5", lyric: "o-", duration: "1" },
+      { not: "6", lyric: "ra", duration: "1" },
+      { not: "1'", lyric: "ke-", duration: "1" },
+      { not: "7", lyric: "te-", duration: "1" },
+      { not: "6", lyric: "mu", duration: "2 (.)" },
+      { not: "5", lyric: "pisan", duration: "2 (.)" }
+    ]
   },
   {
     title: "Garuda Pancasila",
     origin: "Nasional",
-    notes: ["1", "1", "2", "2", "3", "3", "4", "5", "5", "6", "5", "4", "3", "2", "1"]
+    notes: [
+      { not: "1", lyric: "Ga-", duration: "1" },
+      { not: "1", lyric: "ru-", duration: "1" },
+      { not: "2", lyric: "da", duration: "1" },
+      { not: "2", lyric: "Pan-", duration: "1" },
+      { not: "3", lyric: "ca-", duration: "1" },
+      { not: "3", lyric: "si-", duration: "1" },
+      { not: "4", lyric: "la", duration: "1" },
+      { not: "5", lyric: "A-", duration: "2 (.)" },
+      { not: "5", lyric: "kul-", duration: "1" },
+      { not: "6", lyric: "lah", duration: "1" },
+      { not: "5", lyric: "pen-", duration: "1" },
+      { not: "4", lyric: "du-", duration: "1" },
+      { not: "3", lyric: "kung-", duration: "1" },
+      { not: "2", lyric: "mu", duration: "2 (.)" },
+      { not: "1", lyric: "pa-", duration: "1" },
+      { not: "3", lyric: "tri-", duration: "1" },
+      { not: "5", lyric: "ot", duration: "2 (.)" }
+    ]
   }
 ];
 
@@ -2873,27 +3062,40 @@ function renderGameNotSheet() {
   const song = GAME_SONGS[currentSongIdx];
   const solfegeNames = { '1': 'Do', '2': 'Re', '3': 'Mi', '4': 'Fa', '5': 'Sol', '6': 'La', '7': 'Si', '1\'': 'Do Tinggi' };
 
-  song.notes.forEach((not, idx) => {
-    const chip = document.createElement('div');
-    chip.className = 'game-not-chip';
-    if (idx === currentNoteIndex) chip.classList.add('current');
-    else if (idx < currentNoteIndex) chip.classList.add('passed');
-    chip.textContent = not;
-    sheet.appendChild(chip);
+  song.notes.forEach((item, idx) => {
+    const notVal = getNoteStr(item);
+    const lyricVal = getNoteLyric(item);
+    const durationTag = getNoteDurationTag(item);
+
+    const card = document.createElement('div');
+    card.className = 'game-not-chip-card';
+    if (idx === currentNoteIndex) card.classList.add('current');
+    else if (idx < currentNoteIndex) card.classList.add('passed');
+
+    card.innerHTML = `
+      <span class="chip-duration-tag">${durationTag}</span>
+      <span class="chip-not-num">${notVal}</span>
+      <span class="chip-lyric-lbl">${lyricVal || '&nbsp;'}</span>
+    `;
+    sheet.appendChild(card);
   });
 
   if (targetBadge) {
     if (currentNoteIndex < song.notes.length) {
-      const targetNot = song.notes[currentNoteIndex];
+      const targetNotItem = song.notes[currentNoteIndex];
+      const targetNot = getNoteStr(targetNotItem);
+      const lyric = getNoteLyric(targetNotItem);
+      const dur = getNoteDurationTag(targetNotItem);
+
       if (targetNot === "1'") {
-        targetBadge.textContent = "1' (Do Tinggi)";
+        targetBadge.textContent = `1' (Do Tinggi)${lyric ? ' - "' + lyric + '"' : ''} [${dur}]`;
       } else {
         const baseNum = targetNot.replace("'", "");
         const sol = solfegeNames[baseNum] || 'Do';
-        targetBadge.textContent = `${baseNum} (${sol})`;
+        targetBadge.textContent = `${baseNum} (${sol})${lyric ? ' - "' + lyric + '"' : ''} [${dur}]`;
       }
     } else {
-      targetBadge.textContent = "Selesai! Selamat!";
+      targetBadge.textContent = "🎉 Selesai! Selamat!";
     }
   }
 }
@@ -2913,9 +3115,13 @@ function onGameKeypadPress(numStr) {
   if (currentNoteIndex >= song.notes.length) return;
 
   totalHits++;
-  const rawTargetNot = song.notes[currentNoteIndex]; // e.g. "1'" or "1"
+  const targetItem = song.notes[currentNoteIndex];
+  const rawTargetNot = getNoteStr(targetItem); // e.g. "1'" or "1"
 
-  // Trigger Angklung Hardware & Web Audio Synth
+  // 1. Send MIDI Output Note in Key of C (Do = C4 = 60)
+  sendMidiNoteOut(numStr, 350);
+
+  // 2. Trigger Angklung Hardware & Web Audio Synth
   const scaleDegreeToPitch = { 
     '1': 'C4', 
     '2': 'D4', 
@@ -2968,9 +3174,10 @@ function startGameDemo() {
       return;
     }
 
-    const notStr = song.notes[currentNoteIndex];
+    const notItem = song.notes[currentNoteIndex];
+    const notStr = getNoteStr(notItem);
     onGameKeypadPress(notStr);
-    demoTimer = setTimeout(playStep, 450);
+    demoTimer = setTimeout(playStep, 500);
   };
 
   playStep();

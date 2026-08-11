@@ -2352,19 +2352,19 @@ body {
   transition: all 0.3s ease;
 }
 
-/* Clean Notebook Lined Sheet Music (No Card Boxes) */
+/* Clean Notebook Lined Sheet Music (Simple & Elegant, No Neon) */
 #game-not-angka-sheet {
   display: flex !important;
   flex-direction: column !important;
-  gap: 14px !important;
+  gap: 12px !important;
   width: 100% !important;
   max-width: 900px !important;
   margin: 0 auto !important;
-  padding: 18px 24px !important;
+  padding: 16px 20px !important;
   background: #FAF8F5 !important;
   border: 1.5px solid #E5E0D8 !important;
-  border-radius: 16px !important;
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.02), 0 4px 14px rgba(0, 0, 0, 0.04) !important;
+  border-radius: 14px !important;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.02) !important;
 }
 
 .game-sheet-phrase-row {
@@ -2373,16 +2373,16 @@ body {
   width: 100% !important;
   align-items: flex-end !important;
   justify-content: space-between !important;
-  padding-bottom: 12px !important;
-  border-bottom: 1.5px solid #E2DDD5 !important;
+  padding-bottom: 10px !important;
+  border-bottom: 1.5px solid #E5E0D8 !important;
   gap: 4px !important;
 }
 
 .sheet-bar-line {
-  font-size: 28px !important;
+  font-size: 26px !important;
   font-weight: 300 !important;
   color: #9CA3AF !important;
-  padding: 0 6px !important;
+  padding: 0 4px !important;
   line-height: 1 !important;
   user-select: none !important;
   display: flex !important;
@@ -2397,28 +2397,28 @@ body {
   justify-content: center !important;
   flex: 1 !important;
   min-width: 0 !important;
-  padding: 4px 2px !important;
+  padding: 2px 2px !important;
   position: relative !important;
   text-align: center !important;
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+  transition: all 0.15s ease !important;
 }
 
-/* Overline Bar for 1/2 Beat Notes (Garis Atas Nada Pendek 1/2 Ketuk) */
+/* Overline Bar for 1/2 Beat Notes */
 .game-sheet-note-col.has-overline .sheet-not-num::before {
   content: '' !important;
   position: absolute !important;
-  top: -4px !important;
+  top: -3px !important;
   left: -2px !important;
   right: -2px !important;
-  height: 2.5px !important;
+  height: 2px !important;
   background: #374151 !important;
   border-radius: 2px !important;
 }
 
 .game-sheet-note-col .sheet-lyric-txt {
-  font-size: 14.5px !important;
+  font-size: 13.5px !important;
   font-weight: 600 !important;
-  color: #374151 !important;
+  color: #4B5563 !important;
   margin-bottom: 4px !important;
   text-align: center !important;
   white-space: nowrap !important;
@@ -2426,34 +2426,34 @@ body {
 }
 
 .game-sheet-note-col .sheet-not-num {
-  font-size: 26px !important;
+  font-size: 24px !important;
   font-weight: 800 !important;
   color: #1F2937 !important;
   line-height: 1.1 !important;
   font-family: var(--font-header) !important;
-  transition: all 0.2s ease !important;
+  transition: all 0.15s ease !important;
   position: relative !important;
 }
 
-/* Active Note Highlight (Dot Indicator & Vibrant Pitch without box cards) */
+/* Active Note Highlight (Clean Emerald Accent) */
 .game-sheet-note-col.current .sheet-not-num {
   color: #059669 !important;
   font-weight: 900 !important;
-  transform: scale(1.25) !important;
-  text-shadow: 0 0 10px rgba(16, 185, 129, 0.4) !important;
+  transform: scale(1.18) !important;
+  text-shadow: none !important;
 }
 
 .game-sheet-note-col.current .sheet-not-num::after {
   content: '' !important;
   position: absolute !important;
-  bottom: -4px !important;
+  bottom: -5px !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
-  width: 8px !important;
-  height: 8px !important;
-  background: #10B981 !important;
+  width: 6px !important;
+  height: 6px !important;
+  background: #059669 !important;
   border-radius: 50% !important;
-  box-shadow: 0 0 8px #10B981 !important;
+  box-shadow: none !important;
 }
 
 .game-sheet-note-col.current .sheet-lyric-txt {
@@ -2640,30 +2640,32 @@ body {
   margin-bottom: 6px;
 }
 
-/* Game Song Buttons */
+/* Game Song Buttons (Clean & Harmonized) */
 .game-song-btn {
   background: #FFFFFF;
   border: 1.5px solid #E5E7EB;
-  color: #374151;
+  color: #4B5563;
   font-weight: 700;
   font-size: 13px;
-  padding: 8px 16px;
+  padding: 8px 18px;
   border-radius: 20px;
   cursor: pointer;
   transition: all 0.2s ease;
   outline: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .game-song-btn:hover {
-  border-color: #F59E0B;
-  color: #D97706;
+  border-color: #059669;
+  color: #059669;
+  background: #ECFDF5;
 }
 
 .game-song-btn.active {
-  background: #F59E0B;
-  border-color: #F59E0B;
+  background: #059669;
+  border-color: #059669;
   color: #FFFFFF;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.2);
 }
 
 /* Game Control Buttons */
@@ -2678,13 +2680,14 @@ body {
 }
 
 .game-control-btn.btn-demo {
-  background: #EFF6FF;
-  border: 1.5px solid #BFDBFE;
-  color: #1D4ED8;
+  background: #ECFDF5;
+  border: 1.5px solid #A7F3D0;
+  color: #047857;
 }
 .game-control-btn.btn-demo:hover {
-  background: #3B82F6;
+  background: #059669;
   color: #FFFFFF;
+  border-color: #059669;
 }
 
 .game-control-btn.btn-reset {
@@ -2697,44 +2700,44 @@ body {
   color: #111827;
 }
 
-/* Game Keypad Buttons */
+/* Game Keypad Buttons (Clean Minimalist Touch) */
 .game-keypad-btn {
   background: #FFFFFF;
-  border: 2px solid #E5E7EB;
-  border-radius: 14px;
-  width: 64px;
-  height: 68px;
+  border: 1.5px solid #E5E7EB;
+  border-radius: 12px;
+  width: 62px;
+  height: 64px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
   outline: none;
 }
 
 .game-keypad-btn:hover {
-  transform: translateY(-4px) scale(1.05);
-  border-color: #10B981;
-  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.2);
+  transform: translateY(-2px);
+  border-color: #059669;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.12);
 }
 
 .game-keypad-btn:active, .game-keypad-btn.pressed {
-  transform: translateY(2px) scale(0.95);
+  transform: translateY(1px);
   background: #ECFDF5;
-  border-color: #10B981;
+  border-color: #059669;
 }
 
 .game-keypad-btn .key-num {
-  font-size: 22px;
-  font-weight: 900;
+  font-size: 20px;
+  font-weight: 800;
   color: #111827;
 }
 
 .game-keypad-btn .key-solfege {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   color: #6B7280;
 }
 

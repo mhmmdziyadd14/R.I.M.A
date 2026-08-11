@@ -3002,10 +3002,18 @@ const GAME_SONGS = [
         { not: "5", lyric: "In-" },
         { not: "4", lyric: "do-" },
         { not: "3", lyric: "ne-" },
-        { not: "2", lyric: "sia" },
         { not: ".", lyric: "" },
-        { not: "1", lyric: "ha-" },
+        { not: "1", lyric: "sia" },
         { not: ".", lyric: "" }
+      ],
+      [
+        { not: "2", lyric: "ha-" },
+        { not: ".", lyric: "" },
+        { not: "4", lyric: "rum" },
+        { not: "3", lyric: "na" },
+        { not: "2", lyric: "ma" },
+        { not: "1", lyric: "nya" },
+        { not: ".", lyric: "" },
       ]
     ]
   },

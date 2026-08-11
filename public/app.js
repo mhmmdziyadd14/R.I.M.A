@@ -325,9 +325,44 @@ function mapMidiNoteToScaleDegree(midiNote) {
   return pcMap[pitchClass] || null;
 }
 
-// Map Angklung Hardware Note (1-8) to Not Angka scale degree string
+// Map Angklung Hardware Note (1-16) to Not Angka scale degree string
 function mapAngklungNoteToScaleDegree(noteNum, angklungId = 3) {
   const noteVal = parseInt(noteNum, 10);
+  if (isNaN(noteVal)) return null;
+
+  // Angklung 3 (BASS_PITCHES) mapping:
+  // e3(1), f3(2), f#3(3), g3(4), g#3(5), a3(6), a#3(7), b3(8),
+  // c4(9), c#4(10), d4(11), d#4(12), e4(13), f4(14), f#4(15), g4(16)
+  if (angklungId === 3) {
+    const bassMap = {
+      9: "1",   // c4  = Do
+      10: "1",  // c#4 = Do
+      11: "2",  // d4  = Re
+      12: "2",  // d#4 = Re
+      13: "3",  // e4  = Mi
+      14: "4",  // f4  = Fa
+      15: "4",  // f#4 = Fa
+      16: "5"   // g4  = Sol
+    };
+    if (bassMap[noteVal]) return bassMap[noteVal];
+  }
+
+  // Angklung 1 (ANGKLUNG1_PITCHES) mapping:
+  // g4(1), a4(2), a#4(3), b4(4), c5(5), d5(6), e5(7), f5(8) ...
+  if (angklungId === 1) {
+    const a1Map = {
+      1: "5",   // g4  = Sol
+      2: "6",   // a4  = La
+      4: "7",   // b4  = Si
+      5: "1'",  // c5  = Do Tinggi
+      6: "2'",  // d5
+      7: "3'",  // e5
+      8: "4'"   // f5
+    };
+    if (a1Map[noteVal]) return a1Map[noteVal];
+  }
+
+  // Standard 1-8 fallback mapping:
   const angklungMap = {
     1: "1",
     2: "2",

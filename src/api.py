@@ -2052,11 +2052,13 @@ def startup_event():
     main_event_loop = asyncio.get_event_loop()
     init_midi()
 
-def broadcast_midi_event(note_num: int, angklung_id: int, action: str):
+def broadcast_midi_event(note_num: int, angklung_id: int, action: str, midi_note: int = None):
     global main_event_loop
     if not active_midi_websockets or main_event_loop is None:
         return
     payload = {"note": note_num, "angklung": angklung_id, "action": action}
+    if midi_note is not None:
+        payload["midi"] = midi_note
     for ws in list(active_midi_websockets):
         try:
             asyncio.run_coroutine_threadsafe(ws.send_json(payload), main_event_loop)
@@ -2074,40 +2076,24 @@ def midi_repeater_loop():
     global midi_repeater_active
     while midi_repeater_active:
         with active_midi_notes_lock:
-            if not active_midi_notes:
-                time.sleep(0.01)
-                continue
-                
-            # Group active notes by board
-            board_notes = {1: [], 2: [], 3: []}
-            for (note_num, angklung_id) in list(active_midi_notes.keys()):
-                board_notes[angklung_id].append(note_num)
-                
-        # Send active notes to respective Arduinos
-        for angklung_id, notes in board_notes.items():
-            if notes:
-                send_to_arduino(notes, angklung_id, play_synth=False)
-                
-        # Wait slightly longer than durasiGetar (85ms) for continuous vibration
-        time.sleep(0.09)
+            current_time = time.time()
+            notes_to_play = list(active_midi_notes.items())
+            
+        for (note, board), last_time in notes_to_play:
+            play_local_sound(note, board, 1.0, "melody" if board != 3 else "bass")
+            
+        time.sleep(0.18)
 
 def start_midi_repeater():
-    global midi_repeater_active, midi_repeater_thread
+    global midi_repeater_thread, midi_repeater_active
     if not midi_repeater_active:
         midi_repeater_active = True
-        midi_repeater_thread = threading.Thread(target=midi_repeater_loop)
-        midi_repeater_thread.daemon = True
+        midi_repeater_thread = threading.Thread(target=midi_repeater_loop, daemon=True)
         midi_repeater_thread.start()
 
 def stop_midi_repeater():
-    global midi_repeater_active, midi_repeater_thread
+    global midi_repeater_active
     midi_repeater_active = False
-    if midi_repeater_thread is not None:
-        try:
-            midi_repeater_thread.join(timeout=0.5)
-        except:
-            pass
-        midi_repeater_thread = None
 
 def init_midi():
     global HAS_MIDI
@@ -2177,14 +2163,13 @@ def midi_listener_loop(device_id: int):
                                 
                         if resolved_note is not None and resolved_board is not None:
                             if is_note_on:
-                                play_local_sound(resolved_note, resolved_board, vol, "melody" if resolved_board != 3 else "bass")
                                 with active_midi_notes_lock:
                                     active_midi_notes[(resolved_note, resolved_board)] = time.time()
-                                broadcast_midi_event(resolved_note, resolved_board, "down")
+                                broadcast_midi_event(resolved_note, resolved_board, "down", midi_note=note)
                             elif is_note_off:
                                 with active_midi_notes_lock:
                                     active_midi_notes.pop((resolved_note, resolved_board), None)
-                                broadcast_midi_event(resolved_note, resolved_board, "up")
+                                broadcast_midi_event(resolved_note, resolved_board, "up", midi_note=note)
                                 
             time.sleep(0.005)
         except Exception as e:

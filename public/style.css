@@ -2550,7 +2550,7 @@ body {
 }
 
 /* Enable vertical scrolling for Edukasi & Game pages */
-#page-edukasi, #page-gamenotangka {
+#page-pengenalan, #page-gamenotangka {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
 }
@@ -2561,17 +2561,17 @@ body {
 }
 
 /* Custom Smooth Scrollbar */
-#page-edukasi::-webkit-scrollbar, #page-gamenotangka::-webkit-scrollbar {
+#page-pengenalan::-webkit-scrollbar, #page-gamenotangka::-webkit-scrollbar {
   width: 8px;
 }
-#page-edukasi::-webkit-scrollbar-track, #page-gamenotangka::-webkit-scrollbar-track {
+#page-pengenalan::-webkit-scrollbar-track, #page-gamenotangka::-webkit-scrollbar-track {
   background: #F3F4F6;
 }
-#page-edukasi::-webkit-scrollbar-thumb, #page-gamenotangka::-webkit-scrollbar-thumb {
+#page-pengenalan::-webkit-scrollbar-thumb, #page-gamenotangka::-webkit-scrollbar-thumb {
   background: #D1D5DB;
   border-radius: 4px;
 }
-#page-edukasi::-webkit-scrollbar-thumb:hover, #page-gamenotangka::-webkit-scrollbar-thumb:hover {
+#page-pengenalan::-webkit-scrollbar-thumb:hover, #page-gamenotangka::-webkit-scrollbar-thumb:hover {
   background: #9CA3AF;
 }
 

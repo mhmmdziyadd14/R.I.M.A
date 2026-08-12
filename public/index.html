@@ -59,7 +59,18 @@
 
         <div class="cn-carousel-container" id="menu-slider-track">
           
-          <!-- Card 1: Pustaka Lagu -->
+          <!-- Card 1: Pengenalan Angklung -->
+          <div class="cn-card-wrapper" onclick="navigateTo('page-pengenalan')">
+            <div class="cn-character-placeholder">
+              <i class="fa-solid fa-book-open placeholder-icon" style="font-size: 64px; color: #10B981; margin-top: 25px;"></i>
+            </div>
+            <div class="cn-card-bg bg-green" style="background: #E8F5E9; border-color: #81C784;">
+              <h3 style="color: #1B5E20;">Pengenalan Angklung</h3>
+              <p style="color: #2E7D32;">Sejarah & Robotik</p>
+            </div>
+          </div>
+
+          <!-- Card 2: Pustaka Lagu -->
           <div class="cn-card-wrapper active-slide" onclick="navigateTo('page-pustaka')">
             <div class="cn-character-placeholder">
               <img src="ikonpustakalagu.svg" alt="Pustaka Lagu" class="placeholder-icon">
@@ -561,8 +572,8 @@
         </div>
     </section>
 
-    <!-- 7. EDUKASI ANGKLUNG & OTOMATISASI PROJECT PAGE -->
-    <section id="page-edukasi" class="app-page cn-layout">
+    <!-- 7. PENGENALAN ANGKLUNG & OTOMATISASI PROJECT PAGE -->
+    <section id="page-pengenalan" class="app-page cn-layout">
       <nav class="cn-top-nav">
         <div class="nav-logo" style="display: flex; gap: 20px; align-items: center;">
           <button class="cn-back-btn" onclick="navigateTo('page-beranda')"><i class="fa-solid fa-chevron-left"></i></button>
@@ -575,182 +586,124 @@
 
       <div class="edu-container" style="max-width: 1040px; margin: 0 auto; padding: 20px 20px 80px 20px; width: 100%;">
         
-        <!-- Hero Section: Main Description & Showcase Image Frame -->
-        <div style="background: #FFFFFF; border: 1.5px solid #E5E7EB; border-radius: 20px; padding: 24px; box-shadow: 0 6px 20px rgba(0,0,0,0.04); margin-bottom: 24px; display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px; align-items: center;">
-          <div>
-            <span style="font-size: 12px; font-weight: 800; color: #10B981; letter-spacing: 1.5px; text-transform: uppercase;">Ensiklopedia Kebudayaan</span>
-            <h1 style="font-family: var(--font-header); font-size: 32px; font-weight: 800; color: #111827; margin: 6px 0 12px 0; line-height: 1.25;">Seni Angklung & Otomatisasi RIMA</h1>
-            <p style="color: #4B5563; font-size: 14.5px; line-height: 1.65; margin: 0 0 16px 0;">
-              Angklung adalah alat musik tradisional multitonal bernada ganda yang tumbuh dan berkembang dari kebudayaan masyarakat Sunda di Jawa Barat. Dibuat dari bilah pipa bambu yang terpasang pada kerangka khusus, Angklung memancarkan getaran nada merdu saat digoyangkan. Kini melalui <strong>Project RIMA Angklung</strong>, seni tradisional ini dipadukan dengan kecerdasan buatan dan aktuator robotik otomatis.
-            </p>
-            
-            <!-- Quick Facts Badges -->
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <span style="background: #ECFDF5; border: 1px solid #A7F3D0; color: #047857; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 8px;">📍 Jawa Barat</span>
-              <span style="background: #EFF6FF; border: 1px solid #BFDBFE; color: #1D4ED8; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 8px;">📜 UNESCO 2010</span>
-              <span style="background: #FFFBEB; border: 1px solid #FDE68A; color: #B45309; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 8px;">🎋 Bambu Wulung</span>
-              <span style="background: #F5F3FF; border: 1px solid #DDD6FE; color: #6D28D9; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 8px;">🤖 Robotik RIMA</span>
-            </div>
+        <!-- Blog Layout Content -->
+        <article style="max-width: 1040px; margin: 0 auto; padding: 20px 0; font-family: 'Inter', sans-serif;">
+          
+          <!-- Blog Title Area -->
+          <div style="text-align: center; margin-bottom: 60px; padding: 0 20px;">
+            <span style="display: inline-block; background: #111827; color: white; padding: 4px 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 24px;">Ensiklopedia Kebudayaan</span>
+            <h1 style="font-family: var(--font-header); font-size: 46px; color: #111827; margin: 0; line-height: 1.15;">Seni Angklung &<br>Otomatisasi RIMA</h1>
+            <p style="color: #6B7280; font-size: 13px; margin-top: 24px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600;">Warisan Budaya Takbenda Dunia • Sejak 2010</p>
           </div>
-
-          <!-- Showcase Image Frame -->
-          <div style="position: relative; border-radius: 16px; overflow: hidden; border: 1px solid #E5E7EB; box-shadow: 0 4px 14px rgba(0,0,0,0.06);">
-            <img src="angklung_showcase.png" alt="Angklung Showcase" style="width: 100%; height: 220px; object-fit: cover; display: block;">
-            <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.7)); padding: 10px 14px; color: white;">
-              <div style="font-size: 12px; font-weight: 700;">Angklung Tradisional Indonesia</div>
-              <div style="font-size: 10px; opacity: 0.85;">Warisan Budaya Takbenda Dunia</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Edu Navigation Tabs -->
-        <div class="edu-tabs" style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
-          <button id="edu-tab-sejarah" class="edu-tab-btn active" onclick="switchEduTab('sejarah')">Mengenal Angklung</button>
-          <button id="edu-tab-otomatisasi" class="edu-tab-btn" onclick="switchEduTab('otomatisasi')">Otomatisasi Project RIMA</button>
-          <button id="edu-tab-panduan" class="edu-tab-btn" onclick="switchEduTab('panduan')">Panduan Penggunaan</button>
-        </div>
-
-        <!-- Tab 1: Mengenal Angklung (Point-Based + Material Image Frame) -->
-        <div id="edu-content-sejarah" class="edu-tab-content">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-            
-            <!-- Point Group 1: Material & Resonansi (with Image Frame) -->
-            <div class="edu-card" style="display: flex; flex-direction: column;">
-              <h3 style="color: #10B981; margin-bottom: 12px;">🎋 Bahan Pembuatan & Resonansi</h3>
+          
+          <!-- Section 1: Text on Left, Image on Right -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 48px; align-items: start; margin-bottom: 80px; padding: 0 20px;">
+            <div>
+              <p style="font-size: 16px; line-height: 1.85; color: #4B5563; margin-top: 0; margin-bottom: 24px; text-align: justify;">
+                <span style="float: left; font-size: 68px; line-height: 56px; padding-top: 6px; padding-right: 14px; font-weight: 900; color: #111827; font-family: var(--font-header);">A</span>ngklung adalah alat musik multitonal (bernada ganda) tradisional yang berkembang dari masyarakat Sunda di Indonesia. Alat musik ini terbuat dari bambu, dibunyikan dengan cara digoyangkan sehingga menghasilkan bunyi yang bergetar dalam susunan nada 2, 3, sampai 4 nada dalam setiap ukuran.
+              </p>
               
-              <div style="border-radius: 12px; overflow: hidden; border: 1px solid #E5E7EB; margin-bottom: 14px;">
-                <img src="bambu_material.png" alt="Bambu Material" style="width: 100%; height: 140px; object-fit: cover; display: block;">
+              <div style="background: #F8FAFC; padding: 24px; border-left: 4px solid #3B82F6; margin-bottom: 24px;">
+                <p style="margin: 0; font-size: 18px; line-height: 1.6; color: #1E293B; font-weight: 600; font-style: italic;">
+                  "Menurut Ensiklopedia Bebas Wikipedia, istilah angklung berasal dari bahasa Sunda 'angkleung-angkleungan' yang merujuk pada gerakan pemain yang berayun saat memainkannya."
+                </p>
               </div>
 
-              <div style="display: flex; flex-direction: column; gap: 8px;">
-                <div style="background: #F9FAFB; padding: 10px 12px; border-radius: 10px; border: 1px solid #F3F4F6;">
-                  <strong style="color: #111827; font-size: 13px;">• Bambu Wulung (Bambu Hitam)</strong>
-                  <p style="margin: 2px 0 0 0; font-size: 12.5px; color: #4B5563;">Menghasilkan resonansi nada bas & menengah yang hangat, tebal, dan bergetar panjang.</p>
-                </div>
-                <div style="background: #F9FAFB; padding: 10px 12px; border-radius: 10px; border: 1px solid #F3F4F6;">
-                  <strong style="color: #111827; font-size: 13px;">• Bambu Tali / Bambu Surat</strong>
-                  <p style="margin: 2px 0 0 0; font-size: 12.5px; color: #4B5563;">Menghasilkan nada tinggi (*treble*) yang jernih, bernas, dan nyaring.</p>
-                </div>
-                <div style="background: #F9FAFB; padding: 10px 12px; border-radius: 10px; border: 1px solid #F3F4F6;">
-                  <strong style="color: #111827; font-size: 13px;">• Proses Pengeringan Alami</strong>
-                  <p style="margin: 2px 0 0 0; font-size: 12.5px; color: #4B5563;">Bambu disimpan 1–2 tahun di atas perapian agar kadar air 0% dan pitch nada terkunci stabil.</p>
-                </div>
-              </div>
+              <p style="font-size: 16px; line-height: 1.85; color: #4B5563; margin-bottom: 32px; text-align: justify;">
+                Sejak November 2010, Angklung secara resmi diakui oleh UNESCO sebagai Karya Agung Warisan Budaya Lisan dan Nonbendawi Manusia. Pada tahun 1938, Daeng Soetigna berinovasi menciptakan <em>Angklung Padaeng</em> dengan tangga nada diatonik (Do-Re-Mi) agar angklung dapat memainkan lagu-lagu internasional yang lebih modern.
+              </p>
+
+              <h3 style="font-family: var(--font-header); font-size: 22px; color: #111827; margin: 0 0 16px 0;">3 Teknik Utama Memainkan Angklung</h3>
+              <ul style="font-size: 15px; line-height: 1.7; color: #4B5563; padding-left: 20px; margin: 0;">
+                <li style="margin-bottom: 8px;"><strong>Kurulung (Getar):</strong> Menggetarkan tabung dasar dengan cepat dan ritmik konstan.</li>
+                <li style="margin-bottom: 8px;"><strong>Centok (Hentak):</strong> Menarik tabung dengan cepat untuk nada <em>staccato</em> pendek yang tegas.</li>
+                <li><strong>Tengkep:</strong> Menggetarkan tabung besar saja sementara tabung kecil ditahan (tidak bergetar).</li>
+              </ul>
             </div>
-
-            <!-- Point Group 2: Sejarah & Teknik Memainkan -->
-            <div style="display: flex; flex-direction: column; gap: 16px;">
-              
-              <!-- Poin Sejarah -->
-              <div class="edu-card">
-                <h3 style="color: #3B82F6; margin-bottom: 10px;">📜 Fakta Sejarah & UNESCO</h3>
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                  <div style="font-size: 13px; color: #374151;">• <strong>Asal kata</strong>: Berasal dari bahasa Sunda *"angkleung-angkleungan"* (gerakan pemain yang berayun).</div>
-                  <div style="font-size: 13px; color: #374151;">• <strong>Pengakuan UNESCO</strong>: Dikukuhkan pada 16 November 2010 sebagai Warisan Budaya Takbenda Dunia.</div>
-                  <div style="font-size: 13px; color: #374151;">• <strong>Inovasi Diatonik</strong>: Daeng Soetigna (1938) menciptakan Angklung Padaeng berdada diatonik (*Do-Re-Mi*) untuk memainkan lagu internasional.</div>
-                </div>
-              </div>
-
-              <!-- Poin Teknik Memainkan -->
-              <div class="edu-card">
-                <h3 style="color: #F59E0B; margin-bottom: 10px;">🎶 3 Teknik Utama Memainkan</h3>
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                  <div style="background: #FFFBEB; padding: 8px 12px; border-radius: 8px; border: 1px solid #FDE68A;">
-                    <strong style="color: #B45309; font-size: 12.5px;">1. Kurulung (Getar)</strong>
-                    <span style="font-size: 12px; color: #4B5563; display: block;">Menggetarkan tabung dasar dengan cepat dan ritmik konstan.</span>
-                  </div>
-                  <div style="background: #FFFBEB; padding: 8px 12px; border-radius: 8px; border: 1px solid #FDE68A;">
-                    <strong style="color: #B45309; font-size: 12.5px;">2. Centok (Hentak)</strong>
-                    <span style="font-size: 12px; color: #4B5563; display: block;">Ditarik/dihentakkan cepat untuk nada staccato pendek yang tegas.</span>
-                  </div>
-                  <div style="background: #FFFBEB; padding: 8px 12px; border-radius: 8px; border: 1px solid #FDE68A;">
-                    <strong style="color: #B45309; font-size: 12.5px;">3. Tepuk</strong>
-                    <span style="font-size: 12px; color: #4B5563; display: block;">Menepuk salah satu tabung bambu untuk aksen ritmis lagu.</span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
-
-        <!-- Tab 2: Otomatisasi Project RIMA (Point-Based Architecture) -->
-        <div id="edu-content-otomatisasi" class="edu-tab-content" style="display: none;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
             
-            <!-- Hardware Points -->
-            <div class="edu-card">
-              <h3 style="color: #10B981; margin-bottom: 12px;">⚙️ Komponen Hardware Robotik</h3>
-              <div style="display: flex; flex-direction: column; gap: 8px;">
-                <div style="background: #F9FAFB; padding: 10px 12px; border-radius: 10px; border: 1px solid #F3F4F6;">
-                  <strong style="color: #111827; font-size: 13px;">• Solenoid Actuator (12V)</strong>
-                  <p style="margin: 2px 0 0 0; font-size: 12.5px; color: #4B5563;">Pengetuk dan penggerak bilah bambu mekanis berkecepatan tinggi.</p>
-                </div>
-                <div style="background: #F9FAFB; padding: 10px 12px; border-radius: 10px; border: 1px solid #F3F4F6;">
-                  <strong style="color: #111827; font-size: 13px;">• ESP32 / Arduino Microcontroller</strong>
-                  <p style="margin: 2px 0 0 0; font-size: 12.5px; color: #4B5563;">Otak pengolah sinyal PWM dan pengatur waktu aktuasi solenoid.</p>
-                </div>
-                <div style="background: #F9FAFB; padding: 10px 12px; border-radius: 10px; border: 1px solid #F3F4F6;">
-                  <strong style="color: #111827; font-size: 13px;">• Multi-Channel Relay Driver</strong>
-                  <p style="margin: 2px 0 0 0; font-size: 12.5px; color: #4B5563;">Pengatur arus dan pengisolasi tegangan solenoid per bilah nada.</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- AI Workflow Points -->
-            <div class="edu-card">
-              <h3 style="color: #3B82F6; margin-bottom: 12px;">🧠 Cara Kerja Sistem RIMA</h3>
-              <div style="display: flex; flex-direction: column; gap: 8px;">
-                <div style="background: #EFF6FF; padding: 10px 12px; border-radius: 10px; border: 1px solid #BFDBFE;">
-                  <strong style="color: #1D4ED8; font-size: 12.5px;">1. Tangkapan Audio Mikrofon</strong>
-                  <span style="font-size: 12px; color: #4B5563; display: block;">Mikrofon merekam nada vokal nyanyian vokal pengguna secara real-time.</span>
-                </div>
-                <div style="background: #EFF6FF; padding: 10px 12px; border-radius: 10px; border: 1px solid #BFDBFE;">
-                  <strong style="color: #1D4ED8; font-size: 12.5px;">2. PyTorch CRNN Pitch Estimator</strong>
-                  <span style="font-size: 12px; color: #4B5563; display: block;">Estimasi frekuensi fundamental (*F0*) interval 10ms menggunakan AI.</span>
-                </div>
-                <div style="background: #EFF6FF; padding: 10px 12px; border-radius: 10px; border: 1px solid #BFDBFE;">
-                  <strong style="color: #1D4ED8; font-size: 12.5px;">3. Auto-Correction & Quantization</strong>
-                  <span style="font-size: 12px; color: #4B5563; display: block;">Menyetel nada ke tangga nada harmonis aktif dan membentuk durasi ketukan.</span>
-                </div>
-                <div style="background: #EFF6FF; padding: 10px 12px; border-radius: 10px; border: 1px solid #BFDBFE;">
-                  <strong style="color: #1D4ED8; font-size: 12.5px;">4. WebSocket Pulse Output</strong>
-                  <span style="font-size: 12px; color: #4B5563; display: block;">Kirim sinyal aktuasi ke mikrokontroler untuk menggetarkan Angklung fisik.</span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        <!-- Tab 3: Panduan Penggunaan -->
-        <div id="edu-content-panduan" class="edu-tab-content" style="display: none;">
-          <div class="edu-card">
-            <h3 style="margin-bottom: 14px;">📖 Panduan Penggunaan Fitur Aplikasi RIMA Angklung</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
-              <div style="background: #F9FAFB; padding: 12px; border-radius: 12px; border: 1px solid #E5E7EB;">
-                <h4 style="margin: 0 0 4px 0; color: #10B981; font-size: 14px;">1. Pustaka Lagu</h4>
-                <p style="margin: 0; font-size: 12.5px; color: #4B5563;">Pilih lagu daerah dari koleksi museum untuk dimainkan oleh robot Angklung otomatis.</p>
-              </div>
-              <div style="background: #F9FAFB; padding: 12px; border-radius: 12px; border: 1px solid #E5E7EB;">
-                <h4 style="margin: 0 0 4px 0; color: #3B82F6; font-size: 14px;">2. Kontrol Manual</h4>
-                <p style="margin: 0; font-size: 12.5px; color: #4B5563;">Uji coba membunyikan setiap bilah angklung secara bebas melalui tuts piano/keyboard.</p>
-              </div>
-              <div style="background: #F9FAFB; padding: 12px; border-radius: 12px; border: 1px solid #E5E7EB;">
-                <h4 style="margin: 0 0 4px 0; color: #8B5CF6; font-size: 14px;">3. Repeater Vokal</h4>
-                <p style="margin: 0; font-size: 12.5px; color: #4B5563;">Nyanyikan melodi vokal Anda di depan mic, dan robot Angklung akan menirunya presisi!</p>
-              </div>
-              <div style="background: #F9FAFB; padding: 12px; border-radius: 12px; border: 1px solid #E5E7EB;">
-                <h4 style="margin: 0 0 4px 0; color: #F59E0B; font-size: 14px;">4. Game Not Angka</h4>
-                <p style="margin: 0; font-size: 12.5px; color: #4B5563;">Mainkan partitur not angka lagu daerah secara interaktif dan latih akurasi ritme Anda!</p>
-              </div>
-              <div style="background: #F9FAFB; padding: 12px; border-radius: 12px; border: 1px solid #E5E7EB;">
-                <h4 style="margin: 0 0 4px 0; color: #EF4444; font-size: 14px;">5. Deteksi Bahasa</h4>
-                <p style="margin: 0; font-size: 12.5px; color: #4B5563;">Ucapkan kata sapaan bahasa daerah di depan mic untuk menemukan rekomendasi lagu daerah terkait.</p>
-              </div>
+            <div>
+              <img src="angklung_showcase.png" alt="Seni Angklung" style="width: 100%; border-radius: 4px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); display: block;">
             </div>
           </div>
-        </div>
+
+          <!-- Section 2: Image on Left, Text on Right -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 48px; align-items: start; margin-bottom: 80px; padding: 0 20px;">
+            <div style="order: -1;">
+              <img src="bambu_material.png" alt="Material Bambu" style="width: 100%; border-radius: 4px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); display: block;">
+            </div>
+            
+            <div>
+              <h2 style="font-family: var(--font-header); font-size: 32px; color: #111827; margin-top: 0; margin-bottom: 24px; line-height: 1.2;">Bahan Pembuatan & Resonansi</h2>
+              <p style="font-size: 16px; line-height: 1.85; color: #4B5563; margin-bottom: 24px; text-align: justify;">
+                Angklung terbuat dari bambu yang dipotong ujung-ujungnya. Terdapat dua jenis bambu yang didokumentasikan sebagai bahan terbaik pembuat angklung:
+              </p>
+              
+              <div style="margin-bottom: 24px; border-bottom: 1px solid #E5E7EB; padding-bottom: 16px;">
+                <h4 style="margin: 0 0 6px 0; font-size: 17px; color: #111827;">1. Bambu Hitam (Gigantochloa atroviolacea)</h4>
+                <p style="margin: 0; font-size: 15px; color: #4B5563; line-height: 1.6;">Atau sering disebut Bambu Wulung. Dipercaya menghasilkan resonansi nada bas dan menengah yang terdengar hangat, tebal, dan memiliki durasi getaran yang panjang.</p>
+              </div>
+              
+              <div style="margin-bottom: 24px; border-bottom: 1px solid #E5E7EB; padding-bottom: 16px;">
+                <h4 style="margin: 0 0 6px 0; font-size: 17px; color: #111827;">2. Bambu Tali (Gigantochloa apus)</h4>
+                <p style="margin: 0; font-size: 15px; color: #4B5563; line-height: 1.6;">Atau Bambu Awi Tali. Sering digunakan khusus untuk tabung-tabung kecil. Menghasilkan nada tinggi (<em>treble</em>) yang jernih dan sangat nyaring.</p>
+              </div>
+
+              <p style="font-size: 14px; line-height: 1.7; color: #6B7280; font-style: italic; background: #F9FAFB; padding: 16px; border-radius: 8px; border: 1px dashed #D1D5DB; margin: 0;">
+                <strong>Proses Pembuatan Esensial:</strong> Bambu segar harus dibersihkan, dipotong, lalu dikeringkan. Bambu biasanya dijemur atau diasap di atas perapian tradisional selama berbulan-bulan untuk memastikan tingkat air berkurang drastis sehingga menghasilkan kualitas nada (pitch) yang awet dan nyaring.
+              </p>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div style="text-align: center; margin: 60px 0;">
+            <span style="display: inline-block; width: 60px; height: 3px; background: #111827;"></span>
+          </div>
+
+          <!-- Section 3: Text Left, Features Right (Otomatisasi) -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 64px; align-items: start; padding: 0 20px; margin-bottom: 80px;">
+            <div>
+              <h2 style="font-family: var(--font-header); font-size: 32px; color: #111827; margin-top: 0; margin-bottom: 24px;">Otomatisasi Project RIMA</h2>
+              <p style="font-size: 16px; line-height: 1.85; color: #4B5563; margin-bottom: 32px; text-align: justify;">
+                Melalui inovasi teknologi, seni tradisional bambu ini dipadukan dengan Kecerdasan Buatan (AI) dan aktuator mekanis. Proyek RIMA memungkinkan angklung untuk merespons suara manusia dan dimainkan sepenuhnya oleh sistem robotik.
+              </p>
+              
+              <h3 style="font-family: var(--font-header); font-size: 20px; color: #111827; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-microchip" style="color: #3B82F6;"></i> Hardware & AI Workflow
+              </h3>
+              <ol style="font-size: 15px; line-height: 1.8; color: #4B5563; padding-left: 20px; margin-bottom: 0;">
+                <li style="margin-bottom: 12px;"><strong>Audio Capture:</strong> Mikrofon menangkap vokal penyanyi secara <em>real-time</em>.</li>
+                <li style="margin-bottom: 12px;"><strong>AI Pitch Estimator:</strong> Model PyTorch CRNN mengestimasi frekuensi fundamental (F0) setiap 10 milidetik.</li>
+                <li style="margin-bottom: 12px;"><strong>Auto-Correction:</strong> Mengoreksi frekuensi vokal mentah menjadi tangga nada harmonis terdekat.</li>
+                <li style="margin-bottom: 12px;"><strong>Relay & Solenoid:</strong> ESP32 menerima data via WebSocket dan menggerakkan Solenoid Actuator 12V untuk mengetuk bilah bambu.</li>
+              </ol>
+            </div>
+            
+            <div style="background: #F8FAFC; padding: 32px; border: 1px solid #E2E8F0;">
+              <h3 style="font-family: var(--font-header); font-size: 20px; color: #111827; margin: 0 0 24px 0; text-align: center; letter-spacing: 1px; text-transform: uppercase;">Panduan Fitur Aplikasi</h3>
+              
+              <div style="margin-bottom: 20px;">
+                <strong style="color: #111827; display: block; font-size: 16px; margin-bottom: 4px;">Pustaka Lagu & Game Not Angka</strong>
+                <span style="color: #4B5563; font-size: 14px; line-height: 1.6; display: block;">Mainkan otomatis lagu daerah dari koleksi kami atau latih kemampuan ritme Anda melalui permainan partitur interaktif.</span>
+              </div>
+              
+              <div style="margin-bottom: 20px;">
+                <strong style="color: #111827; display: block; font-size: 16px; margin-bottom: 4px;">Kontrol Manual</strong>
+                <span style="color: #4B5563; font-size: 14px; line-height: 1.6; display: block;">Jadilah dirigen! Bunyikan bilah angklung secara bebas dengan menekan tuts virtual piano pada layar Anda.</span>
+              </div>
+              
+              <div style="margin-bottom: 20px;">
+                <strong style="color: #111827; display: block; font-size: 16px; margin-bottom: 4px;">Repeater Vokal</strong>
+                <span style="color: #4B5563; font-size: 14px; line-height: 1.6; display: block;">Bernyanyilah di depan mikrofon dan biarkan AI mendeteksi nada suara Anda, lalu menyuruh robot menirunya.</span>
+              </div>
+
+              <div style="margin-bottom: 0;">
+                <strong style="color: #111827; display: block; font-size: 16px; margin-bottom: 4px;">Deteksi Bahasa</strong>
+                <span style="color: #4B5563; font-size: 14px; line-height: 1.6; display: block;">Ucapkan salam sapaan dari berbagai daerah di Indonesia untuk mendapatkan rekomendasi kebudayaan terkait.</span>
+              </div>
+            </div>
+          </div>
+
+        </article>
 
       </div>
     </section>

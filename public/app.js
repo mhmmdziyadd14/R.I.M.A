@@ -601,7 +601,7 @@ const PAGE_NAMES = {
   'page-manual': 'Kontrol Manual',
   'page-repeater': 'Repeater',
   'page-bahasa': 'Deteksi Bahasa',
-  'page-edukasi': 'Edukasi Angklung',
+  'page-pengenalan': 'Pengenalan Angklung',
   'page-notangka': 'Game Not Angka'
 };
 
@@ -2903,8 +2903,9 @@ window.toggleRepeaterListening = toggleRepeaterListening;
 window.triggerLanguageClassification = triggerLanguageClassification;
 
 // =========================================================================
-// EDUKASI ANGKLUNG & GAME NOT ANGKA ENGINE
+// PENGENALAN ANGKLUNG & GAME NOT ANGKA ENGINE
 // =========================================================================
+
 
 function switchEduTab(tabName) {
   const tabs = ['sejarah', 'otomatisasi', 'panduan'];
@@ -3503,7 +3504,6 @@ document.addEventListener('DOMContentLoaded', () => {
   loadGameSong(0);
 });
 
-window.switchEduTab = switchEduTab;
 window.loadGameSong = loadGameSong;
 window.onGameKeypadPress = onGameKeypadPress;
 window.toggleGameDemoAutoPlay = toggleGameDemoAutoPlay;
@@ -3568,7 +3568,7 @@ function initVoiceSearch() {
       }
       if (transcript.includes("menu utama")) {
          voiceSearchState = 1;
-         speakText("Anda berada di Menu Utama. Anda dapat langsung menyebutkan judul lagu, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Edukasi Angklung, atau Game Not Angka.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
+         speakText("Anda berada di Menu Utama. Anda dapat langsung menyebutkan judul lagu, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Pengenalan Angklung, atau Game Not Angka.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
          return;
       }
       if (transcript.includes("hi rima") || transcript.includes("hai rima")) {
@@ -3670,7 +3670,7 @@ window.startAgenRima = function() {
   const fab = document.getElementById('agen-rima-fab');
   if (fab) fab.style.background = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
   
-  speakText("Selamat datang di Agen Rima. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Edukasi Angklung, atau Game Not Angka. Apa yang ingin Anda lakukan?", () => {
+  speakText("Selamat datang di Agen Rima. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Pengenalan Angklung, atau Game Not Angka. Apa yang ingin Anda lakukan?", () => {
     try { voiceSearchRecognition.start(); } catch(e){}
   });
 };
@@ -3742,10 +3742,10 @@ function handleVoiceMenuSearch(query) {
     speakText("Anda telah memasuki menu Repeater. Di sini Anda bisa mendengarkan dan mengikuti irama secara bertahap.", () => {
       if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
     });
-  } else if (query.includes('edukasi') || query.includes('sejarah') || query.includes('bambu')) {
+  } else if (query.includes('pengenalan') || query.includes('sejarah') || query.includes('bambu')) {
     voiceSearchState = 0;
-    navigateTo('page-edukasi');
-    speakText("Anda telah memasuki menu Edukasi Angklung. Di sini Anda dapat mempelajari sejarah, bahan bambu, dan teknologi robotik RIMA.", () => {
+    navigateTo('page-pengenalan');
+    speakText("Anda telah memasuki menu Edukasi Angklung. Angklung merupakan kebanggaan masyarakat Sunda, yang berasal dari kata angkleung-angkleungan. Diakui oleh UNESCO pada 16 November 2010 sebagai Warisan Budaya Takbenda Dunia. Pada tahun 1938, Daeng Soetigna berinovasi menciptakan Angklung Padaeng dengan tangga nada diatonik. Bahan pembuatannya menggunakan Bambu Wulung untuk nada bas dan Bambu Tali untuk nada tinggi. Terdapat 3 teknik memainkannya yaitu Kurulung atau getar, Centok atau hentak, dan Tepuk. Pada Otomatisasi Project RIMA, hardware yang digunakan adalah Solenoid Actuator 12 Volt, Mikrokontroler ESP32, dan Multi-Channel Relay Driver. Cara kerja sistem AI-nya, Mikrofon merekam vokal pengguna secara real-time, AI PyTorch mengestimasi frekuensi nada, lalu disetel ke tangga nada harmonis dan dikirimkan sinyalnya untuk menggetarkan angklung fisik. Untuk panduan aplikasi, terdapat fitur Pustaka Lagu untuk memainkan lagu daerah, Kontrol Manual untuk memainkan angklung dengan tuts piano, Repeater Vokal agar robot meniru nyanyian Anda, Game Not Angka untuk melatih ritme, dan Deteksi Bahasa untuk merekomendasikan lagu berdasarkan kata sapaan daerah.", () => {
       if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
     });
   } else if (query.includes('game') || query.includes('not angka') || query.includes('latihan')) {

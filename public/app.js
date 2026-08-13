@@ -815,6 +815,14 @@ async function toggleSettingsModal() {
     } catch (_) {}
   }
   modal.classList.toggle('active');
+  const playerPanel = document.getElementById('global-player-panel');
+  if (playerPanel) {
+    if (modal.classList.contains('active')) {
+      playerPanel.style.zIndex = '1';
+    } else {
+      playerPanel.style.zIndex = '';
+    }
+  }
 }
 
 function updateVolumeLabels() {

@@ -440,6 +440,10 @@ body {
   transform: scale(0.68) !important;
 }
 
+.icon-repeater-fit {
+  transform: scale(0.72) !important;
+}
+
 
 .cn-card-bg {
   width: 100%;

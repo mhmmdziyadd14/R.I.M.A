@@ -5023,14 +5023,318 @@ body {
 }@ k e y f r a m e s   b l i n k   {   5 0 %   {   o p a c i t y :   0 ;   }   } 
  
  . b g - p u r p l e   {   b a c k g r o u n d :   l i n e a r - g r a d i e n t ( 1 3 5 d e g ,   # a 8 5 5 f 7   0 % ,   # 6 b 2 1 a 8   1 0 0 % ) ;   } 
- 
- # a g e n - r i m a - f a b : h o v e r   {   t r a n s f o r m :   s c a l e ( 1 . 1 ) ;   b o x - s h a d o w :   0   1 5 p x   3 5 p x   r g b a ( 1 0 7 ,   3 3 ,   1 6 8 ,   0 . 7 )   ! i m p o r t a n t ;   } 
- 
- @ k e y f r a m e s   r o t a t e T e x t   {   f r o m   {   t r a n s f o r m :   r o t a t e ( 0 d e g ) ;   }   t o   {   t r a n s f o r m :   r o t a t e ( 3 6 0 d e g ) ;   }   } 
- 
- 
+  color: #94a3b8;
+  padding: 10px 16px;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: #475569;
+  background: #f8fafc;
+}
+
+.tab-btn.active {
+  color: var(--color-blue);
+  background: #eff6ff;
+}
+
+.cn-section-title {
+  font-family: var(--font-header);
+  font-weight: 800;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 16px 0;
+}
+
+.cn-input {
+  background: #f8fafc !important;
+  border: 2px solid #e2e8f0 !important;
+  color: #1e293b !important;
+  border-radius: 12px !important;
+  padding: 12px 16px !important;
+  font-family: var(--font-main) !important;
+  font-weight: 600 !important;
+  width: 100%;
+  transition: all 0.2s ease;
+}
+
+.cn-input:focus {
+  border-color: var(--color-blue) !important;
+  background: #ffffff !important;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.1) !important;
+}
+
+.cn-input.disabled-input {
+  background: #f1f5f9 !important;
+  color: #94a3b8 !important;
+  border-color: #f1f5f9 !important;
+}
+
+.cn-slider {
+  width: 100%;
+  cursor: pointer;
+  accent-color: var(--color-pink);
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.cn-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cn-checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-purple);
+  cursor: pointer;
+}
+
+.text-blue { color: var(--color-blue); }
+.text-red { color: var(--color-pink); }
+.text-green { color: var(--color-green); }
+.text-purple { color: var(--color-purple); }
+.text-amber { color: var(--color-amber); }
+.text-purple-light { color: #a855f7; }
+
+.btn-save-cn {
+  background: linear-gradient(135deg, var(--color-pink) 0%, #f43f5e 100%);
+  color: white;
+  border: none;
+  padding: 14px 32px;
+  border-radius: 100px;
+  font-family: var(--font-header);
+  font-weight: 800;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(244, 63, 94, 0.3);
+  transition: all 0.2s ease;
+  width: 100%;
+  margin-top: 20px;
+}
+
+.btn-save-cn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 15px 25px rgba(244, 63, 94, 0.4);
+}
+
+/* ====================================================================
+   5. GLOBAL MOBILE RESPONSIVENESS OVERHAUL
+   ==================================================================== */
+@media (max-width: 768px) {
+  /* Dashboard / Beranda Slider */
+  .menu-slider-container {
+    width: 100% !important;
+    max-width: 320px !important;
+    height: 460px !important;
+  }
+  .cn-card-bg {
+    height: 360px !important;
+    padding: 24px !important;
+  }
+  .cn-character-placeholder {
+    width: 200px !important;
+    height: 200px !important;
+  }
+  .cn-character-placeholder img {
+    width: 240px !important;
+    height: 240px !important;
+  }
+  
+  /* Music Player (Pemutar) */
+  .music-player-layout {
+    flex-direction: column !important;
+    padding: 0 16px 20px !important;
+    overflow-y: auto !important;
+    gap: 20px !important;
+  }
+  .player-left-panel {
+    flex: 0 0 auto !important;
+    width: 100%;
+  }
+  .player-right-panel {
+    width: 100%;
+    padding: 0 !important;
+  }
+  .album-art-card {
+    padding: 16px !important;
+  }
+  .album-cover {
+    margin-bottom: 16px !important;
+  }
+  
+  /* Global Nav and Header Adjustments */
+  .cn-top-nav, .app-header {
+    padding: 0 16px !important;
+  }
+  
+  /* Pustaka Lagu */
+  .song-info h4 {
+    font-size: 14px;
+  }
+  .song-list {
+    padding-bottom: 120px !important;
+  }
+  
+  /* Player Panel Safe Area */
+  .player-panel {
+    bottom: calc(20px + env(safe-area-inset-bottom)) !important;
+  }
+  
+  /* Piano Shrinking */
+  .piano-responsive-wrapper {
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+  .piano-keys {
+    height: 100px !important;
+  }
+  .key.white {
+    padding-bottom: 4px !important;
+  }
+  .key.black {
+    width: 14px !important;
+    height: 60px !important;
+    margin-left: -7px !important;
+    margin-right: -7px !important;
+  }
+  .key-lbl {
+    font-size: 7px !important;
+    transform: scale(0.8) !important;
+  }
+}
+
 @keyframes blink { 50% { opacity: 0; } }
 .bg-purple { background: linear-gradient(135deg, #a855f7 0%, #6b21a8 100%); }
 #agen-rima-fab:hover { transform: scale(1.1); box-shadow: 0 15px 35px rgba(107, 33, 168, 0.7) !important; }
 @keyframes rotateText { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
->>>>>>> 90238ff5baf3beadd68a1933fc54e31fc4a5266b
+
+/* ====================================================================
+   DOMINANT MENU COLOR THEMES (Aligned with Home Card Identity)
+   ==================================================================== */
+
+/* --- 1. PENGENALAN ANGKLUNG (#page-pengenalan / #page-edukasi) -> Bamboo Emerald Green --- */
+#page-pengenalan .cn-top-nav,
+#page-edukasi .cn-top-nav {
+  border-bottom: 3px solid #059669;
+  background: rgba(236, 253, 245, 0.4);
+}
+#page-pengenalan .cn-back-btn,
+#page-edukasi .cn-back-btn {
+  color: #059669 !important;
+  background: #ECFDF5 !important;
+  border: 1.5px solid #A7F3D0 !important;
+  border-radius: 12px;
+}
+#page-pengenalan .cn-back-btn:hover,
+#page-edukasi .cn-back-btn:hover {
+  background: #D1FAE5 !important;
+}
+
+/* --- 2. PUSTAKA LAGU (#page-pustaka) -> Warm Amber Gold --- */
+#page-pustaka .cn-top-nav {
+  border-bottom: 3px solid #F57C00;
+  background: rgba(255, 248, 225, 0.4);
+}
+#page-pustaka .cn-back-btn {
+  color: #F57C00 !important;
+  background: #FFF8E1 !important;
+  border: 1.5px solid #FFE082 !important;
+  border-radius: 12px;
+}
+#page-pustaka .cn-back-btn:hover {
+  background: #FFECB3 !important;
+}
+#page-pustaka .panel-title {
+  color: #D97706 !important;
+}
+#page-pustaka .cn-select-filter {
+  border: 2px solid #FFB74D;
+  color: #D97706;
+  background: #FFF8E1;
+}
+
+/* --- 3. KONTROL MANUAL (#page-manual) -> Vibrant Deep Orange --- */
+#page-manual .cn-top-nav {
+  border-bottom: 3px solid #D84315;
+  background: rgba(251, 233, 231, 0.4);
+}
+#page-manual .cn-back-btn {
+  color: #D84315 !important;
+  background: #FBE9E7 !important;
+  border: 1.5px solid #FFCCBC !important;
+  border-radius: 12px;
+}
+#page-manual .cn-back-btn:hover {
+  background: #FFAB91 !important;
+}
+#page-manual h1 {
+  color: #D84315 !important;
+}
+
+/* --- 4. REPEATER VOKAL (#page-repeater) -> Cyan Teal --- */
+#page-repeater .cn-top-nav {
+  border-bottom: 3px solid #00838F;
+  background: rgba(224, 247, 250, 0.4);
+}
+#page-repeater .cn-back-btn {
+  color: #00838F !important;
+  background: #E0F7FA !important;
+  border: 1.5px solid #B2EBF2 !important;
+  border-radius: 12px;
+}
+#page-repeater .cn-back-btn:hover {
+  background: #80DEEA !important;
+}
+
+/* --- 5. DETEKSI BAHASA (#page-bahasa) -> Patriotic Merah Putih --- */
+#page-bahasa .cn-top-nav {
+  border-bottom: 3px solid #DC2626;
+  background: rgba(254, 242, 242, 0.4);
+}
+#page-bahasa .cn-back-btn {
+  color: #DC2626 !important;
+  background: #FEF2F2 !important;
+  border: 1.5px solid #FEE2E2 !important;
+  border-radius: 12px;
+}
+#page-bahasa .cn-back-btn:hover {
+  background: #FCA5A5 !important;
+}
+
+/* --- 6. GAME NOT ANGKA (#page-gamenotangka) -> Piano Music Violet --- */
+#page-gamenotangka .cn-top-nav {
+  border-bottom: 3px solid #7C3AED;
+  background: rgba(243, 232, 255, 0.4);
+}
+#page-gamenotangka .cn-back-btn {
+  color: #7C3AED !important;
+  background: #F3E8FF !important;
+  border: 1.5px solid #DDD6FE !important;
+  border-radius: 12px;
+}
+#page-gamenotangka .cn-back-btn:hover {
+  background: #C4B5FD !important;
+}
+#page-gamenotangka .game-song-btn.active {
+  background: #7C3AED !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35) !important;
+}
+#page-gamenotangka .btn-demo {
+  border: 2px solid #7C3AED !important;
+  color: #7C3AED !important;
+  background: #F3E8FF !important;
+}

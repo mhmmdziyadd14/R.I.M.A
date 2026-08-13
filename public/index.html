@@ -62,11 +62,11 @@
           <!-- Card 1: Pengenalan Angklung -->
           <div class="cn-card-wrapper" onclick="navigateTo('page-pengenalan')">
             <div class="cn-character-placeholder">
-              <i class="fa-solid fa-book-open placeholder-icon" style="font-size: 64px; color: #10B981; margin-top: 25px;"></i>
+              <img src="vecteezy_low-poly-and-bamboo-financial-logo-design-vector-design_20460496.svg" alt="Pengenalan Angklung" class="placeholder-icon">
             </div>
-            <div class="cn-card-bg bg-green" style="background: #E8F5E9; border-color: #81C784;">
-              <h3 style="color: #1B5E20;">Pengenalan Angklung</h3>
-              <p style="color: #2E7D32;">Sejarah & Robotik</p>
+            <div class="cn-card-bg bg-bamboo">
+              <h3>Pengenalan Angklung</h3>
+              <p>Sejarah & Robotik</p>
             </div>
           </div>
 
@@ -81,7 +81,7 @@
             </div>
           </div>
           
-          <!-- Card 2: Kontrol Manual -->
+          <!-- Card 3: Kontrol Manual -->
           <div class="cn-card-wrapper" onclick="navigateTo('page-manual')">
             <div class="cn-character-placeholder">
               <img src="ikonkontrolmanual.svg" alt="Kontrol Manual" class="placeholder-icon">
@@ -92,7 +92,7 @@
             </div>
           </div>
 
-          <!-- Card 3: Repeater Vokal -->
+          <!-- Card 4: Repeater Vokal -->
           <div class="cn-card-wrapper" onclick="navigateTo('page-repeater')">
             <div class="cn-character-placeholder">
               <img src="ikonrepeater.svg" alt="Repeater" class="placeholder-icon" style="transform: scale(0.7);">
@@ -103,36 +103,25 @@
             </div>
           </div>
                     
-          <!-- Card 4: Deteksi Bahasa -->
+          <!-- Card 5: Deteksi Bahasa -->
           <div class="cn-card-wrapper" onclick="navigateTo('page-bahasa')">
             <div class="cn-character-placeholder">
-              <img src="ikondeteksibahasa.svg" alt="Deteksi Bahasa" class="placeholder-icon" style="transform: scale(0.8);">
+              <img src="vecteezy_red-and-white-flag-design-inside-circle_7573073.svg" alt="Deteksi Bahasa" class="placeholder-icon">
             </div>
-            <div class="cn-card-bg bg-red">
+            <div class="cn-card-bg bg-merahputih">
               <h3>Deteksi Bahasa</h3>
               <p>Perintah Suara</p>
-            </div>
-          </div>
-          
-          <!-- Card 5: Edukasi Angklung -->
-          <div class="cn-card-wrapper" onclick="navigateTo('page-edukasi')">
-            <div class="cn-character-placeholder">
-              <i class="fa-solid fa-book-open placeholder-icon" style="font-size: 64px; color: #10B981; margin-top: 25px;"></i>
-            </div>
-            <div class="cn-card-bg bg-green" style="background: #E8F5E9; border-color: #81C784;">
-              <h3 style="color: #1B5E20;">Edukasi Angklung</h3>
-              <p style="color: #2E7D32;">Sejarah & Robotik</p>
             </div>
           </div>
 
           <!-- Card 6: Game Not Angka -->
           <div class="cn-card-wrapper" onclick="navigateTo('page-gamenotangka')">
             <div class="cn-character-placeholder">
-              <i class="fa-solid fa-gamepad placeholder-icon" style="font-size: 64px; color: #F59E0B; margin-top: 25px;"></i>
+              <img src="piano-svgrepo-com.svg" alt="Game Not Angka" class="placeholder-icon">
             </div>
-            <div class="cn-card-bg bg-purple" style="background: #FFF8E1; border-color: #FFE082;">
-              <h3 style="color: #E65100;">Game Not Angka</h3>
-              <p style="color: #F57C00;">Bermain Interaktif</p>
+            <div class="cn-card-bg bg-piano">
+              <h3>Game Not Angka</h3>
+              <p>Bermain Interaktif</p>
             </div>
           </div>
 
@@ -503,10 +492,10 @@
             <!-- Center Glowing Microphone Button -->
             <div class="orbital-center-mic">
               <div class="repeater-mic-wrapper">
-                <button id="mic-bahasa-btn" class="mic-glow-btn mic-orange" onclick="triggerLanguageClassification()">
+                <button id="mic-bahasa-btn" class="mic-glow-btn mic-red" onclick="triggerLanguageClassification()">
                   <i class="fa-solid fa-microphone-lines"></i>
                 </button>
-                <div class="sonar-wave wave-orange" id="ai-waves"></div>
+                <div class="sonar-wave wave-red" id="ai-waves"></div>
               </div>
             </div>
 
@@ -540,7 +529,7 @@
           <p class="status-mic-text" id="ai-status" style="margin-top: 10px; margin-bottom: 14px; text-align: center; font-size: 13px; font-weight: 600; color: #555;">Ketuk mikrofon lalu ucapkan salam daerah di atas</p>
           
           <!-- Compact HUD Card -->
-          <div class="hud-card orange-hud" style="width: 100%; max-width: 320px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); padding: 10px 18px; border-radius: 16px;">
+          <div class="hud-card red-hud" style="width: 100%; max-width: 320px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); padding: 10px 18px; border-radius: 16px;">
             <div class="hud-item">
               <span class="hud-lbl" style="font-size: 10px; margin-bottom: 2px;">HASIL DETEKSI</span>
               <span class="hud-val" id="ai-class" style="font-size: 15px;">---</span>
@@ -558,7 +547,7 @@
             
             <!-- Instruksi Awal (Mode 1 - Sebelum Deteksi - Polos Tanpa Card) -->
             <div id="bahasa-instructions" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center; background: transparent; border: none; box-shadow: none;">
-              <div style="background: #FFF3E0; width: 70px; height: 70px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; color: #FF8A65; font-size: 28px; box-shadow: 0 4px 16px rgba(255,138,101,0.15);">
+              <div style="background: #FEF2F2; width: 70px; height: 70px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; color: #DC2626; font-size: 28px; box-shadow: 0 4px 16px rgba(220,38,38,0.15);">
                 <i class="fa-solid fa-music"></i>
               </div>
               <h2 style="font-family: var(--font-header); font-size: 26px; font-weight: 800; color: #1A1A1A; margin: 0 0 12px 0;">Daftar Lagu Daerah Akan Muncul Di Sini</h2>

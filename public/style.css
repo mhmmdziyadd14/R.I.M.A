@@ -645,7 +645,7 @@ body {
 .music-player-layout {
   display: flex;
   flex: 1;
-  padding: 0 48px 40px;
+  padding: 24px 48px 40px;
   gap: 40px;
   overflow: hidden;
 }

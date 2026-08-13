@@ -250,7 +250,7 @@ function setRepeaterMode(mode) {
 }
 
 function isMidiInputPlayAllowed() {
-  return appCurrentPage === 'page-manual' || appCurrentPage === 'page-gamenotangka';
+  return appCurrentPage === 'page-manual' || appCurrentPage === 'page-gamenotangka' || appCurrentPage === 'page-notangka';
 }
 
 function startKeyTrigger(keyElement) {
@@ -429,6 +429,7 @@ function connectMidiWebSocket() {
   };
 
   midiSocket.onmessage = (event) => {
+    if (!isMidiInputPlayAllowed()) return;
     try {
       const data = JSON.parse(event.data);
       if (data.note && data.angklung) {
@@ -3066,7 +3067,7 @@ const GAME_SONGS = [
         { not: ".", lyric: "" },
         { not: "3", lyric: "kul" },
         { not: ".", lyric: "" },
-        { not: "5.", lyric: "ngglim" },
+        { not: "5", lyric: "ngglim" },
         { not: ".", lyric: "" },
         { not: "4", lyric: "pang" },
         { not: "4", lyric: "se" },
@@ -3084,7 +3085,7 @@ const GAME_SONGS = [
         { not: ".", lyric: "" },
         { not: "3", lyric: "kul" },
         { not: ".", lyric: "" },
-        { not: "5.", lyric: "ngglim" },
+        { not: "5", lyric: "ngglim" },
         { not: ".", lyric: "" },
         { not: "4", lyric: "pang" },
         { not: "4", lyric: "se" },
@@ -3379,7 +3380,7 @@ function updateGameScoreUI() {
 }
 
 function onGameKeypadPress(numStr) {
-  if (appCurrentPage !== 'page-gamenotangka') return;
+  if (appCurrentPage !== 'page-gamenotangka' && appCurrentPage !== 'page-notangka') return;
 
   const song = GAME_SONGS[currentSongIdx];
   const flatNotes = getSongFlatNotes(song);

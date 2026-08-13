@@ -2075,14 +2075,9 @@ midi_repeater_active = False
 def midi_repeater_loop():
     global midi_repeater_active
     while midi_repeater_active:
-        with active_midi_notes_lock:
-            current_time = time.time()
-            notes_to_play = list(active_midi_notes.items())
-            
-        for (note, board), last_time in notes_to_play:
-            play_local_sound(note, board, 1.0, "melody" if board != 3 else "bass")
-            
-        time.sleep(0.18)
+        # Midi repeater loop: System-level audio is handled 100% by the browser client Web Audio engine
+        # to ensure audio gating per page (Kontrol Manual & Game Lagu only) works reliably without server-side sound bleeding.
+        time.sleep(0.5)
 
 def start_midi_repeater():
     global midi_repeater_thread, midi_repeater_active

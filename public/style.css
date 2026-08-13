@@ -429,13 +429,15 @@ body {
 }
 
 .cn-character-placeholder img {
-  width: 180px;
-  height: 180px;
-  max-width: 75%;
-  max-height: 75%;
+  width: 320px;
+  height: 320px;
   object-fit: contain;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.12));
-  transition: transform 0.3s ease;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.1));
+}
+
+.icon-bamboo-fit,
+.icon-flag-fit {
+  transform: scale(0.68) !important;
 }
 
 
@@ -3219,13 +3221,10 @@ body {
 }
 
 .cn-character-placeholder img {
-  width: 180px;
-  height: 180px;
-  max-width: 75%;
-  max-height: 75%;
+  width: 320px;
+  height: 320px;
   object-fit: contain;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.12));
-  transition: transform 0.3s ease;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.1));
 }
 
 

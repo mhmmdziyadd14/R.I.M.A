@@ -645,7 +645,7 @@ body {
 .music-player-layout {
   display: flex;
   flex: 1;
-  padding: 24px 48px 40px;
+  padding: 32px 48px 40px;
   gap: 40px;
   overflow: hidden;
 }
@@ -769,15 +769,26 @@ body {
 }
 
 .album-cover {
-  width: 100%;
-  aspect-ratio: 1;
+  width: 280px;
+  height: 280px;
   background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
   border-radius: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 24px;
-  box-shadow: 0 10px 20px rgba(0,0,0,0.03);
+  margin: 0 auto 24px auto;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+.album-cover img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 20px !important;
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .album-cover i {
@@ -956,6 +967,7 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  padding-top: 12px;
   padding-right: 16px;
 }
 
@@ -3432,7 +3444,7 @@ body {
 .music-player-layout {
   display: flex;
   flex: 1;
-  padding: 0 48px 40px;
+  padding: 32px 48px 40px;
   gap: 40px;
   overflow: hidden;
 }

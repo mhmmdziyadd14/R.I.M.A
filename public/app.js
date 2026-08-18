@@ -307,6 +307,7 @@ function mapMidiNoteToScaleDegree(midiNote) {
   if (isNaN(noteVal)) return null;
 
   const directMap = {
+    59: "0",  // B3 = Si Rendah (0)
     60: "1",  // C4 = Do
     62: "2",  // D4 = Re
     64: "3",  // E4 = Mi
@@ -321,6 +322,7 @@ function mapMidiNoteToScaleDegree(midiNote) {
   // Octave-independent pitch class mapping (C = 0)
   const pitchClass = noteVal % 12;
   const pcMap = { 0: "1", 2: "2", 4: "3", 5: "4", 7: "5", 9: "6", 11: "7" };
+  if (pitchClass === 11 && noteVal < 60) return "0";
   if (pitchClass === 0 && noteVal >= 72) return "1'";
   return pcMap[pitchClass] || null;
 }
@@ -335,6 +337,7 @@ function mapAngklungNoteToScaleDegree(noteNum, angklungId = 3) {
   // c4(9), c#4(10), d4(11), d#4(12), e4(13), f4(14), f#4(15), g4(16)
   if (angklungId === 3) {
     const bassMap = {
+      8: "0",   // b3  = Si Rendah (0)
       9: "1",   // c4  = Do
       10: "1",  // c#4 = Do
       11: "2",  // d4  = Re
@@ -1175,6 +1178,56 @@ function searchSongs(query) {
   renderSongCards(filtered, container);
 }
 
+// Category image mapping for Album Art cover
+const categoryImageMap = {
+  'aceh': 'aceh.jfif',
+  'asia': 'asia.jfif',
+  'barat': 'barat.jfif',
+  'batak': 'batak.jfif',
+  'daerah': 'daerah.jfif',
+  'jawa': 'jawa.jfif',
+  'kalimantan': 'kalimantan.jfif',
+  'nasional': 'nasional.jfif',
+  'papua': 'papua.jfif',
+  'pop': 'pop.jfif',
+  'religion': 'religion.jfif',
+  'agama': 'religion.jfif',
+  'rohani': 'religion.jfif',
+  'sulawesi': 'sulawesi.jfif',
+  'sunda': 'sunda.jfif'
+};
+
+function getCategoryImage(folderOrRegion) {
+  if (!folderOrRegion) return 'daerah.jfif';
+  const term = String(folderOrRegion).toLowerCase().trim();
+  for (const [key, imgFile] of Object.entries(categoryImageMap)) {
+    if (term.includes(key)) {
+      return imgFile;
+    }
+  }
+  return 'daerah.jfif';
+}
+
+function updateAlbumCoverImage(imagePath, titleText = null, descText = null) {
+  const coverImg = document.getElementById('album-cover-img');
+  if (coverImg) {
+    coverImg.style.opacity = '0.3';
+    setTimeout(() => {
+      coverImg.src = imagePath;
+      coverImg.style.opacity = '1';
+    }, 150);
+  }
+  
+  if (titleText !== null) {
+    const titleEl = document.getElementById('current-album-title');
+    if (titleEl) titleEl.innerText = titleText;
+  }
+  if (descText !== null) {
+    const descEl = document.getElementById('current-album-desc');
+    if (descEl) descEl.innerText = descText;
+  }
+}
+
 function loadSongsList(filter = 'all') {
   currentSongFilter = filter;
   const container = document.getElementById('songs-container');
@@ -1191,6 +1244,14 @@ function loadSongsList(filter = 'all') {
 
   currentPlaylist = filtered;
   renderSongCards(filtered, container);
+
+  // Update album cover based on selected category filter
+  if (filter === 'all') {
+    updateAlbumCoverImage('daerah.jfif', 'Pilih Lagu', 'Mainkan otomatis lagu daerah');
+  } else {
+    const catImg = getCategoryImage(filter);
+    updateAlbumCoverImage(catImg, `Kategori: ${filter.toUpperCase()}`, `Koleksi Lagu ${filter.toUpperCase()}`);
+  }
 }
 
 function renderSongCards(songArray, container) {
@@ -1423,15 +1484,14 @@ async function playSong(songId) {
   if (songRow) {
     songRow.classList.add('playing');
     
-    // Update Album Art placeholder info
-    const titleEl = document.getElementById('current-album-title');
-    const descEl = document.getElementById('current-album-desc');
-    if (titleEl && descEl) {
-      const title = songRow.querySelector('h4').innerText;
-      const desc = songRow.querySelector('p').innerText;
-      titleEl.innerText = title;
-      descEl.innerText = desc;
-    }
+    // Update Album Art image & info based on song category/region
+    const songObj = songs.find(s => s.id === songId);
+    const title = songRow.querySelector('h4') ? songRow.querySelector('h4').innerText : (songObj ? songObj.title : 'Sedang Memutar');
+    const desc = songRow.querySelector('p') ? songRow.querySelector('p').innerText : (songObj ? `${songObj.region} (${songObj.folder})` : '');
+    
+    const catFolder = songObj ? (songObj.folder || songObj.region) : '';
+    const catImg = getCategoryImage(catFolder);
+    updateAlbumCoverImage(catImg, title, desc);
   }
 
   try {
@@ -3011,7 +3071,9 @@ let lastPlayedGameNoteStr = '1';
 
 // Helper functions for Note items
 function getNoteStr(item) {
-  return typeof item === 'object' ? item.not : item;
+  let val = typeof item === 'object' ? item.not : item;
+  if (val === '7,' || val === '7.') return '0';
+  return val;
 }
 
 function getNoteLyric(item) {
@@ -3113,30 +3175,70 @@ const GAME_SONGS = [
     origin: "Jawa Barat",
     phrases: [
       [
-        { not: "5", lyric: "Mes-" },
-        { not: "5", lyric: "at" },
-        { not: "6", lyric: "nga-" },
-        { not: "1'", lyric: "bang" },
-        { not: "5", lyric: "luh-" },
-        { not: "3", lyric: "ta-" },
-        { not: "2", lyric: "ring" },
-        { not: "3", lyric: "a-" },
+        { not: "5", lyric: "Me-" },
+        { not: "3", lyric: "at" },
+        { not: "4", lyric: "nga-" },
+        { not: "5", lyric: "pung" },
+        { not: "7", lyric: "lu-" },
+        { not: "1'", lyric: "hur" },
+        { not: ".", lyric: "" },
+        { not: "7", lyric: "ja-" },
+        { not: "1'", lyric: "uh" },
+        { not: "3", lyric: "di" },
+        { not: "4", lyric: "a-" },
+        { not: "5", lyric: "wang" },
+        { not: "5", lyric: "a-" },
         { not: "5", lyric: "wang" },
         { not: ".", lyric: "" },
-        { not: "3", lyric: "a-" },
-        { not: "2", lyric: "wang" },
-        { not: ".", lyric: "" }
       ],
       [
-        { not: "1", lyric: "Ngan-" },
-        { not: "2", lyric: "pak-" },
-        { not: "3", lyric: "keun" },
-        { not: "5", lyric: "jang-" },
-        { not: "3", lyric: "na" },
+        { not: "5", lyric: "Me-" },
+        { not: "3", lyric: "ber" },
+        { not: "4", lyric: "ken" },
+        { not: "5", lyric: "jang" },
+        { not: "7", lyric: "jang" },
+        { not: "1'", lyric: "na" },
         { not: ".", lyric: "" },
-        { not: "2", lyric: "bang-" },
-        { not: "1", lyric: "bir" },
-        { not: ".", lyric: "" }
+        { not: "7", lyric: "ba-" },
+        { not: "1'", lyric: "ngun" },
+        { not: "3", lyric: "ta" },
+        { not: "4", lyric: "ya" },
+        { not: "3", lyric: "ka" },
+        { not: "4", lyric: "ring" },
+        { not: "4", lyric: "rang" },
+        { not: ".", lyric: "" },
+      ],
+      [
+        { not: "5", lyric: "Ku" },
+        { not: "4", lyric: "ku" },
+        { not: "3", lyric: "na" },
+        { not: "1", lyric: "rang-" },
+        { not: "0", lyric: "ga-" },
+        { not: "1", lyric: "os" },
+        { not: "3", lyric: "reu" },
+        { not: "4", lyric: "jeung" },
+        { not: "5", lyric: "pa" },
+        { not: "1", lyric: "ma" },
+        { not: "3", lyric: "tuk" },
+        { not: "4", lyric: "na" },
+        { not: "4", lyric: "nge-" },
+        { not: "4", lyric: "luk" }
+      ],
+      [
+        { not: "5", lyric: "Nga" },
+        { not: "4", lyric: "pak" },
+        { not: "3", lyric: "me" },
+        { not: "1", lyric: "ga" },
+        { not: "0", lyric: "ba" },
+        { not: "1", lyric: "ri" },
+        { not: "3", lyric: "hi" },
+        { not: "4", lyric: "ber" },
+        { not: "5", lyric: "ne" },
+        { not: "1", lyric: "ta" },
+        { not: "3", lyric: "rik" },
+        { not: "1", lyric: "nyu" },
+        { not: "0", lyric: "ru" },
+        { not: "1", lyric: "wuk" }
       ]
     ]
   },
@@ -3183,76 +3285,6 @@ const GAME_SONGS = [
         { not: ".", lyric: "" },
       ]
     ]
-  },
-  {
-    title: "Suwe Ora Jamu",
-    origin: "Jawa Tengah",
-    phrases: [
-      [
-        { not: "1", lyric: "Su-" },
-        { not: "1", lyric: "we" },
-        { not: "2", lyric: "o-" },
-        { not: "3", lyric: "ra" },
-        { not: "5", lyric: "ja-" },
-        { not: ".", lyric: "" },
-        { not: "5", lyric: "mu" },
-        { not: ".", lyric: "" }
-      ],
-      [
-        { not: "6", lyric: "Ja-" },
-        { not: "5", lyric: "mu" },
-        { not: "3", lyric: "go-" },
-        { not: "2", lyric: "dong" },
-        { not: "1", lyric: "te-" },
-        { not: ".", lyric: "" },
-        { not: "3", lyric: "te" },
-        { not: ".", lyric: "" }
-      ],
-      [
-        { not: "2", lyric: "Su-" },
-        { not: "3", lyric: "we" },
-        { not: "5", lyric: "o-" },
-        { not: "6", lyric: "ra" },
-        { not: "1'", lyric: "ke-" },
-        { not: "7", lyric: "te-" },
-        { not: "6", lyric: "mu" },
-        { not: ".", lyric: "" },
-        { not: "5", lyric: "pisan" },
-        { not: ".", lyric: "" }
-      ]
-    ]
-  },
-  {
-    title: "Garuda Pancasila",
-    origin: "Nasional",
-    phrases: [
-      [
-        { not: "1", lyric: "Ga-" },
-        { not: "1", lyric: "ru-" },
-        { not: "2", lyric: "da" },
-        { not: "2", lyric: "Pan-" },
-        { not: "3", lyric: "ca-" },
-        { not: "3", lyric: "si-" },
-        { not: "4", lyric: "la" },
-        { not: "5", lyric: "A-" },
-        { not: ".", lyric: "" }
-      ],
-      [
-        { not: "5", lyric: "kul-" },
-        { not: "6", lyric: "lah" },
-        { not: "5", lyric: "pen-" },
-        { not: "4", lyric: "du-" },
-        { not: "3", lyric: "kung-" },
-        { not: "2", lyric: "mu" },
-        { not: ".", lyric: "" }
-      ],
-      [
-        { not: "1", lyric: "pa-" },
-        { not: "3", lyric: "tri-" },
-        { not: "5", lyric: "ot" },
-        { not: ".", lyric: "" }
-      ]
-    ]
   }
 ];
 
@@ -3291,7 +3323,7 @@ function renderGameNotSheet() {
   sheet.innerHTML = '';
 
   const song = GAME_SONGS[currentSongIdx];
-  const solfegeNames = { '1': 'Do', '2': 'Re', '3': 'Mi', '4': 'Fa', '5': 'Sol', '6': 'La', '7': 'Si', '1\'': 'Do Tinggi', '.': 'Tahan (.)', '0': 'Diam' };
+  const solfegeNames = { '0': 'Si Rendah', '1': 'Do', '2': 'Re', '3': 'Mi', '4': 'Fa', '5': 'Sol', '6': 'La', '7': 'Si', '1\'': 'Do Tinggi', '.': 'Tahan (.)' };
 
   const flatNotes = getSongFlatNotes(song);
   let globalNoteIdx = 0;
@@ -3360,7 +3392,7 @@ function renderGameNotSheet() {
       if (targetNot === "1'") {
         targetBadge.textContent = `1' (Do Tinggi)${lyric ? ' - "' + lyric + '"' : ''}${beatHint}`;
       } else if (targetNot === "0") {
-        targetBadge.textContent = `0 (Istirahat / Diam)`;
+        targetBadge.textContent = `0 (Si Rendah)${lyric ? ' - "' + lyric + '"' : ''}${beatHint}`;
       } else {
         const baseNum = targetNot.replace("'", "");
         const sol = solfegeNames[baseNum] || 'Do';
@@ -3418,6 +3450,7 @@ function onGameKeypadPress(numStr) {
 
   // 3. Trigger Angklung Hardware & Web Audio Synth with sustained duration
   const scaleDegreeToPitch = { 
+    '0': 'B3',
     '1': 'C4', 
     '2': 'D4', 
     '3': 'E4', 
@@ -3500,7 +3533,7 @@ function resetGameSession() {
 document.addEventListener('keydown', (e) => {
   const activePage = document.querySelector('.app-page:not(.hide)');
   if (activePage && activePage.id === 'page-gamenotangka') {
-    if (['1', '2', '3', '4', '5', '6', '7'].includes(e.key)) {
+    if (['0', '1', '2', '3', '4', '5', '6', '7'].includes(e.key)) {
       onGameKeypadPress(e.key);
     } else if (e.key === '8' || e.key === '!') {
       onGameKeypadPress("1'");

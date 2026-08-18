@@ -343,8 +343,8 @@
         <!-- Sisi Kiri: Album Art / Player -->
         <div class="player-left-panel">
           <div class="album-art-card">
-            <div class="album-cover">
-              <i class="fa-solid fa-music"></i>
+            <div class="album-cover" id="album-cover-box">
+              <img id="album-cover-img" src="daerah.jfif" alt="Category Cover" style="width: 100%; height: 100%; object-fit: cover; border-radius: 20px; transition: opacity 0.3s ease;">
             </div>
             <div class="album-info">
               <h2 id="current-album-title">Pilih Lagu</h2>
@@ -722,8 +722,6 @@
           <button class="game-song-btn active" onclick="loadGameSong(0)">Gundul-Gundul Pacul</button>
           <button class="game-song-btn" onclick="loadGameSong(1)">Manuk Dadali</button>
           <button class="game-song-btn" onclick="loadGameSong(2)">Ibu Kita Kartini</button>
-          <button class="game-song-btn" onclick="loadGameSong(3)">Suwe Ora Jamu</button>
-          <button class="game-song-btn" onclick="loadGameSong(4)">Garuda Pancasila</button>
         </div>
 
         <!-- Main Game Stage Card -->
@@ -758,8 +756,9 @@
             </div>
           </div>
 
-          <!-- Interactive Not Angka Keypad (1 - 7, 1') -->
+          <!-- Interactive Not Angka Keypad (0, 1 - 7, 1') -->
           <div style="display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;" id="game-keypad">
+            <button class="game-keypad-btn" onclick="onGameKeypadPress('0')"><span class="key-num">0</span><span class="key-solfege">Si Rendah</span></button>
             <button class="game-keypad-btn" onclick="onGameKeypadPress('1')"><span class="key-num">1</span><span class="key-solfege">Do</span></button>
             <button class="game-keypad-btn" onclick="onGameKeypadPress('2')"><span class="key-num">2</span><span class="key-solfege">Re</span></button>
             <button class="game-keypad-btn" onclick="onGameKeypadPress('3')"><span class="key-num">3</span><span class="key-solfege">Mi</span></button>

@@ -188,17 +188,24 @@ body {
 
 /* --- Top Navigation --- */
 .cn-top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 24px 48px;
-  background: transparent;
+  background: rgba(248, 249, 250, 0.95);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 30px rgba(0,0,0,0.03);
 }
 
 .nav-logo {
   flex: 1;
   display: flex;
   justify-content: flex-start;
+  align-items: center;
+  gap: 20px;
 }
 
 .nav-logo img {
@@ -435,7 +442,10 @@ body {
   filter: drop-shadow(0 10px 20px rgba(0,0,0,0.1));
 }
 
-.icon-bamboo-fit,
+.icon-bamboo-fit {
+  transform: scale(0.85) !important;
+}
+
 .icon-flag-fit {
   transform: scale(0.68) !important;
 }
@@ -2980,9 +2990,6 @@ body {
 }
 
 /* ====================================================================
-   2. DASHBOARD / BERANDA STYLE
-   ==================================================================== */
-/* ====================================================================
    MUSEUM KIOSK UI (CARTOON NETWORK THEME)
    ==================================================================== */
 .app-page.cn-layout {
@@ -2996,17 +3003,24 @@ body {
 
 /* --- Top Navigation --- */
 .cn-top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 24px 48px;
-  background: transparent;
+  background: rgba(248, 249, 250, 0.95);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 30px rgba(0,0,0,0.03);
 }
 
 .nav-logo {
   flex: 1;
   display: flex;
   justify-content: flex-start;
+  align-items: center;
+  gap: 20px;
 }
 
 .nav-logo img {

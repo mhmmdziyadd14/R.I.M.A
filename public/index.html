@@ -15,9 +15,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <!-- FontAwesome for modern icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=12">
   <!-- Main Application Logic Script (Version bumped to bust browser script cache) -->
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=10"></script>
 </head>
 <body>
 
@@ -62,11 +62,11 @@
           <!-- Card 1: Pengenalan Angklung -->
           <div class="cn-card-wrapper" onclick="navigateTo('page-pengenalan')">
             <div class="cn-character-placeholder">
-              <img src="music-player-svgrepo-com.svg" alt="Pengenalan Angklung" class="placeholder-icon icon-bamboo-fit">
+              <img src="Angklung.png" alt="Pengenalan Angklung" class="placeholder-icon icon-bamboo-fit">
             </div>
             <div class="cn-card-bg bg-bamboo">
               <h3>Pengenalan Angklung</h3>
-              <p>Sejarah & Robotik</p>
+              <p>Automasi Alat Musik Angklung</p>
             </div>
           </div>
 
@@ -581,8 +581,8 @@
           <!-- Blog Title Area -->
           <div style="text-align: center; margin-bottom: 60px; padding: 0 20px;">
             <span style="display: inline-block; background: #059669; color: white; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);">Ensiklopedia Kebudayaan</span>
-            <h1 style="font-family: var(--font-header); font-size: 46px; color: #047857; margin: 0; line-height: 1.15;">Seni Angklung &<br>Otomatisasi RIMA</h1>
-            <p style="color: #059669; font-size: 13px; margin-top: 24px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700;">Warisan Budaya Takbenda Dunia • Sejak 2010</p>
+            <h1 style="font-family: var(--font-header); font-size: 46px; color: #047857; margin: 0; line-height: 1.15;">Pengenalan Angklung</h1>
+            <p style="color: #059669; font-size: 13px; margin-top: 24px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700;">Sejarah dan Automasi Alat Musik Angklung</p>
           </div>
           
           <!-- Section 1: Text on Left, Image on Right -->
@@ -594,7 +594,7 @@
               
               <div style="background: #ECFDF5; padding: 24px; border-left: 4px solid #059669; border-radius: 0 12px 12px 0; margin-bottom: 24px;">
                 <p style="margin: 0; font-size: 18px; line-height: 1.6; color: #047857; font-weight: 600; font-style: italic;">
-                  "Menurut Ensiklopedia Bebas Wikipedia, istilah angklung berasal dari bahasa Sunda 'angkleung-angkleungan' yang merujuk pada gerakan pemain yang berayun saat memainkannya."
+                  "Berdasarkan data Warisan Budaya Takbenda Kementerian Pendidikan dan Kebudayaan RI, angklung memiliki akar kuat pada tradisi masyarakat Sunda sejak masa lalu, sarat akan nilai filosofis yang mengajarkan kerja sama, kebersamaan, dan harmoni."
                 </p>
               </div>
 
@@ -652,9 +652,15 @@
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 64px; align-items: start; padding: 0 20px; margin-bottom: 80px;">
             <div>
               <h2 style="font-family: var(--font-header); font-size: 32px; color: #047857; margin-top: 0; margin-bottom: 24px;">Otomatisasi Project RIMA</h2>
-              <p style="font-size: 16px; line-height: 1.85; color: #4B5563; margin-bottom: 32px; text-align: justify;">
-                Melalui inovasi teknologi, seni tradisional bambu ini dipadukan dengan Kecerdasan Buatan (AI) dan aktuator mekanis. Proyek RIMA memungkinkan angklung untuk merespons suara manusia dan dimainkan sepenuhnya oleh sistem robotik.
+              <p style="font-size: 16px; line-height: 1.85; color: #4B5563; margin-bottom: 24px; text-align: justify;">
+                Melalui inovasi teknologi, seni tradisional bambu ini dipadukan dengan Kecerdasan Buatan (AI) dan aktuator mekanis. Proyek RIMA (Rekayasa Instrumen Musik Angklung) memungkinkan angklung untuk merespons suara manusia dan dimainkan sepenuhnya oleh sistem robotik. Proyek ini merupakan hasil kolaborasi inovatif antara <strong>Institut Teknologi Nasional (Itenas)</strong> dengan <strong>Museum Sri Baduga</strong>.
               </p>
+
+              <div style="display: flex; gap: 24px; align-items: center; margin-bottom: 32px; padding: 16px 24px; background: #F9FAFB; border-radius: 12px; border: 1px solid #E5E7EB;">
+                <img src="itenas.png" alt="Logo Itenas" style="height: 54px; object-fit: contain;">
+                <img src="logosribaduga.png" alt="Logo Sri Baduga" style="height: 54px; object-fit: contain;">
+                <span style="font-size: 14px; color: #6B7280; font-style: italic; margin-left: auto;">Mitra Kolaborasi</span>
+              </div>
               
               <h3 style="font-family: var(--font-header); font-size: 20px; color: #047857; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
                 <i class="fa-solid fa-microchip" style="color: #059669;"></i> Hardware & AI Workflow

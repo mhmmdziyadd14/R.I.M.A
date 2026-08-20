@@ -740,29 +740,47 @@ function updateBadge(id, isOnline, customText = null) {
   }
 }
 
+let currentActiveConnectedMidiId = localStorage.getItem('rima_midi_device_id') || null;
+
 // Settings Overlay Handlers
 async function scanMidiDevices() {
   const host = settings.hostApi;
   const select = document.getElementById('select-midi-device');
   if (!select) return;
 
+  const prevVal = select.value || currentActiveConnectedMidiId || localStorage.getItem('rima_midi_device_id') || "";
+
   try {
     const response = await fetch(`${host}/api/midi/devices`);
     if (response.ok) {
       const devices = await response.json();
-      const currentVal = select.value;
       
       select.innerHTML = '<option value="">-- Scan/Pilih Keyboard MIDI --</option>';
       
       devices.forEach(device => {
         const option = document.createElement('option');
-        option.value = device.id;
+        option.value = device.id.toString();
         option.textContent = `${device.name} (${device.interface})`;
         select.appendChild(option);
       });
       
-      if (devices.some(d => d.id.toString() === currentVal)) {
-        select.value = currentVal;
+      // Sync active MIDI status from server
+      try {
+        const statusRes = await fetch(`${host}/api/midi/status`);
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          if (statusData.active && statusData.device_id !== null && statusData.device_id !== undefined) {
+            currentActiveConnectedMidiId = statusData.device_id.toString();
+            localStorage.setItem('rima_midi_device_id', currentActiveConnectedMidiId);
+          }
+        }
+      } catch (_) {}
+
+      const valToSet = currentActiveConnectedMidiId || prevVal;
+      if (valToSet !== null && valToSet !== undefined && devices.some(d => d.id.toString() === valToSet.toString())) {
+        select.value = valToSet.toString();
+      } else if (prevVal && devices.some(d => d.id.toString() === prevVal.toString())) {
+        select.value = prevVal.toString();
       }
     }
   } catch (err) {
@@ -803,19 +821,6 @@ async function toggleSettingsModal() {
     updateVolumeLabels();
     
     await scanMidiDevices();
-    
-    // Check connected midi status
-    const host = settings.hostApi;
-    try {
-      const response = await fetch(`${host}/api/midi/status`);
-      if (response.ok) {
-        const data = await response.json();
-        const selectMidi = document.getElementById('select-midi-device');
-        if (selectMidi && data.active && data.device_id !== null) {
-          selectMidi.value = data.device_id;
-        }
-      }
-    } catch (_) {}
   }
   modal.classList.toggle('active');
   const playerPanel = document.getElementById('global-player-panel');
@@ -918,24 +923,34 @@ async function saveConnectionSettings() {
     console.error("Gagal mengirim pengaturan volume:", err);
   }
 
-  // Connect or disconnect MIDI device
-  if (selectMidi && selectMidi.value !== "") {
-    const deviceId = parseInt(selectMidi.value, 10);
-    try {
-      await fetch(`${hostVal}/api/midi/connect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: deviceId })
-      });
-      localStorage.setItem('rima_midi_device_id', deviceId);
-    } catch (e) {
-      console.error("Gagal menyambung MIDI:", e);
+  // Connect or disconnect MIDI device ONLY if user explicitly changed the selection!
+  if (selectMidi) {
+    const selectedVal = selectMidi.value;
+    const activeVal = currentActiveConnectedMidiId ? currentActiveConnectedMidiId.toString() : "";
+
+    if (selectedVal !== activeVal) {
+      if (selectedVal !== "") {
+        const deviceId = parseInt(selectedVal, 10);
+        try {
+          await fetch(`${hostVal}/api/midi/connect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId })
+          });
+          currentActiveConnectedMidiId = selectedVal;
+          localStorage.setItem('rima_midi_device_id', selectedVal);
+        } catch (e) {
+          console.error("Gagal menyambung MIDI:", e);
+        }
+      } else if (activeVal !== "") {
+        // Only disconnect if there was an active MIDI device and the user explicitly chose "-- Scan/Pilih Keyboard MIDI --"
+        try {
+          await fetch(`${hostVal}/api/midi/disconnect`, { method: 'POST' });
+          currentActiveConnectedMidiId = null;
+          localStorage.removeItem('rima_midi_device_id');
+        } catch (_) {}
+      }
     }
-  } else {
-    try {
-      await fetch(`${hostVal}/api/midi/disconnect`, { method: 'POST' });
-      localStorage.removeItem('rima_midi_device_id');
-    } catch (_) {}
   }
 
   toggleSettingsModal();

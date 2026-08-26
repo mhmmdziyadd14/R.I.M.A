@@ -806,6 +806,22 @@ def config_arduino(data: dict):
     print(f"[API] Update ports serial -> Angklung1: {SERIAL_PORTS[1]}, Angklung2: {SERIAL_PORTS[2]}, Angklung3: {SERIAL_PORTS[3]}, Simulation Mode: {SIMULATION_MODE}")
     return {"status": "success", "ports": SERIAL_PORTS, "simulation_mode": SIMULATION_MODE}
 
+@app.get("/api/ports")
+def get_available_ports():
+    ports_list = []
+    try:
+        if HAS_SERIAL:
+            import serial.tools.list_ports
+            for p in serial.tools.list_ports.comports():
+                ports_list.append({
+                    "port": p.device,
+                    "description": p.description or p.device,
+                    "hwid": p.hwid
+                })
+    except Exception as e:
+        print(f"[SERIAL] Error listing serial ports: {e}")
+    return ports_list
+
 @app.get("/api/arduino/status")
 def arduino_status():
     global arduino_serials, SERIAL_PORTS, SIMULATION_MODE

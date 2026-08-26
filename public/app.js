@@ -7,7 +7,7 @@ let settings = {
   port2: localStorage.getItem('rima_port_2') || 'COM11',
   port3: localStorage.getItem('rima_port_3') || 'COM12',
   hostApi: localStorage.getItem('rima_host_api') || 'http://localhost:8000',
-  simulationMode: localStorage.getItem('rima_simulation_mode') === null ? true : localStorage.getItem('rima_simulation_mode') === 'true',
+  simulationMode: localStorage.getItem('rima_simulation_mode') === null ? false : localStorage.getItem('rima_simulation_mode') === 'true',
   synthVolume: localStorage.getItem('rima_synth_volume') === null ? 0.7 : parseFloat(localStorage.getItem('rima_synth_volume')),
   physicalPower: localStorage.getItem('rima_physical_power') === null ? 100 : parseInt(localStorage.getItem('rima_physical_power')),
   v1Volume: localStorage.getItem('rima_v1_volume') === null ? 1.0 : parseFloat(localStorage.getItem('rima_v1_volume')),

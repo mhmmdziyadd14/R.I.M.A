@@ -19,18 +19,30 @@ self.addEventListener('install', event => {
 self.addEventListener('fetch', event => {
   if (!event.request.url.startsWith('http')) return;
   
+  // Bypass cache untuk panggilan API dan WebSocket ke backend Python
+  if (event.request.url.includes('/api/') || event.request.url.includes('/ws/')) {
+    return; // Biarkan browser menghandle request secara native (network only)
+  }
+  
+  // Cache First Strategy untuk UI (Cepat dimuat di Kiosk)
   event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        if (response && response.status === 200 && response.type === 'basic') {
+    caches.match(event.request)
+      .then(cachedResponse => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        
+        return fetch(event.request).then(response => {
+          if (!response || response.status !== 200 || response.type !== 'basic') {
+            return response;
+          }
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then(cache => {
             cache.put(event.request, responseClone);
           });
-        }
-        return response;
+          return response;
+        });
       })
-      .catch(() => caches.match(event.request))
   );
 });
 

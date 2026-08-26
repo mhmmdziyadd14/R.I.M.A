@@ -1195,32 +1195,32 @@ function searchSongs(query) {
 
 // Category image mapping for Album Art cover
 const categoryImageMap = {
-  'aceh': 'aceh.jfif',
-  'asia': 'asia.jfif',
-  'barat': 'barat.jfif',
-  'batak': 'batak.jfif',
-  'daerah': 'daerah.jfif',
-  'jawa': 'jawa.jfif',
-  'kalimantan': 'kalimantan.jfif',
-  'nasional': 'nasional.jfif',
-  'papua': 'papua.jfif',
-  'pop': 'pop.jfif',
-  'religion': 'religion.jfif',
-  'agama': 'religion.jfif',
-  'rohani': 'religion.jfif',
-  'sulawesi': 'sulawesi.jfif',
-  'sunda': 'sunda.jfif'
+  'aceh': 'assets/images/aceh.jfif',
+  'asia': 'assets/images/asia.jfif',
+  'barat': 'assets/images/barat.jfif',
+  'batak': 'assets/images/batak.jfif',
+  'daerah': 'assets/images/daerah.jfif',
+  'jawa': 'assets/images/jawa.jfif',
+  'kalimantan': 'assets/images/kalimantan.jfif',
+  'nasional': 'assets/images/nasional.jfif',
+  'papua': 'assets/images/papua.jfif',
+  'pop': 'assets/images/pop.jfif',
+  'religion': 'assets/images/religion.jfif',
+  'agama': 'assets/images/religion.jfif',
+  'rohani': 'assets/images/religion.jfif',
+  'sulawesi': 'assets/images/sulawesi.jfif',
+  'sunda': 'assets/images/sunda.jfif'
 };
 
 function getCategoryImage(folderOrRegion) {
-  if (!folderOrRegion) return 'daerah.jfif';
+  if (!folderOrRegion) return 'assets/images/daerah.jfif';
   const term = String(folderOrRegion).toLowerCase().trim();
   for (const [key, imgFile] of Object.entries(categoryImageMap)) {
     if (term.includes(key)) {
       return imgFile;
     }
   }
-  return 'daerah.jfif';
+  return 'assets/images/daerah.jfif';
 }
 
 function updateAlbumCoverImage(imagePath, titleText = null, descText = null) {
@@ -1262,7 +1262,7 @@ function loadSongsList(filter = 'all') {
 
   // Update album cover based on selected category filter
   if (filter === 'all') {
-    updateAlbumCoverImage('daerah.jfif', 'Pilih Lagu', 'Mainkan otomatis lagu daerah');
+    updateAlbumCoverImage('assets/images/daerah.jfif', 'Pilih Lagu', 'Mainkan otomatis lagu daerah');
   } else {
     const catImg = getCategoryImage(filter);
     updateAlbumCoverImage(catImg, `Kategori: ${filter.toUpperCase()}`, `Koleksi Lagu ${filter.toUpperCase()}`);
@@ -3307,8 +3307,7 @@ let currentSongIdx = 0;
 let currentNoteIndex = 0;
 let totalHits = 0;
 let correctHits = 0;
-let isDemoPlaying = false;
-let demoTimer = null;
+let lastGameKeyPressTime = 0;
 
 function loadGameSong(idx) {
   if (idx < 0 || idx >= GAME_SONGS.length) return;
@@ -3316,7 +3315,7 @@ function loadGameSong(idx) {
   currentNoteIndex = 0;
   totalHits = 0;
   correctHits = 0;
-  if (isDemoPlaying) stopGameDemo();
+  lastGameKeyPressTime = 0;
 
   const btns = document.querySelectorAll('.game-song-btn');
   btns.forEach((btn, i) => btn.classList.toggle('active', i === idx));
@@ -3329,6 +3328,12 @@ function loadGameSong(idx) {
 
   updateGameScoreUI();
   renderGameNotSheet();
+}
+
+function startGame() {
+  resetGameSession();
+  const firstBtn = document.querySelector('.game-song-btn');
+  if (firstBtn) firstBtn.scrollIntoView({ behavior: 'smooth' });
 }
 
 function renderGameNotSheet() {
@@ -3437,6 +3442,10 @@ function updateGameScoreUI() {
 function onGameKeypadPress(numStr) {
   if (appCurrentPage !== 'page-gamenotangka' && appCurrentPage !== 'page-notangka') return;
 
+  // Anti-Mashing: Mencegah tekan banyak tuts piano bersamaan (cooldown 150ms)
+  if (Date.now() - lastGameKeyPressTime < 150) return;
+  lastGameKeyPressTime = Date.now();
+
   const song = GAME_SONGS[currentSongIdx];
   const flatNotes = getSongFlatNotes(song);
   if (currentNoteIndex >= flatNotes.length) return;
@@ -3494,49 +3503,7 @@ function onGameKeypadPress(numStr) {
 
   updateGameScoreUI();
   renderGameNotSheet();
-}
-
-function toggleGameDemoAutoPlay() {
-  if (isDemoPlaying) {
-    stopGameDemo();
-  } else {
-    startGameDemo();
-  }
-}
-
-function startGameDemo() {
-  isDemoPlaying = true;
-  currentNoteIndex = 0;
-  const demoBtn = document.getElementById('game-demo-btn');
-  if (demoBtn) demoBtn.textContent = "⏹️ Stop Demo";
-
-  const song = GAME_SONGS[currentSongIdx];
-  const flatNotes = getSongFlatNotes(song);
-
-  const playStep = () => {
-    if (!isDemoPlaying || currentNoteIndex >= flatNotes.length) {
-      stopGameDemo();
-      return;
-    }
-
-    const notItem = flatNotes[currentNoteIndex];
-    const notStr = getNoteStr(notItem);
-    onGameKeypadPress(notStr);
-    demoTimer = setTimeout(playStep, 500);
-  };
-
-  playStep();
-}
-
-function stopGameDemo() {
-  isDemoPlaying = false;
-  if (demoTimer) clearTimeout(demoTimer);
-  const demoBtn = document.getElementById('game-demo-btn');
-  if (demoBtn) demoBtn.textContent = "▶ Demo Auto-Play";
-}
-
-function resetGameSession() {
-  stopGameDemo();
+}function resetGameSession() {
   currentNoteIndex = 0;
   totalHits = 0;
   correctHits = 0;
@@ -3546,6 +3513,8 @@ function resetGameSession() {
 
 // Keyboard listener for Game Not Angka (Keys 1-8)
 document.addEventListener('keydown', (e) => {
+  if (e.repeat) return; // Mencegah 1 kali tekan lama memicu banyak not berurutan
+
   const activePage = document.querySelector('.app-page:not(.hide)');
   if (activePage && activePage.id === 'page-gamenotangka') {
     if (['0', '1', '2', '3', '4', '5', '6', '7'].includes(e.key)) {
@@ -3563,7 +3532,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.loadGameSong = loadGameSong;
 window.onGameKeypadPress = onGameKeypadPress;
-window.toggleGameDemoAutoPlay = toggleGameDemoAutoPlay;
 window.resetGameSession = resetGameSession;
 window.handleGlobalSearch = handleGlobalSearch;
 window.nextMenu = nextMenu;

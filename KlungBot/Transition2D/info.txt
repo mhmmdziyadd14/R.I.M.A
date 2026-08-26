@@ -1,4 +1,0 @@
-This jar was compiled to include the following classes:
-com/bric/image/transition/app/Transition2DDemo
-
-To recreate/update this jar, run com.bric.jar.JarWriterApp and select these classes.  You can click the "Load Jar" button to automatically select these classes.

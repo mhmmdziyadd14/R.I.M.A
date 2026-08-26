@@ -14,6 +14,7 @@ import glob
 import random
 import numpy as np
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 import uvicorn
@@ -50,8 +51,8 @@ try:
     import torch
     import librosa
     import soundfile as sf
-    from src.model import GreetingCRNN
-    from src.dataset import extract_mel_spectrogram
+    from src.ai_architectures import GreetingCRNN
+    from src.audio_processing import extract_mel_spectrogram
     HAS_AI = True
 except ImportError as e:
     HAS_AI = False
@@ -80,8 +81,6 @@ def init_model():
     try:
         device = torch.device("cpu")
         model_path = os.path.join(config.MODELS_DIR, "best_model_CRNN.pth")
-        # if not os.path.exists(model_path):
-        #     model_path = os.path.join(config.MODELS_DIR, "best_overall_model.pth")
             
         if os.path.exists(model_path):
             model = GreetingCRNN(num_classes=len(config.CLASSES)).to(device)
@@ -2075,9 +2074,27 @@ midi_repeater_active = False
 def midi_repeater_loop():
     global midi_repeater_active
     while midi_repeater_active:
-        # Midi repeater loop: System-level audio is handled 100% by the browser client Web Audio engine
-        # to ensure audio gating per page (Kontrol Manual & Game Lagu only) works reliably without server-side sound bleeding.
-        time.sleep(0.5)
+        try:
+            with active_midi_notes_lock:
+                current_notes = list(active_midi_notes.keys())
+                
+            if current_notes:
+                # Group notes by board
+                board_notes = {1: [], 2: [], 3: []}
+                for note, board in current_notes:
+                    if board in board_notes:
+                        board_notes[board].append(note)
+                        
+                for board, notes in board_notes.items():
+                    if notes:
+                        # Send to arduino without triggering duplicate synth sounds
+                        # The browser handles audio synthesis via WebSockets
+                        send_to_arduino(notes, angklung_id=board, play_synth=False, wait_response=False)
+                        
+            time.sleep(0.16) # Loop at ~6Hz (160ms) to match frontend continuous shaking interval
+        except Exception as e:
+            print(f"[MIDI] Repeater Error: {e}")
+            time.sleep(0.5)
 
 def start_midi_repeater():
     global midi_repeater_thread, midi_repeater_active
@@ -2275,7 +2292,11 @@ async def midi_websocket(websocket: WebSocket):
             active_midi_websockets.remove(websocket)
         print(f"[WS-MIDI] Klien terputus. Sisa: {len(active_midi_websockets)}")
 
-
+# ====================================================================
+# STATIC FILES (FRONTEND)
+# ====================================================================
+# Melayani seluruh file UI (HTML, CSS, JS, Gambar) langsung dari Python
+app.mount("/", StaticFiles(directory="public", html=True), name="public")
 
 if __name__ == "__main__":
     uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)

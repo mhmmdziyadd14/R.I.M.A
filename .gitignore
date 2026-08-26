@@ -1,0 +1,24 @@
+# Folder Development, Dataset & Research (Tidak untuk Deploy Kios)
+_DevTools_and_Hardware/
+_Research_and_Dataset/
+
+# Python Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Python Cache & Bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Editor & IDE settings
+.vscode/
+.idea/
+*.swp
+
+# OS System Files
+.DS_Store
+Thumbs.db

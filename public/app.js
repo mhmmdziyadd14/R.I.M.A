@@ -464,9 +464,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 2500);
 
   // Set initial settings values to modal inputs
-  document.getElementById('input-com-port-1').value = settings.port1;
+  scanComPorts();
+  initDraggableAgenRimaFab();
   document.getElementById('input-com-port-2').value = "Terintegrasi dengan Angklung 1";
-  document.getElementById('input-com-port-3').value = settings.port3;
   document.getElementById('input-host-api').value = settings.hostApi;
 
   // Initialize view and run background connection checks
@@ -788,6 +788,65 @@ async function scanMidiDevices() {
   }
 }
 
+async function scanComPorts() {
+  const host = settings.hostApi;
+  const select1 = document.getElementById('input-com-port-1');
+  const select3 = document.getElementById('input-com-port-3');
+  if (!select1 || !select3) return;
+
+  const currentP1 = settings.port1 || select1.value || "COM10";
+  const currentP3 = settings.port3 || select3.value || "COM12";
+
+  let availablePorts = [];
+  try {
+    const res = await fetch(`${host}/api/ports`);
+    if (res.ok) {
+      availablePorts = await res.json();
+    }
+  } catch (err) {
+    console.warn("Gagal scan COM ports dari API:", err);
+  }
+
+  const portSet = new Set();
+  availablePorts.forEach(p => {
+    if (p.port) portSet.add(p.port);
+  });
+
+  if (currentP1) portSet.add(currentP1);
+  if (currentP3) portSet.add(currentP3);
+
+  // Standard fallback COM ports
+  for (let i = 1; i <= 20; i++) {
+    portSet.add(`COM${i}`);
+  }
+
+  const sortedPorts = Array.from(portSet).sort((a, b) => {
+    const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+    const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+    return numA - numB;
+  });
+
+  select1.innerHTML = '';
+  sortedPorts.forEach(port => {
+    const opt = document.createElement('option');
+    opt.value = port;
+    const detInfo = availablePorts.find(p => p.port === port);
+    opt.textContent = detInfo ? `${port} (${detInfo.description})` : port;
+    select1.appendChild(opt);
+  });
+  select1.value = currentP1;
+
+  select3.innerHTML = '';
+  sortedPorts.forEach(port => {
+    const opt = document.createElement('option');
+    opt.value = port;
+    const detInfo = availablePorts.find(p => p.port === port);
+    opt.textContent = detInfo ? `${port} (${detInfo.description})` : port;
+    select3.appendChild(opt);
+  });
+  select3.value = currentP3;
+}
+
 function switchSettingTab(tabId) {
   // Update buttons
   document.getElementById('tab-btn-koneksi').classList.remove('active');
@@ -802,6 +861,7 @@ function switchSettingTab(tabId) {
 async function toggleSettingsModal() {
   const modal = document.getElementById('settings-modal');
   if (!modal.classList.contains('active')) {
+    await scanComPorts();
     document.getElementById('input-com-port-1').value = settings.port1;
     document.getElementById('input-com-port-3').value = settings.port3;
     document.getElementById('input-host-api').value = settings.hostApi;
@@ -3865,4 +3925,145 @@ function handleVoiceSongInCategorySearch(query) {
       if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
     });
   }
+}
+
+// Flexible Draggable Agen Rima FAB with Edge Snapping
+function initDraggableAgenRimaFab() {
+  const container = document.getElementById('agen-rima-fab-container');
+  const btn = document.getElementById('agen-rima-fab');
+  if (!container || !btn) return;
+
+  let isDragging = false;
+  let startX = 0, startY = 0;
+  let initialLeft = 0, initialTop = 0;
+  let dragDistance = 0;
+  const padding = 20;
+
+  // Restore saved position from localStorage if available
+  const savedPos = localStorage.getItem('rima_fab_pos');
+  if (savedPos) {
+    try {
+      const pos = JSON.parse(savedPos);
+      let left = pos.left;
+      let top = pos.top;
+      const maxLeft = window.innerWidth - container.offsetWidth - padding;
+      const maxTop = window.innerHeight - container.offsetHeight - padding;
+      left = Math.max(padding, Math.min(left, maxLeft));
+      top = Math.max(padding, Math.min(top, maxTop));
+
+      container.style.left = `${left}px`;
+      container.style.top = `${top}px`;
+      container.style.bottom = 'auto';
+      container.style.right = 'auto';
+    } catch (_) {}
+  } else {
+    const defaultLeft = padding;
+    const defaultTop = window.innerHeight - (container.offsetHeight || 100) - 50;
+    container.style.left = `${defaultLeft}px`;
+    container.style.top = `${defaultTop}px`;
+    container.style.bottom = 'auto';
+    container.style.right = 'auto';
+  }
+
+  function snapToNearestEdge() {
+    const rect = container.getBoundingClientRect();
+    const width = rect.width || 100;
+    const height = rect.height || 100;
+
+    const centerX = rect.left + width / 2;
+
+    const snapLeft = centerX < window.innerWidth / 2 ? padding : (window.innerWidth - width - padding);
+    let snapTop = rect.top;
+
+    const minTop = padding;
+    const maxTop = window.innerHeight - height - padding;
+    snapTop = Math.max(minTop, Math.min(snapTop, maxTop));
+
+    container.style.transition = 'left 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)';
+    container.style.left = `${snapLeft}px`;
+    container.style.top = `${snapTop}px`;
+    container.style.bottom = 'auto';
+    container.style.right = 'auto';
+
+    localStorage.setItem('rima_fab_pos', JSON.stringify({ left: snapLeft, top: snapTop }));
+  }
+
+  function onPointerDown(e) {
+    isDragging = true;
+    dragDistance = 0;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    startX = clientX;
+    startY = clientY;
+
+    const rect = container.getBoundingClientRect();
+    initialLeft = rect.left;
+    initialTop = rect.top;
+
+    container.style.transition = 'none';
+
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('touchmove', onPointerMove, { passive: false });
+    window.addEventListener('mouseup', onPointerUp);
+    window.addEventListener('touchend', onPointerUp);
+  }
+
+  function onPointerMove(e) {
+    if (!isDragging) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const deltaX = clientX - startX;
+    const deltaY = clientY - startY;
+
+    dragDistance = Math.hypot(deltaX, deltaY);
+
+    if (dragDistance > 5) {
+      if (e.cancelable) e.preventDefault();
+      let newLeft = initialLeft + deltaX;
+      let newTop = initialTop + deltaY;
+
+      const maxLeft = window.innerWidth - container.offsetWidth;
+      const maxTop = window.innerHeight - container.offsetHeight;
+
+      newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+      newTop = Math.max(0, Math.min(newTop, maxTop));
+
+      container.style.left = `${newLeft}px`;
+      container.style.top = `${newTop}px`;
+      container.style.bottom = 'auto';
+      container.style.right = 'auto';
+    }
+  }
+
+  function onPointerUp(e) {
+    if (!isDragging) return;
+    isDragging = false;
+
+    window.removeEventListener('mousemove', onPointerMove);
+    window.removeEventListener('touchmove', onPointerMove);
+    window.removeEventListener('mouseup', onPointerUp);
+    window.removeEventListener('touchend', onPointerUp);
+
+    if (dragDistance > 5) {
+      snapToNearestEdge();
+    }
+  }
+
+  btn.addEventListener('click', (e) => {
+    if (dragDistance > 5) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      dragDistance = 0;
+      return false;
+    }
+  }, true);
+
+  btn.addEventListener('mousedown', onPointerDown);
+  btn.addEventListener('touchstart', onPointerDown, { passive: true });
+
+  window.addEventListener('resize', () => {
+    snapToNearestEdge();
+  });
 }

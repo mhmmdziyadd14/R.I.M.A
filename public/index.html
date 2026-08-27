@@ -962,20 +962,20 @@
     }
   </script>
   <!-- Agen Rima Floating Action Button Container -->
-  <div id="agen-rima-fab-container" style="display: none; position: fixed; bottom: 50px; left: 50px; width: 100px; height: 100px; z-index: 9999; pointer-events: none;">
-    <!-- Circular Text -->
-    <svg viewBox="0 0 100 100" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; animation: rotateText 10s linear infinite; transform-origin: center center;">
-      <path id="agen-rima-curve" d="M 50, 50 m -40, 0 a 40,40 0 1,1 80,0 a 40,40 0 1,1 -80,0" fill="transparent" />
-      <text fill="#a855f7" font-size="12" font-weight="bold" letter-spacing="2">
-        <textPath href="#agen-rima-curve" startOffset="0%">
-          AGEN RIMA 
+  <div id="agen-rima-fab-container" style="display: none; position: fixed; bottom: 50px; left: 50px; width: 120px; height: 120px; z-index: 9999; pointer-events: none;">
+    <!-- Curved Text -->
+    <svg viewBox="0 0 120 120" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+      <path id="nyai-curve" d="M 12, 60 A 48,48 0 0,0 108,60" fill="transparent" />
+      <text fill="#a855f7" font-size="14" font-weight="900" letter-spacing="3" text-anchor="middle">
+        <textPath href="#nyai-curve" startOffset="50%">
+          NYAI
         </textPath>
       </text>
     </svg>
     <!-- Actual Button -->
-    <button id="agen-rima-fab" onclick="startAgenRima()" title="Agen Rima" style="pointer-events: auto; position: absolute; top: 17.5px; left: 17.5px; width: 65px; height: 65px; border-radius: 50%; background: linear-gradient(135deg, #a855f7 0%, #6b21a8 100%); color: #fff; border: none; box-shadow: 0 5px 15px rgba(107, 33, 168, 0.5); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; transition: background 0.3s, transform 0.3s, box-shadow 0.3s;">
-      <i class="fa-solid fa-robot"></i>
-      <span id="voice-listening-indicator" style="display: none; width: 12px; height: 12px; background-color: #ff3333; border-radius: 50%; position: absolute; top: 8px; right: 8px; animation: blink 1s infinite; border: 2px solid #fff;"></span>
+    <button id="agen-rima-fab" onclick="startAgenRima()" title="Nyai" style="pointer-events: auto; position: absolute; top: 27.5px; left: 27.5px; width: 65px; height: 65px; border-radius: 50%; background: transparent; color: #fff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: box-shadow 0.3s; padding: 0;">
+      <img src="assets/images/Nyai_icon.png" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="Nyai">
+      <span id="voice-listening-indicator" style="display: none; width: 12px; height: 12px; background-color: #ff3333; border-radius: 50%; position: absolute; top: 0px; right: 0px; animation: blink 1s infinite; border: 2px solid #fff;"></span>
     </button>
   </div>
 </body>

@@ -3644,7 +3644,7 @@ function initVoiceSearch() {
   voiceSearchRecognition.onresult = function(event) {
     if (event.results.length === 0) return;
     const transcript = event.results[0][0].transcript.trim().toLowerCase();
-    console.log("Agen Rima Transcript:", transcript);
+    console.log("Nyai Transcript:", transcript);
 
     if (isAgenModeActive) {
       if (transcript.includes("matikan agen") || transcript.includes("keluar mode")) {
@@ -3753,9 +3753,9 @@ window.startAgenRima = function() {
   voiceSearchState = 1;
   
   const fab = document.getElementById('agen-rima-fab');
-  if (fab) fab.style.background = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
+  if (fab) { fab.style.background = 'transparent'; fab.style.boxShadow = '0 0 0 3px #22c55e'; }
   
-  speakText("Selamat datang di Agen Rima. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Pengenalan Angklung, atau Game Not Angka. Apa yang ingin Anda lakukan?", () => {
+  speakText("Selamat datang di RIMA. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Pengenalan Angklung, atau Game Not Angka. Apa yang ingin Anda lakukan?", () => {
     try { voiceSearchRecognition.start(); } catch(e){}
   });
 };
@@ -3765,13 +3765,13 @@ function stopAgenRima() {
   voiceSearchState = 0;
   
   const fab = document.getElementById('agen-rima-fab');
-  if (fab) fab.style.background = 'linear-gradient(135deg, #a855f7 0%, #6b21a8 100%)';
+  if (fab) { fab.style.background = 'transparent'; fab.style.boxShadow = 'none'; }
   
   if (voiceSearchRecognition) {
     try { voiceSearchRecognition.abort(); } catch(e){}
   }
   window.speechSynthesis.cancel();
-  speakText("Agen Rima dimatikan. Terima kasih telah menggunakan layanan kami.", () => {});
+  speakText("Nyai dimatikan. Terima kasih telah menggunakan layanan kami.", () => {});
 }
 
 function handleVoiceMenuSearch(query) {
@@ -3846,7 +3846,7 @@ function handleVoiceMenuSearch(query) {
     isAgenModeActive = false;
     voiceSearchState = 0;
     const fab = document.getElementById('agen-rima-fab');
-    if (fab) fab.style.background = 'linear-gradient(135deg, #a855f7 0%, #6b21a8 100%)';
+    if (fab) { fab.style.background = 'transparent'; fab.style.boxShadow = 'none'; }
     if (voiceSearchRecognition) {
       try { voiceSearchRecognition.abort(); } catch(e){}
     }

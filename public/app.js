@@ -3755,7 +3755,7 @@ window.startAgenRima = function() {
   const fab = document.getElementById('agen-rima-fab');
   if (fab) { fab.style.background = 'transparent'; fab.style.boxShadow = '0 0 0 3px #22c55e'; }
   
-  speakText("Selamat datang di RIMA. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Pengenalan Angklung, atau Game Not Angka. Apa yang ingin Anda lakukan?", () => {
+  speakText("Selamat datang di Nyai. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Pengenalan Angklung, atau Game Not Angka. Apa yang ingin Anda lakukan?", () => {
     try { voiceSearchRecognition.start(); } catch(e){}
   });
 };

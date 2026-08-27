@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rima-pwa-v8';
+const CACHE_NAME = 'rima-pwa-v9';
 const urlsToCache = [
   './',
   './index.html',

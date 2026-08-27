@@ -3830,7 +3830,16 @@ function handleVoiceMenuSearch(query) {
   } else if (query.includes('pengenalan') || query.includes('sejarah') || query.includes('bambu')) {
     voiceSearchState = 0;
     navigateTo('page-pengenalan');
-    speakText("Anda telah memasuki menu Edukasi Angklung. Angklung merupakan kebanggaan masyarakat Sunda, yang berasal dari kata angkleung-angkleungan. Diakui oleh UNESCO pada 16 November 2010 sebagai Warisan Budaya Takbenda Dunia. Pada tahun 1938, Daeng Soetigna berinovasi menciptakan Angklung Padaeng dengan tangga nada diatonik. Bahan pembuatannya menggunakan Bambu Wulung untuk nada bas dan Bambu Tali untuk nada tinggi. Terdapat 3 teknik memainkannya yaitu Kurulung atau getar, Centok atau hentak, dan Tepuk. Pada Otomatisasi Project RIMA, hardware yang digunakan adalah Solenoid Actuator 12 Volt, Mikrokontroler ESP32, dan Multi-Channel Relay Driver. Cara kerja sistem AI-nya, Mikrofon merekam vokal pengguna secara real-time, AI PyTorch mengestimasi frekuensi nada, lalu disetel ke tangga nada harmonis dan dikirimkan sinyalnya untuk menggetarkan angklung fisik. Untuk panduan aplikasi, terdapat fitur Pustaka Lagu untuk memainkan lagu daerah, Kontrol Manual untuk memainkan angklung dengan tuts piano, Repeater Vokal agar robot meniru nyanyian Anda, Game Not Angka untuk melatih ritme, dan Deteksi Bahasa untuk merekomendasikan lagu berdasarkan kata sapaan daerah.", () => {
+    const artikelEl = document.getElementById('artikel-pengenalan');
+    let textToSpeak = "Anda telah memasuki menu Pengenalan Angklung. ";
+    if (artikelEl) {
+      // Mengambil seluruh teks yang terlihat pada artikel dan merapikan spasinya
+      textToSpeak += artikelEl.innerText.replace(/\s+/g, ' ').trim();
+    } else {
+      textToSpeak += "Angklung adalah kebanggaan masyarakat Sunda.";
+    }
+    
+    speakText(textToSpeak, () => {
       if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
     });
   } else if (query.includes('game') || query.includes('not angka') || query.includes('latihan')) {

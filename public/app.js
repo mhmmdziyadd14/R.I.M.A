@@ -3731,6 +3731,13 @@ function speakText(text, callback) {
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'id-ID';
+  
+  // Memilih suara perempuan secara eksplisit (Google atau Gadis)
+  const voices = window.speechSynthesis.getVoices();
+  const femaleVoice = voices.find(v => v.lang.includes('id') && (v.name.includes('Google') || v.name.includes('Gadis') || v.name.toLowerCase().includes('female')));
+  if (femaleVoice) {
+    utterance.voice = femaleVoice;
+  }
   utterance.onend = function() {
     if (callback) callback();
     else if (isAgenModeActive) {

@@ -3656,7 +3656,7 @@ function initVoiceSearch() {
          speakText("Anda berada di Menu Utama. Anda dapat langsung menyebutkan judul lagu, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Pengenalan Angklung, atau Game Not Angka.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
          return;
       }
-      if (transcript.includes("hi rima") || transcript.includes("hai rima")) {
+      if (transcript.includes("hi nyai") || transcript.includes("hai nyai")) {
          voiceSearchState = 1; // Kembali ke state 1 agar bisa mendengarkan lagu/menu bebas
          speakText("Ya? Silakan.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
          return;

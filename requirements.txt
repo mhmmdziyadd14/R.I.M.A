@@ -5,7 +5,7 @@ numpy
 sounddevice
 soundfile
 pygame
-scipy
+av
 fastapi
 uvicorn
 websockets

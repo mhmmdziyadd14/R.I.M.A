@@ -7,7 +7,7 @@ let settings = {
   port2: localStorage.getItem('rima_port_2') || 'COM11',
   port3: localStorage.getItem('rima_port_3') || 'COM12',
   hostApi: localStorage.getItem('rima_host_api') || 'http://localhost:8000',
-  simulationMode: localStorage.getItem('rima_simulation_mode') === null ? true : localStorage.getItem('rima_simulation_mode') === 'true',
+  simulationMode: localStorage.getItem('rima_simulation_mode') === null ? false : localStorage.getItem('rima_simulation_mode') === 'true',
   synthVolume: localStorage.getItem('rima_synth_volume') === null ? 0.7 : parseFloat(localStorage.getItem('rima_synth_volume')),
   physicalPower: localStorage.getItem('rima_physical_power') === null ? 100 : parseInt(localStorage.getItem('rima_physical_power')),
   v1Volume: localStorage.getItem('rima_v1_volume') === null ? 1.0 : parseFloat(localStorage.getItem('rima_v1_volume')),
@@ -1255,32 +1255,32 @@ function searchSongs(query) {
 
 // Category image mapping for Album Art cover
 const categoryImageMap = {
-  'aceh': 'aceh.jfif',
-  'asia': 'asia.jfif',
-  'barat': 'barat.jfif',
-  'batak': 'batak.jfif',
-  'daerah': 'daerah.jfif',
-  'jawa': 'jawa.jfif',
-  'kalimantan': 'kalimantan.jfif',
-  'nasional': 'nasional.jfif',
-  'papua': 'papua.jfif',
-  'pop': 'pop.jfif',
-  'religion': 'religion.jfif',
-  'agama': 'religion.jfif',
-  'rohani': 'religion.jfif',
-  'sulawesi': 'sulawesi.jfif',
-  'sunda': 'sunda.jfif'
+  'aceh': 'assets/images/aceh.jfif',
+  'asia': 'assets/images/asia.jfif',
+  'barat': 'assets/images/barat.jfif',
+  'batak': 'assets/images/batak.jfif',
+  'daerah': 'assets/images/daerah.jfif',
+  'jawa': 'assets/images/jawa.jfif',
+  'kalimantan': 'assets/images/kalimantan.jfif',
+  'nasional': 'assets/images/nasional.jfif',
+  'papua': 'assets/images/papua.jfif',
+  'pop': 'assets/images/pop.jfif',
+  'religion': 'assets/images/religion.jfif',
+  'agama': 'assets/images/religion.jfif',
+  'rohani': 'assets/images/religion.jfif',
+  'sulawesi': 'assets/images/sulawesi.jfif',
+  'sunda': 'assets/images/sunda.jfif'
 };
 
 function getCategoryImage(folderOrRegion) {
-  if (!folderOrRegion) return 'daerah.jfif';
+  if (!folderOrRegion) return 'assets/images/daerah.jfif';
   const term = String(folderOrRegion).toLowerCase().trim();
   for (const [key, imgFile] of Object.entries(categoryImageMap)) {
     if (term.includes(key)) {
       return imgFile;
     }
   }
-  return 'daerah.jfif';
+  return 'assets/images/daerah.jfif';
 }
 
 function updateAlbumCoverImage(imagePath, titleText = null, descText = null) {
@@ -1322,7 +1322,7 @@ function loadSongsList(filter = 'all') {
 
   // Update album cover based on selected category filter
   if (filter === 'all') {
-    updateAlbumCoverImage('daerah.jfif', 'Pilih Lagu', 'Mainkan otomatis lagu daerah');
+    updateAlbumCoverImage('assets/images/daerah.jfif', 'Pilih Lagu', 'Mainkan otomatis lagu daerah');
   } else {
     const catImg = getCategoryImage(filter);
     updateAlbumCoverImage(catImg, `Kategori: ${filter.toUpperCase()}`, `Koleksi Lagu ${filter.toUpperCase()}`);
@@ -3367,8 +3367,7 @@ let currentSongIdx = 0;
 let currentNoteIndex = 0;
 let totalHits = 0;
 let correctHits = 0;
-let isDemoPlaying = false;
-let demoTimer = null;
+let lastGameKeyPressTime = 0;
 
 function loadGameSong(idx) {
   if (idx < 0 || idx >= GAME_SONGS.length) return;
@@ -3376,7 +3375,7 @@ function loadGameSong(idx) {
   currentNoteIndex = 0;
   totalHits = 0;
   correctHits = 0;
-  if (isDemoPlaying) stopGameDemo();
+  lastGameKeyPressTime = 0;
 
   const btns = document.querySelectorAll('.game-song-btn');
   btns.forEach((btn, i) => btn.classList.toggle('active', i === idx));
@@ -3389,6 +3388,12 @@ function loadGameSong(idx) {
 
   updateGameScoreUI();
   renderGameNotSheet();
+}
+
+function startGame() {
+  resetGameSession();
+  const firstBtn = document.querySelector('.game-song-btn');
+  if (firstBtn) firstBtn.scrollIntoView({ behavior: 'smooth' });
 }
 
 function renderGameNotSheet() {
@@ -3497,6 +3502,10 @@ function updateGameScoreUI() {
 function onGameKeypadPress(numStr) {
   if (appCurrentPage !== 'page-gamenotangka' && appCurrentPage !== 'page-notangka') return;
 
+  // Anti-Mashing: Mencegah tekan banyak tuts piano bersamaan (cooldown 150ms)
+  if (Date.now() - lastGameKeyPressTime < 150) return;
+  lastGameKeyPressTime = Date.now();
+
   const song = GAME_SONGS[currentSongIdx];
   const flatNotes = getSongFlatNotes(song);
   if (currentNoteIndex >= flatNotes.length) return;
@@ -3554,49 +3563,7 @@ function onGameKeypadPress(numStr) {
 
   updateGameScoreUI();
   renderGameNotSheet();
-}
-
-function toggleGameDemoAutoPlay() {
-  if (isDemoPlaying) {
-    stopGameDemo();
-  } else {
-    startGameDemo();
-  }
-}
-
-function startGameDemo() {
-  isDemoPlaying = true;
-  currentNoteIndex = 0;
-  const demoBtn = document.getElementById('game-demo-btn');
-  if (demoBtn) demoBtn.textContent = "⏹️ Stop Demo";
-
-  const song = GAME_SONGS[currentSongIdx];
-  const flatNotes = getSongFlatNotes(song);
-
-  const playStep = () => {
-    if (!isDemoPlaying || currentNoteIndex >= flatNotes.length) {
-      stopGameDemo();
-      return;
-    }
-
-    const notItem = flatNotes[currentNoteIndex];
-    const notStr = getNoteStr(notItem);
-    onGameKeypadPress(notStr);
-    demoTimer = setTimeout(playStep, 500);
-  };
-
-  playStep();
-}
-
-function stopGameDemo() {
-  isDemoPlaying = false;
-  if (demoTimer) clearTimeout(demoTimer);
-  const demoBtn = document.getElementById('game-demo-btn');
-  if (demoBtn) demoBtn.textContent = "▶ Demo Auto-Play";
-}
-
-function resetGameSession() {
-  stopGameDemo();
+}function resetGameSession() {
   currentNoteIndex = 0;
   totalHits = 0;
   correctHits = 0;
@@ -3606,6 +3573,8 @@ function resetGameSession() {
 
 // Keyboard listener for Game Not Angka (Keys 1-8)
 document.addEventListener('keydown', (e) => {
+  if (e.repeat) return; // Mencegah 1 kali tekan lama memicu banyak not berurutan
+
   const activePage = document.querySelector('.app-page:not(.hide)');
   if (activePage && activePage.id === 'page-gamenotangka') {
     if (['0', '1', '2', '3', '4', '5', '6', '7'].includes(e.key)) {
@@ -3623,7 +3592,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.loadGameSong = loadGameSong;
 window.onGameKeypadPress = onGameKeypadPress;
-window.toggleGameDemoAutoPlay = toggleGameDemoAutoPlay;
 window.resetGameSession = resetGameSession;
 window.handleGlobalSearch = handleGlobalSearch;
 window.nextMenu = nextMenu;
@@ -3676,7 +3644,7 @@ function initVoiceSearch() {
   voiceSearchRecognition.onresult = function(event) {
     if (event.results.length === 0) return;
     const transcript = event.results[0][0].transcript.trim().toLowerCase();
-    console.log("Agen Rima Transcript:", transcript);
+    console.log("Nyai Transcript:", transcript);
 
     if (isAgenModeActive) {
       if (transcript.includes("matikan agen") || transcript.includes("keluar mode")) {
@@ -3688,7 +3656,7 @@ function initVoiceSearch() {
          speakText("Anda berada di Menu Utama. Anda dapat langsung menyebutkan judul lagu, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Pengenalan Angklung, atau Game Not Angka.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
          return;
       }
-      if (transcript.includes("hi rima") || transcript.includes("hai rima")) {
+      if (transcript.includes("hi nyai") || transcript.includes("hai nyai")) {
          voiceSearchState = 1; // Kembali ke state 1 agar bisa mendengarkan lagu/menu bebas
          speakText("Ya? Silakan.", () => { if(isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} } });
          return;
@@ -3763,6 +3731,13 @@ function speakText(text, callback) {
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'id-ID';
+  
+  // Memilih suara perempuan secara eksplisit (Google atau Gadis)
+  const voices = window.speechSynthesis.getVoices();
+  const femaleVoice = voices.find(v => v.lang.includes('id') && (v.name.includes('Google') || v.name.includes('Gadis') || v.name.toLowerCase().includes('female')));
+  if (femaleVoice) {
+    utterance.voice = femaleVoice;
+  }
   utterance.onend = function() {
     if (callback) callback();
     else if (isAgenModeActive) {
@@ -3785,9 +3760,9 @@ window.startAgenRima = function() {
   voiceSearchState = 1;
   
   const fab = document.getElementById('agen-rima-fab');
-  if (fab) fab.style.background = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
+  if (fab) { fab.style.background = 'transparent'; fab.style.boxShadow = '0 0 0 3px #22c55e'; }
   
-  speakText("Selamat datang di Agen Rima. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Pengenalan Angklung, atau Game Not Angka. Apa yang ingin Anda lakukan?", () => {
+  speakText("Selamat datang di Rima. Anda dapat langsung menyebutkan judul lagu yang ingin diputar, atau memilih menu: Pustaka Lagu, Kontrol Manual, Repeater, Deteksi Bahasa, Pengenalan Angklung, atau Game Not Angka. Apa yang ingin Anda lakukan?", () => {
     try { voiceSearchRecognition.start(); } catch(e){}
   });
 };
@@ -3797,13 +3772,13 @@ function stopAgenRima() {
   voiceSearchState = 0;
   
   const fab = document.getElementById('agen-rima-fab');
-  if (fab) fab.style.background = 'linear-gradient(135deg, #a855f7 0%, #6b21a8 100%)';
+  if (fab) { fab.style.background = 'transparent'; fab.style.boxShadow = 'none'; }
   
   if (voiceSearchRecognition) {
     try { voiceSearchRecognition.abort(); } catch(e){}
   }
   window.speechSynthesis.cancel();
-  speakText("Agen Rima dimatikan. Terima kasih telah menggunakan layanan kami.", () => {});
+  speakText("Nyai dimatikan. Terima kasih telah menggunakan layanan kami.", () => {});
 }
 
 function handleVoiceMenuSearch(query) {
@@ -3862,7 +3837,16 @@ function handleVoiceMenuSearch(query) {
   } else if (query.includes('pengenalan') || query.includes('sejarah') || query.includes('bambu')) {
     voiceSearchState = 0;
     navigateTo('page-pengenalan');
-    speakText("Anda telah memasuki menu Edukasi Angklung. Angklung merupakan kebanggaan masyarakat Sunda, yang berasal dari kata angkleung-angkleungan. Diakui oleh UNESCO pada 16 November 2010 sebagai Warisan Budaya Takbenda Dunia. Pada tahun 1938, Daeng Soetigna berinovasi menciptakan Angklung Padaeng dengan tangga nada diatonik. Bahan pembuatannya menggunakan Bambu Wulung untuk nada bas dan Bambu Tali untuk nada tinggi. Terdapat 3 teknik memainkannya yaitu Kurulung atau getar, Centok atau hentak, dan Tepuk. Pada Otomatisasi Project RIMA, hardware yang digunakan adalah Solenoid Actuator 12 Volt, Mikrokontroler ESP32, dan Multi-Channel Relay Driver. Cara kerja sistem AI-nya, Mikrofon merekam vokal pengguna secara real-time, AI PyTorch mengestimasi frekuensi nada, lalu disetel ke tangga nada harmonis dan dikirimkan sinyalnya untuk menggetarkan angklung fisik. Untuk panduan aplikasi, terdapat fitur Pustaka Lagu untuk memainkan lagu daerah, Kontrol Manual untuk memainkan angklung dengan tuts piano, Repeater Vokal agar robot meniru nyanyian Anda, Game Not Angka untuk melatih ritme, dan Deteksi Bahasa untuk merekomendasikan lagu berdasarkan kata sapaan daerah.", () => {
+    const artikelEl = document.getElementById('artikel-pengenalan');
+    let textToSpeak = "Anda telah memasuki menu Pengenalan Angklung. ";
+    if (artikelEl) {
+      // Mengambil seluruh teks yang terlihat pada artikel dan merapikan spasinya
+      textToSpeak += artikelEl.innerText.replace(/\s+/g, ' ').trim();
+    } else {
+      textToSpeak += "Angklung adalah kebanggaan masyarakat Sunda.";
+    }
+    
+    speakText(textToSpeak, () => {
       if (isAgenModeActive) { try { voiceSearchRecognition.start(); } catch(e){} }
     });
   } else if (query.includes('game') || query.includes('not angka') || query.includes('latihan')) {
@@ -3878,7 +3862,7 @@ function handleVoiceMenuSearch(query) {
     isAgenModeActive = false;
     voiceSearchState = 0;
     const fab = document.getElementById('agen-rima-fab');
-    if (fab) fab.style.background = 'linear-gradient(135deg, #a855f7 0%, #6b21a8 100%)';
+    if (fab) { fab.style.background = 'transparent'; fab.style.boxShadow = 'none'; }
     if (voiceSearchRecognition) {
       try { voiceSearchRecognition.abort(); } catch(e){}
     }
